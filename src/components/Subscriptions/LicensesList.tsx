@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,8 @@ import { AddLicenseDialog } from "./AddLicenseDialog";
 import { useToast } from "@/hooks/use-toast";
 
 export const LicensesList = () => {
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,7 +24,7 @@ export const LicensesList = () => {
   const [editingLicense, setEditingLicense] = useState<any>(null);
 
   const { data: licenses, isLoading, refetch } = useQuery({
-    queryKey: ["subscriptions-licenses", organisation?.id, searchTerm, statusFilter],
+    queryKey: ["subscriptions-licenses", organisationId, searchTerm, statusFilter],
     queryFn: async () => {
       let query = supabase
         .from("subscriptions_licenses")
@@ -31,7 +32,7 @@ export const LicensesList = () => {
           *,
           subscriptions_tools(tool_name)
         `)
-        .eq("organisation_id", organisation?.id!);
+        .eq("organisation_id", organisationId!);
 
       if (searchTerm) {
         query = query.ilike("license_key", `%${searchTerm}%`);
@@ -46,12 +47,12 @@ export const LicensesList = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   // Real-time subscription
   useEffect(() => {
-    if (!organisation?.id) return;
+    if (!organisationId) return;
 
     const channel = supabase
       .channel('licenses-changes')
@@ -61,7 +62,7 @@ export const LicensesList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_licenses',
-          filter: `organisation_id=eq.${organisation.id}`
+          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-licenses"] });
@@ -72,7 +73,7 @@ export const LicensesList = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organisation?.id, queryClient]);
+  }, [organisationId, queryClient]);
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase

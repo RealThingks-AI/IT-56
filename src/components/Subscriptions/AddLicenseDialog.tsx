@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useQuery } from "@tanstack/react-query";
 
 const formSchema = z.object({
@@ -32,22 +32,23 @@ interface AddLicenseDialogProps {
 
 export const AddLicenseDialog = ({ open, onOpenChange, onSuccess, editingLicense }: AddLicenseDialogProps) => {
   const { toast } = useToast();
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: tools } = useQuery({
-    queryKey: ["subscriptions-tools", organisation?.id],
+    queryKey: ["subscriptions-tools", organisationId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subscriptions_tools")
         .select("id, tool_name")
-        .eq("organisation_id", organisation?.id!)
+        .eq("organisation_id", organisationId!)
         .eq("status", "active");
 
       if (error) throw error;
       return data;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -94,7 +95,7 @@ export const AddLicenseDialog = ({ open, onOpenChange, onSuccess, editingLicense
     setIsSubmitting(true);
     try {
       const licenseData = {
-        organisation_id: organisation?.id!,
+        organisation_id: organisationId!,
         tool_id: values.tool_id,
         license_key: values.license_key || null,
         status: values.status,

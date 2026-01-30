@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,19 +12,20 @@ import { AddVendorDialog } from "./AddVendorDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const VendorsList = () => {
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
   const { data: vendors, isLoading, refetch } = useQuery({
-    queryKey: ["subscriptions-vendors", organisation?.id, searchTerm],
+    queryKey: ["subscriptions-vendors", organisationId, searchTerm],
     queryFn: async () => {
       let query = supabase
         .from("subscriptions_vendors")
         .select("*, subscriptions_tools(count)")
-        .eq("organisation_id", organisation?.id!);
+        .eq("organisation_id", organisationId!);
 
       if (searchTerm) {
         query = query.ilike("name", `%${searchTerm}%`);
@@ -35,12 +36,12 @@ export const VendorsList = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   // Real-time subscription
   useEffect(() => {
-    if (!organisation?.id) return;
+    if (!organisationId) return;
 
     const vendorsChannel = supabase
       .channel('vendors-changes')
@@ -50,7 +51,7 @@ export const VendorsList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_vendors',
-          filter: `organisation_id=eq.${organisation.id}`
+          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-vendors"] });
@@ -66,7 +67,7 @@ export const VendorsList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_tools',
-          filter: `organisation_id=eq.${organisation.id}`
+          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-vendors"] });
@@ -78,7 +79,7 @@ export const VendorsList = () => {
       supabase.removeChannel(vendorsChannel);
       supabase.removeChannel(toolsChannel);
     };
-  }, [organisation?.id, queryClient]);
+  }, [organisationId, queryClient]);
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase

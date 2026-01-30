@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { SettingsCard } from "./SettingsCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,7 +84,8 @@ const TABLE_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export function AdminSystem() {
-  const { organisation, loading: orgLoading } = useOrganisation();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const organisation = currentUser?.organisation;
   const queryClient = useQueryClient();
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -242,7 +243,7 @@ export function AdminSystem() {
     toast.success("System status refreshed");
   };
 
-  if (orgLoading) {
+  if (userLoading) {
     return <SettingsLoadingSkeleton cards={3} rows={4} />;
   }
 

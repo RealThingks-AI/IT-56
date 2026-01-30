@@ -1,19 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export const useSubscriptionStats = () => {
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
 
   return useQuery({
-    queryKey: ["subscription-stats", organisation?.id],
+    queryKey: ["subscription-stats", organisationId],
     queryFn: async () => {
-      if (!organisation?.id) return null;
+      if (!organisationId) return null;
 
       const { data: tools, error } = await supabase
         .from("subscriptions_tools")
         .select("*")
-        .eq("organisation_id", organisation.id);
+        .eq("organisation_id", organisationId);
 
       if (error) throw error;
 
@@ -43,6 +44,6 @@ export const useSubscriptionStats = () => {
         vendorCount,
       };
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 };

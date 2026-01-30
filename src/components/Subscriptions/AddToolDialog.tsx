@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useQuery } from "@tanstack/react-query";
 
 const formSchema = z.object({
@@ -36,21 +36,22 @@ interface AddToolDialogProps {
 
 export const AddToolDialog = ({ open, onOpenChange, onSuccess, editingTool }: AddToolDialogProps) => {
   const { toast } = useToast();
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: vendors } = useQuery({
-    queryKey: ["subscriptions-vendors", organisation?.id],
+    queryKey: ["subscriptions-vendors", organisationId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subscriptions_vendors")
         .select("*")
-        .eq("organisation_id", organisation?.id!);
+        .eq("organisation_id", organisationId!);
 
       if (error) throw error;
       return data;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -107,7 +108,7 @@ export const AddToolDialog = ({ open, onOpenChange, onSuccess, editingTool }: Ad
       let error;
 
       const payload = {
-        organisation_id: organisation?.id!,
+        organisation_id: organisationId!,
         tool_name: values.tool_name,
         category: values.category,
         vendor_id: values.vendor_id || null,
@@ -125,7 +126,7 @@ export const AddToolDialog = ({ open, onOpenChange, onSuccess, editingTool }: Ad
           .from("subscriptions_tools")
           .update(payload)
           .eq("id", editingTool.id)
-          .eq("organisation_id", organisation?.id!);
+          .eq("organisation_id", organisationId!);
         error = updateError;
       } else {
         const { error: insertError } = await supabase

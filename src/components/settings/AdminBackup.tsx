@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { SettingsCard } from "./SettingsCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,62 +42,63 @@ interface BackupSchedule {
 }
 
 export function AdminBackup() {
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const queryClient = useQueryClient();
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
 
   const { data: backups = [], isLoading: backupsLoading } = useQuery({
-    queryKey: ["system-backups", organisation?.id],
+    queryKey: ["system-backups", organisationId],
     queryFn: async () => {
-      if (!organisation?.id) return [];
+      if (!organisationId) return [];
       const { data, error } = await supabase
         .from("system_backups")
         .select("*")
-        .eq("organisation_id", organisation.id)
+        .eq("organisation_id", organisationId)
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
       return data as Backup[];
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   const { data: schedule, isLoading: scheduleLoading } = useQuery({
-    queryKey: ["backup-schedule", organisation?.id],
+    queryKey: ["backup-schedule", organisationId],
     queryFn: async () => {
-      if (!organisation?.id) return null;
+      if (!organisationId) return null;
       const { data, error } = await supabase
         .from("backup_schedules")
         .select("*")
-        .eq("organisation_id", organisation.id)
+        .eq("organisation_id", organisationId)
         .single();
       if (error && error.code !== "PGRST116") throw error;
       return data as BackupSchedule | null;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   const updateSchedule = useMutation({
     mutationFn: async (updates: Partial<BackupSchedule>) => {
-      if (!organisation?.id) throw new Error("No organization");
+      if (!organisationId) throw new Error("No organization");
       
       const { data: existing } = await supabase
         .from("backup_schedules")
         .select("id")
-        .eq("organisation_id", organisation.id)
+        .eq("organisation_id", organisationId)
         .single();
 
       if (existing) {
         const { error } = await supabase
           .from("backup_schedules")
           .update({ ...updates, updated_at: new Date().toISOString() })
-          .eq("organisation_id", organisation.id);
+          .eq("organisation_id", organisationId);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("backup_schedules")
           .insert({
-            organisation_id: organisation.id,
+            organisation_id: organisationId,
             ...updates,
             next_backup_at: updates.enabled 
               ? new Date(Date.now() + (updates.frequency_days || 3) * 24 * 60 * 60 * 1000).toISOString()
@@ -123,9 +124,9 @@ export function AdminBackup() {
       const { error } = await supabase
         .from("system_backups")
         .insert({
-          organisation_id: organisation?.id,
+          organisation_id: organisationId,
           backup_name: backupName,
-          file_path: `${organisation?.id}/${backupName}.json`,
+          file_path: `${organisationId}/${backupName}.json`,
           backup_type: "manual",
           status: "pending",
           tables_included: ["users", "helpdesk_tickets", "itam_assets", "helpdesk_categories"],

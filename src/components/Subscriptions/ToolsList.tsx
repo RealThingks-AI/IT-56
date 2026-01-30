@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { formatINR } from "@/lib/currencyConversion";
 
 export const ToolsList = () => {
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,12 +26,12 @@ export const ToolsList = () => {
   const [editingTool, setEditingTool] = useState<any | null>(null);
 
   const { data: tools, isLoading, refetch } = useQuery({
-    queryKey: ["subscriptions-tools", organisation?.id, searchTerm, statusFilter, categoryFilter],
+    queryKey: ["subscriptions-tools", organisationId, searchTerm, statusFilter, categoryFilter],
     queryFn: async () => {
       let query = supabase
         .from("subscriptions_tools")
         .select("*, subscriptions_vendors(name)")
-        .eq("organisation_id", organisation?.id!);
+        .eq("organisation_id", organisationId!);
 
       if (searchTerm) {
         query = query.ilike("tool_name", `%${searchTerm}%`);
@@ -46,12 +47,12 @@ export const ToolsList = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   // Real-time subscription
   useEffect(() => {
-    if (!organisation?.id) return;
+    if (!organisationId) return;
 
     const channel = supabase
       .channel('tools-changes')
@@ -61,7 +62,7 @@ export const ToolsList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_tools',
-          filter: `organisation_id=eq.${organisation.id}`
+          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-tools"] });
@@ -72,7 +73,7 @@ export const ToolsList = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organisation?.id, queryClient]);
+  }, [organisationId, queryClient]);
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("subscriptions_tools").delete().eq("id", id);

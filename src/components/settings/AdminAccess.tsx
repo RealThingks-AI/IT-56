@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,19 +47,20 @@ const DEFAULT_PAGES: Omit<PageAccess, "id" | "updated_at">[] = [
 const ALWAYS_ALLOWED_ROUTES = ["/account", "/notifications", "/profile"];
 
 export function AdminAccess() {
-  const { organisation, loading: orgLoading } = useOrganisation();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const queryClient = useQueryClient();
   const [isSeeding, setIsSeeding] = useState(false);
 
   const { data: pages, isLoading, error, refetch } = useQuery({
-    queryKey: ["page-access-control", organisation?.id],
+    queryKey: ["page-access-control", organisationId],
     queryFn: async () => {
-      if (!organisation?.id) return [];
+      if (!organisationId) return [];
       
       const { data, error } = await supabase
         .from("page_access_control")
         .select("*")
-        .eq("organisation_id", organisation.id)
+        .eq("organisation_id", organisationId)
         .order("page_name");
       
       if (error) throw error;
@@ -68,12 +69,12 @@ export function AdminAccess() {
       const mainRoutes = DEFAULT_PAGES.map(p => p.route);
       return (data as PageAccess[]).filter(p => mainRoutes.includes(p.route));
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   // Auto-seed defaults if table is empty or missing pages
   useEffect(() => {
-    if (pages !== undefined && organisation?.id && !isSeeding) {
+    if (pages !== undefined && organisationId && !isSeeding) {
       const existingRoutes = pages.map(p => p.route);
       const missingPages = DEFAULT_PAGES.filter(p => !existingRoutes.includes(p.route));
       
@@ -81,15 +82,15 @@ export function AdminAccess() {
         seedDefaultPages(missingPages);
       }
     }
-  }, [pages, organisation?.id, isSeeding]);
+  }, [pages, organisationId, isSeeding]);
 
   const seedDefaultPages = async (pagesToAdd: typeof DEFAULT_PAGES) => {
-    if (!organisation?.id || isSeeding) return;
+    if (!organisationId || isSeeding) return;
     
     setIsSeeding(true);
     try {
       const pagesToInsert = pagesToAdd.map((page) => ({
-        organisation_id: organisation.id,
+        organisation_id: organisationId,
         ...page,
       }));
 
@@ -156,11 +157,11 @@ export function AdminAccess() {
     updateMutation.mutate({ pageId, field, value: !currentValue });
   };
 
-  if (orgLoading) {
+  if (userLoading) {
     return <SettingsLoadingSkeleton cards={1} rows={8} />;
   }
 
-  if (!organisation?.id) {
+  if (!organisationId) {
     return (
       <div className="space-y-4">
         <div>

@@ -3,32 +3,33 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Package, Calendar, AlertTriangle } from "lucide-react";
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { format } from "date-fns";
 import { formatINR } from "@/lib/currencyConversion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const SubscriptionsDashboard = () => {
-  const { organisation } = useOrganisation();
+  const { data: currentUser } = useCurrentUser();
+  const organisationId = currentUser?.organisationId;
   const queryClient = useQueryClient();
 
   const { data: tools, isLoading: toolsLoading } = useQuery({
-    queryKey: ["subscriptions-tools", organisation?.id],
+    queryKey: ["subscriptions-tools", organisationId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subscriptions_tools")
         .select("*, subscriptions_vendors(name)")
-        .eq("organisation_id", organisation?.id!);
+        .eq("organisation_id", organisationId!);
       
       if (error) throw error;
       return data;
     },
-    enabled: !!organisation?.id,
+    enabled: !!organisationId,
   });
 
   // Real-time subscription for tools
   useEffect(() => {
-    if (!organisation?.id) return;
+    if (!organisationId) return;
 
     const channel = supabase
       .channel('subscriptions-tools-changes')
@@ -38,10 +39,10 @@ export const SubscriptionsDashboard = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_tools',
-          filter: `organisation_id=eq.${organisation.id}`
+          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["subscriptions-tools", organisation.id] });
+          queryClient.invalidateQueries({ queryKey: ["subscriptions-tools", organisationId] });
         }
       )
       .subscribe();
@@ -49,7 +50,7 @@ export const SubscriptionsDashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organisation?.id, queryClient]);
+  }, [organisationId, queryClient]);
 
   // Calculate monthly burn rate
   const monthlyBurnRate = tools

@@ -1,4 +1,4 @@
-import { useOrganisation } from "@/contexts/OrganisationContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +13,9 @@ import { Link } from "react-router-dom";
 import { NotificationPanel } from "@/components/NotificationPanel";
 
 export const DashboardHeader = () => {
-  const { organisation } = useOrganisation();
-  const { user, signOut } = useAuth();
+  const { data: currentUser } = useCurrentUser();
+  const { signOut } = useAuth();
+  const orgName = currentUser?.organisation?.name || 'RT-IT-Hub';
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -23,14 +24,13 @@ export const DashboardHeader = () => {
           <Link to="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <span className="text-xl font-bold text-primary">RT-IT-Hub</span>
           </Link>
-          {organisation && (
+          {orgName && (
             <>
               <div className="h-6 w-px bg-border" />
-              <span className="text-muted-foreground">{organisation.name}</span>
+              <span className="text-muted-foreground">{orgName}</span>
             </>
           )}
         </div>
-
         <div className="flex items-center gap-2">
           <NotificationPanel />
           
