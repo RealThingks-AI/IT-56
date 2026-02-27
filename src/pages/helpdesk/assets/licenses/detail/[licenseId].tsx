@@ -12,11 +12,16 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useState } from "react";
-import { Edit, Trash2, Key, Users, Calendar, DollarSign, Building, Eye, EyeOff, Copy } from "lucide-react";
+import { Edit, Trash2, Key, Users, Calendar, DollarSign, Building, Eye, EyeOff, Copy, UserMinus } from "lucide-react";
 import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$", EUR: "€", GBP: "£", INR: "₹", JPY: "¥", AUD: "A$", CAD: "C$",
+};
+
+const formatLicenseType = (type: string | null) => {
+  if (!type) return "Perpetual";
+  return type.charAt(0).toUpperCase() + type.slice(1);
 };
 
 const LicenseDetail = () => {
@@ -24,6 +29,7 @@ const LicenseDetail = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deallocateId, setDeallocateId] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const { settings } = useSystemSettings();
   const currencySymbol = CURRENCY_SYMBOLS[settings.currency] || settings.currency;
@@ -42,17 +48,34 @@ const LicenseDetail = () => {
     enabled: !!licenseId,
   });
 
-  // Fix Bug 3: use deallocated_at instead of is_active; join users for names
+  // Fetch allocations - join users via user_id (which stores auth_user_id)
   const { data: allocations = [] } = useQuery<any[]>({
     queryKey: ["itam-license-allocations", licenseId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("itam_license_allocations")
-        .select("*, users:user_id(id, first_name, last_name, email)")
+        .select("*")
         .eq("license_id", licenseId!)
         .is("deallocated_at", null)
         .order("allocated_at", { ascending: false });
       if (error) throw error;
+
+      // Fetch user details separately using auth_user_id
+      if (data && data.length > 0) {
+        const userIds = data.map(a => a.user_id).filter(Boolean);
+        if (userIds.length > 0) {
+          const { data: usersData } = await supabase
+            .from("users")
+            .select("auth_user_id, name, email")
+            .in("auth_user_id", userIds);
+          
+          const userMap = new Map((usersData || []).map(u => [u.auth_user_id, u]));
+          return data.map(a => ({
+            ...a,
+            _user: userMap.get(a.user_id) || null,
+          }));
+        }
+      }
       return data || [];
     },
     enabled: !!licenseId,
@@ -72,6 +95,34 @@ const LicenseDetail = () => {
       navigate("/assets/advanced?tab=licenses");
     },
     onError: () => toast.error("Failed to delete license"),
+  });
+
+  const deallocateSeat = useMutation({
+    mutationFn: async (allocationId: string) => {
+      const { error: deallocError } = await supabase
+        .from("itam_license_allocations")
+        .update({ deallocated_at: new Date().toISOString() })
+        .eq("id", allocationId);
+      if (deallocError) throw deallocError;
+
+      // Decrement seats_allocated
+      if (license) {
+        const newCount = Math.max(0, (license.seats_allocated || 0) - 1);
+        const { error: updateError } = await supabase
+          .from("itam_licenses")
+          .update({ seats_allocated: newCount })
+          .eq("id", licenseId);
+        if (updateError) throw updateError;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Seat deallocated");
+      queryClient.invalidateQueries({ queryKey: ["itam-license-detail", licenseId] });
+      queryClient.invalidateQueries({ queryKey: ["itam-license-allocations", licenseId] });
+      queryClient.invalidateQueries({ queryKey: ["itam-licenses-list"] });
+      setDeallocateId(null);
+    },
+    onError: () => toast.error("Failed to deallocate seat"),
   });
 
   const getUtilizationColor = (percentage: number) => {
@@ -96,6 +147,18 @@ const LicenseDetail = () => {
       navigator.clipboard.writeText(license.license_key);
       toast.success("License key copied");
     }
+  };
+
+  const getUserDisplay = (allocation: any) => {
+    if (allocation._user) {
+      const name = allocation._user.name;
+      if (name && !name.includes("@")) return name;
+      if (allocation._user.email) {
+        const username = allocation._user.email.split("@")[0];
+        return username.replace(/[._-]/g, " ").split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      }
+    }
+    return "Unknown User";
   };
 
   if (isLoading) {
@@ -136,7 +199,7 @@ const LicenseDetail = () => {
             <div>
               <h1 className="text-xl font-bold">{license.name}</h1>
               <p className="text-xs text-muted-foreground">
-                {license.itam_vendors?.name || "No vendor"} • {license.license_type || "License"}
+                {license.itam_vendors?.name || "No vendor"} • {formatLicenseType(license.license_type)}
               </p>
             </div>
           </div>
@@ -264,7 +327,7 @@ const LicenseDetail = () => {
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-xs text-muted-foreground">License Type</span>
-                  <span className="text-xs">{license.license_type || "—"}</span>
+                  <span className="text-xs">{formatLicenseType(license.license_type)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-xs text-muted-foreground">Purchase Date</span>
@@ -331,16 +394,14 @@ const LicenseDetail = () => {
                     <TableHead className="text-xs">User</TableHead>
                     <TableHead className="text-xs">Allocated On</TableHead>
                     <TableHead className="text-xs">Notes</TableHead>
+                    <TableHead className="text-xs w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {allocations.map((allocation: any) => (
                     <TableRow key={allocation.id}>
                       <TableCell className="font-medium text-sm">
-                        {allocation.users
-                          ? `${allocation.users.first_name || ""} ${allocation.users.last_name || ""}`.trim() ||
-                            allocation.users.email
-                          : "Unknown"}
+                        {getUserDisplay(allocation)}
                       </TableCell>
                       <TableCell className="text-xs">
                         {allocation.allocated_at
@@ -349,6 +410,17 @@ const LicenseDetail = () => {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {allocation.notes || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => setDeallocateId(allocation.id)}
+                          title="Deallocate seat"
+                        >
+                          <UserMinus className="h-3.5 w-3.5" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -366,6 +438,16 @@ const LicenseDetail = () => {
         title="Delete License"
         description="Are you sure you want to delete this license? This action cannot be undone."
         confirmText="Delete"
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={!!deallocateId}
+        onOpenChange={(open) => !open && setDeallocateId(null)}
+        onConfirm={() => deallocateId && deallocateSeat.mutate(deallocateId)}
+        title="Deallocate Seat"
+        description="Are you sure you want to remove this seat allocation? The seat will become available again."
+        confirmText="Deallocate"
         variant="destructive"
       />
     </div>

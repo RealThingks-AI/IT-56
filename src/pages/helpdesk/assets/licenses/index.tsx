@@ -284,8 +284,8 @@ const LicensesList = ({ embedded = false }: { embedded?: boolean }) => {
                         <TableCell className="font-medium text-sm">{license.name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{license.itam_vendors?.name || "—"}</TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="text-[11px] font-normal">
-                            {license.license_type || "License"}
+                        <Badge variant="secondary" className="text-[11px] font-normal capitalize">
+                            {license.license_type ? license.license_type.charAt(0).toUpperCase() + license.license_type.slice(1) : "Perpetual"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm tabular-nums">

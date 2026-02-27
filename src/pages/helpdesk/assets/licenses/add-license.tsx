@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { BackButton } from "@/components/BackButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Key } from "lucide-react";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$", EUR: "€", GBP: "£", INR: "₹", JPY: "¥", AUD: "A$", CAD: "C$",
+};
 
 const AddLicense = () => {
   const navigate = useNavigate();
@@ -20,6 +26,8 @@ const AddLicense = () => {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
   const isEditMode = !!editId;
+  const { settings } = useSystemSettings();
+  const currencySymbol = CURRENCY_SYMBOLS[settings.currency] || settings.currency;
 
   const [formData, setFormData] = useState({
     name: "",
@@ -30,7 +38,7 @@ const AddLicense = () => {
     no_end_date: false,
     seats_total: "",
     license_key: "",
-    is_software: false,
+    license_type: "perpetual",
     notes: "",
   });
 
@@ -59,7 +67,7 @@ const AddLicense = () => {
         no_end_date: !existingLicense.expiry_date,
         seats_total: existingLicense.seats_total?.toString() || "",
         license_key: existingLicense.license_key || "",
-        is_software: existingLicense.license_type === "software",
+        license_type: existingLicense.license_type || "perpetual",
         notes: existingLicense.notes || "",
       });
     }
@@ -88,7 +96,7 @@ const AddLicense = () => {
         seats_total: data.seats_total ? parseInt(data.seats_total) : 1,
         expiry_date: data.no_end_date ? null : (data.expiry_date || null),
         license_key: data.license_key || null,
-        license_type: data.is_software ? "software" : "other",
+        license_type: data.license_type || "perpetual",
         cost: data.cost ? parseFloat(data.cost) : null,
         notes: data.notes || null,
         is_active: true,
@@ -142,6 +150,20 @@ const AddLicense = () => {
   return (
     <div className="h-full overflow-auto">
       <div className="p-4 max-w-2xl mx-auto space-y-4">
+        {/* Page Header */}
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div className="flex items-center gap-2">
+            <Key className="h-5 w-5 text-primary" />
+            <div>
+              <h1 className="text-lg font-semibold">{isEditMode ? "Edit License" : "Add License"}</h1>
+              {isEditMode && existingLicense && (
+                <p className="text-xs text-muted-foreground">{existingLicense.name}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit}>
           <Card>
             <CardHeader className="pb-3">
@@ -167,35 +189,63 @@ const AddLicense = () => {
               {/* Cost & Vendor */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="cost" className="text-xs">Cost</Label>
-                  <Input
-                    id="cost"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.cost}
-                    onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                    className="h-9"
-                  />
+                  <Label htmlFor="cost" className="text-xs">Cost ({currencySymbol})</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{currencySymbol}</span>
+                    <Input
+                      id="cost"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={formData.cost}
+                      onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                      className="h-9 pl-7"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="vendor_id" className="text-xs">Vendor</Label>
                   <Select
                     value={formData.vendor_id}
-                    onValueChange={(value) => setFormData({ ...formData, vendor_id: value })}
+                    onValueChange={(value) => setFormData({ ...formData, vendor_id: value === "__none__" ? "" : value })}
                   >
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Select vendor" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vendors.map((vendor) => (
-                        <SelectItem key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="__none__">None</SelectItem>
+                      {vendors.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">No vendors available</div>
+                      ) : (
+                        vendors.map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            {vendor.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* License Type */}
+              <div className="space-y-1.5">
+                <Label htmlFor="license_type" className="text-xs">License Type</Label>
+                <Select
+                  value={formData.license_type}
+                  onValueChange={(value) => setFormData({ ...formData, license_type: value })}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="perpetual">Perpetual</SelectItem>
+                    <SelectItem value="subscription">Subscription</SelectItem>
+                    <SelectItem value="software">Software</SelectItem>
+                    <SelectItem value="oem">OEM</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Start Date & End Date */}
@@ -252,30 +302,16 @@ const AddLicense = () => {
                 </div>
               </div>
 
-              {/* License Key & Software checkbox */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="license_key" className="text-xs">License Key</Label>
-                  <Input
-                    id="license_key"
-                    placeholder="XXXXX-XXXXX-XXXXX"
-                    value={formData.license_key}
-                    onChange={(e) => setFormData({ ...formData, license_key: e.target.value })}
-                    className="h-9 font-mono text-xs"
-                  />
-                </div>
-                <div className="flex items-center space-x-2 pt-5">
-                  <Checkbox
-                    id="is_software"
-                    checked={formData.is_software}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, is_software: checked === true })
-                    }
-                  />
-                  <Label htmlFor="is_software" className="text-xs font-normal cursor-pointer">
-                    Contract is for software
-                  </Label>
-                </div>
+              {/* License Key */}
+              <div className="space-y-1.5">
+                <Label htmlFor="license_key" className="text-xs">License Key</Label>
+                <Input
+                  id="license_key"
+                  placeholder="XXXXX-XXXXX-XXXXX"
+                  value={formData.license_key}
+                  onChange={(e) => setFormData({ ...formData, license_key: e.target.value })}
+                  className="h-9 font-mono text-xs"
+                />
               </div>
 
               {/* Notes */}
