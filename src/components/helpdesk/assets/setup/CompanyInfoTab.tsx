@@ -19,25 +19,14 @@ export function CompanyInfoTab() {
     timezone: "",
   });
 
-  const { data: organisation, isLoading } = useQuery({
-    queryKey: ["organisation-info"],
+  // Query itam_company_info instead of organisations
+  const { data: companyInfo, isLoading } = useQuery({
+    queryKey: ["itam-company-info"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
-      if (!userData?.organisation_id) throw new Error("No organisation found");
-
       const { data, error } = await supabase
-        .from("organisations")
+        .from("itam_company_info")
         .select("*")
-        .eq("id", userData.organisation_id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data;
@@ -45,44 +34,47 @@ export function CompanyInfoTab() {
   });
 
   useEffect(() => {
-    if (organisation) {
+    if (companyInfo) {
       setFormData({
-        name: organisation.name || "",
-        address: organisation.address || "",
-        billing_email: organisation.billing_email || "",
-        gst_number: organisation.gst_number || "",
-        timezone: organisation.timezone || "",
+        name: companyInfo.company_name || "",
+        address: companyInfo.address || "",
+        billing_email: companyInfo.email || "",
+        gst_number: "",
+        timezone: "",
       });
     }
-  }, [organisation]);
+  }, [companyInfo]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      if (companyInfo?.id) {
+        // Update existing
+        const { error } = await supabase
+          .from("itam_company_info")
+          .update({
+            company_name: formData.name.trim(),
+            address: formData.address.trim() || null,
+            email: formData.billing_email.trim() || null,
+          })
+          .eq("id", companyInfo.id);
 
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
+        if (error) throw error;
+      } else {
+        // Insert new
+        const { error } = await supabase
+          .from("itam_company_info")
+          .insert({
+            company_name: formData.name.trim(),
+            address: formData.address.trim() || null,
+            email: formData.billing_email.trim() || null,
+          });
 
-      const { error } = await supabase
-        .from("organisations")
-        .update({
-          name: formData.name.trim(),
-          address: formData.address.trim() || null,
-          billing_email: formData.billing_email.trim() || null,
-          gst_number: formData.gst_number.trim() || null,
-          timezone: formData.timezone.trim() || null,
-        })
-        .eq("id", userData?.organisation_id);
-
-      if (error) throw error;
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       toast.success("Company information updated successfully");
-      queryClient.invalidateQueries({ queryKey: ["organisation-info"] });
+      queryClient.invalidateQueries({ queryKey: ["itam-company-info"] });
     },
     onError: (error: Error) => {
       toast.error("Failed to update: " + error.message);
@@ -107,7 +99,7 @@ export function CompanyInfoTab() {
           Company Information
         </CardTitle>
         <CardDescription className="text-xs">
-          Update your organization details used in reports and asset labels
+          Update your company details used in reports and asset labels
         </CardDescription>
       </CardHeader>
       <CardContent>

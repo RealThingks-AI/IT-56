@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { 
@@ -26,7 +25,6 @@ import {
 import { Plus, Edit2, Trash2, Loader2, FolderTree, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrganisation } from "@/contexts/OrganisationContext";
 
 interface Category {
   id: number;
@@ -40,7 +38,6 @@ interface Category {
 export const CategoriesManager = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { organisation } = useOrganisation();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -50,19 +47,6 @@ export const CategoriesManager = () => {
     is_active: true,
   });
 
-  const { data: currentUser } = useQuery({
-    queryKey: ["current-user-profile"],
-    queryFn: async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return null;
-      const { data } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", authUser.id)
-        .maybeSingle();
-      return data;
-    },
-  });
 
   const { data: categories, isLoading } = useQuery({
     queryKey: ["helpdesk-categories-manage"],
@@ -79,8 +63,6 @@ export const CategoriesManager = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      if (!currentUser?.tenant_id) throw new Error("No tenant ID");
-
       if (editingCategory) {
         const { error } = await supabase
           .from("helpdesk_categories")
@@ -97,8 +79,6 @@ export const CategoriesManager = () => {
           name: data.name,
           description: data.description || null,
           is_active: data.is_active,
-          tenant_id: currentUser.tenant_id,
-          organisation_id: organisation?.id,
         });
         if (error) throw error;
       }

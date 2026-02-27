@@ -100,7 +100,6 @@ export const MergeTicketsDialog = ({
             user_id: comments[0]?.user_id,
             comment: `[Merged from ${sourceTicket?.ticket_number}] This ticket was merged.`,
             is_internal: true,
-            tenant_id: 1,
           });
         }
       }

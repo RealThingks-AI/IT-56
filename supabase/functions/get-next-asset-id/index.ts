@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,7 +22,6 @@ serve(async (req) => {
       }
     );
 
-    // Get the authenticated user
     const {
       data: { user },
       error: userError,
@@ -36,58 +34,57 @@ serve(async (req) => {
       );
     }
 
-    // Get user's organization
-    const { data: userData, error: userDataError } = await supabaseClient
-      .from('users')
-      .select('organisation_id')
-      .eq('auth_user_id', user.id)
-      .single();
-
-    if (userDataError || !userData?.organisation_id) {
-      return new Response(
-        JSON.stringify({ error: 'Organization not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const organisationId = userData.organisation_id;
-
-    // Get tag format configuration
+    // Get tag format configuration (single-company, no org scoping needed)
     const { data: tagFormat, error: tagError } = await supabaseClient
       .from('itam_tag_format')
       .select('prefix, start_number, padding_length')
-      .eq('organisation_id', organisationId)
       .single();
 
     if (tagError) {
       console.error('Error fetching tag format:', tagError);
     }
 
-    // Use defaults if no tag format is configured
     const prefix = tagFormat?.prefix || 'AS-';
-    // Prefer start_number length, then padding_length, then default
     const paddingLength = (tagFormat?.start_number?.length ?? 0) || tagFormat?.padding_length || 4;
 
     const startNumberRaw = tagFormat?.start_number || '1';
     const parsedStart = parseInt(startNumberRaw, 10);
     const effectiveStart = Number.isNaN(parsedStart) ? 1 : parsedStart;
  
-    // Call the database function to get the next number
-    const { data: nextNumberData, error: nextNumberError } = await supabaseClient
-      .rpc('get_next_asset_number', { p_organisation_id: organisationId });
- 
-    if (nextNumberError) {
-      console.error('Error getting next asset number:', nextNumberError);
+    // Fetch all existing asset tags for this prefix to find gaps
+    const { data: existingAssets, error: queryError } = await supabaseClient
+      .from('itam_assets')
+      .select('asset_tag')
+      .like('asset_tag', `${prefix}%`);
+
+    if (queryError) {
+      console.error('Error querying existing assets:', queryError);
       return new Response(
         JSON.stringify({ error: 'Failed to generate asset ID' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
- 
-    const rawNextNumber = typeof nextNumberData === 'number'
-      ? nextNumberData
-      : parseInt(String(nextNumberData ?? '0'), 10) || 1;
-    const nextNumber = Math.max(rawNextNumber, effectiveStart);
+
+    // Extract all used numbers into a Set
+    const usedNumbers = new Set<number>();
+    if (existingAssets && existingAssets.length > 0) {
+      for (const asset of existingAssets) {
+        const tag = asset.asset_tag;
+        if (tag && tag.startsWith(prefix)) {
+          const numPart = tag.substring(prefix.length);
+          const num = parseInt(numPart, 10);
+          if (!isNaN(num) && num > 0) {
+            usedNumbers.add(num);
+          }
+        }
+      }
+    }
+
+    // Find the first available gap starting from effectiveStart
+    let nextNumber = effectiveStart;
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber++;
+    }
     const paddedNumber = nextNumber.toString().padStart(paddingLength, '0');
     const nextAssetId = `${prefix}${paddedNumber}`;
 

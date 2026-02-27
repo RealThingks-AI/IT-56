@@ -1,10 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { SettingsCard } from "./SettingsCard";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -20,8 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import {
   Tooltip,
   TooltipContent,
@@ -46,7 +43,8 @@ import {
   LogIn,
   LogOut,
   Activity,
-  ArrowRight,
+  KeyRound,
+  Filter,
 } from "lucide-react";
 import { format } from "date-fns";
 import { SettingsLoadingSkeleton } from "./SettingsLoadingSkeleton";
@@ -60,7 +58,11 @@ import {
   parseMetadataChanges,
   canRevertLog,
   exportLogsToCSV,
-  formatChangeValue,
+  
+  resolveUUIDsFromLogs,
+  extractUserFromMetadata,
+  summarizeLogChanges,
+  isLoginNoiseLog,
 } from "@/lib/auditLogUtils";
 import { toast } from "sonner";
 
@@ -76,53 +78,49 @@ interface AuditLogRaw {
   created_at: string | null;
 }
 
-interface AuditLogFromDb {
-  id: string;
-  action_type: string;
-  entity_type: string | null;
-  entity_id: string | null;
-  user_id: string | null;
-  metadata: Record<string, unknown> | null;
-  ip_address: unknown;
-  user_agent: string | null;
-  created_at: string | null;
-}
-
 const ACTION_ICONS: Record<string, React.ReactNode> = {
-  created: <PlusCircle className="h-3.5 w-3.5" />,
-  updated: <RefreshCw className="h-3.5 w-3.5" />,
-  deleted: <Trash2 className="h-3.5 w-3.5" />,
-  bulk_deleted: <AlertTriangle className="h-3.5 w-3.5" />,
-  assigned: <UserPlus className="h-3.5 w-3.5" />,
-  login: <LogIn className="h-3.5 w-3.5" />,
-  logout: <LogOut className="h-3.5 w-3.5" />,
-  other: <Activity className="h-3.5 w-3.5" />,
+  created: <PlusCircle className="h-3 w-3" />,
+  updated: <RefreshCw className="h-3 w-3" />,
+  deleted: <Trash2 className="h-3 w-3" />,
+  bulk_deleted: <AlertTriangle className="h-3 w-3" />,
+  assigned: <UserPlus className="h-3 w-3" />,
+  login: <LogIn className="h-3 w-3" />,
+  logout: <LogOut className="h-3 w-3" />,
+  password_reset: <KeyRound className="h-3 w-3" />,
+  other: <Activity className="h-3 w-3" />,
 };
 
 export function AdminLogs() {
   const [search, setSearch] = useState("");
-  const [dateRange, setDateRange] = useState("7");
+  const [dateRange, setDateRange] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
   const [showSessionActivity, setShowSessionActivity] = useState(false);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(25);
+  const [perPage, setPerPage] = useState(100);
   const [selectedLog, setSelectedLog] = useState<ParsedAuditLog | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [revertOpen, setRevertOpen] = useState(false);
-  const [expandedChanges, setExpandedChanges] = useState<Set<string>>(new Set());
+  const [uuidNameMap, setUuidNameMap] = useState<Map<string, string>>(new Map());
 
-  // Fetch total count separately
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, dateRange, actionFilter, moduleFilter, showSessionActivity]);
+
+  // Fetch total count
   const { data: totalCount } = useQuery({
     queryKey: ["admin-audit-logs-count", dateRange, actionFilter, moduleFilter, showSessionActivity],
     queryFn: async () => {
-      const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - parseInt(dateRange));
-
       let query = supabase
         .from("audit_logs")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", daysAgo.toISOString());
+        .select("*", { count: "exact", head: true });
+
+      if (dateRange !== "all") {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(dateRange));
+        query = query.gte("created_at", daysAgo.toISOString());
+      }
 
       if (actionFilter !== "all") {
         query = query.ilike("action_type", `%${actionFilter}%`);
@@ -145,9 +143,6 @@ export function AdminLogs() {
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["admin-audit-logs", dateRange, actionFilter, moduleFilter, showSessionActivity, page, perPage],
     queryFn: async () => {
-      const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - parseInt(dateRange));
-
       let query = supabase
         .from("audit_logs")
         .select(`
@@ -161,9 +156,14 @@ export function AdminLogs() {
           user_agent,
           created_at
         `)
-        .gte("created_at", daysAgo.toISOString())
         .order("created_at", { ascending: false })
         .range((page - 1) * perPage, page * perPage - 1);
+
+      if (dateRange !== "all") {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(dateRange));
+        query = query.gte("created_at", daysAgo.toISOString());
+      }
 
       if (actionFilter !== "all") {
         query = query.ilike("action_type", `%${actionFilter}%`);
@@ -180,7 +180,7 @@ export function AdminLogs() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Fetch user details for each log
+      // Fetch user details
       const userIds = [...new Set((data || []).map((log) => log.user_id).filter(Boolean))];
       let userMap: Record<string, { name: string | null; email: string }> = {};
 
@@ -198,7 +198,6 @@ export function AdminLogs() {
         }
       }
 
-      // Parse logs into enhanced format
       const parsedLogs: ParsedAuditLog[] = (data || []).map((dbLog) => {
         const log: AuditLogRaw = {
           id: dbLog.id,
@@ -212,19 +211,31 @@ export function AdminLogs() {
           created_at: dbLog.created_at,
         };
         const user = log.user_id ? userMap[log.user_id] : null;
-        const actionCategory = categorizeAction(log.action_type);
+        
+        // Detect login noise and reclassify
+        const isLoginNoise = isLoginNoiseLog({
+          action_type: log.action_type,
+          entity_type: log.entity_type,
+          metadata: log.metadata,
+        });
+        const actionCategory = isLoginNoise ? "login" : categorizeAction(log.action_type);
         const changes = parseMetadataChanges(log.metadata);
+
+        // Extract user from metadata if user_id didn't resolve
+        const metaUser = !user
+          ? extractUserFromMetadata(log.metadata, log.entity_type)
+          : null;
 
         return {
           id: log.id,
-          actionType: log.action_type,
+          actionType: isLoginNoise ? "User Login" : log.action_type,
           actionCategory,
           entityType: log.entity_type,
           entityId: log.entity_id,
-          entityName: (log.metadata?.name || log.metadata?.title || log.metadata?.record_name) as string | null,
+          entityName: (log.metadata?.name || log.metadata?.title || log.metadata?.record_name || log.metadata?.target_email) as string | null,
           userId: log.user_id,
-          userName: user?.name || null,
-          userEmail: user?.email || null,
+          userName: user?.name || metaUser?.name || null,
+          userEmail: user?.email || metaUser?.email || null,
           changes,
           metadata: log.metadata,
           ipAddress: typeof log.ip_address === "string" ? log.ip_address : null,
@@ -237,6 +248,13 @@ export function AdminLogs() {
       return parsedLogs;
     },
   });
+
+  // Resolve UUIDs after data loads
+  useEffect(() => {
+    if (data && data.length > 0) {
+      resolveUUIDsFromLogs(data).then(setUuidNameMap);
+    }
+  }, [data]);
 
   const logs = data || [];
 
@@ -257,18 +275,6 @@ export function AdminLogs() {
   const totalPages = Math.ceil((totalCount || 0) / perPage);
   const showingFrom = (page - 1) * perPage + 1;
   const showingTo = Math.min(page * perPage, totalCount || 0);
-
-  const toggleExpandChanges = (logId: string) => {
-    setExpandedChanges((prev) => {
-      const next = new Set(prev);
-      if (next.has(logId)) {
-        next.delete(logId);
-      } else {
-        next.add(logId);
-      }
-      return next;
-    });
-  };
 
   const handleViewDetails = (log: ParsedAuditLog) => {
     setSelectedLog(log);
@@ -291,7 +297,7 @@ export function AdminLogs() {
 
   const handlePerPageChange = (value: string) => {
     setPerPage(parseInt(value));
-    setPage(1); // Reset to first page
+    setPage(1);
   };
 
   const getBadgeConfig = (category: string) => {
@@ -304,340 +310,240 @@ export function AdminLogs() {
 
   return (
     <>
-      <SettingsCard
-        title="Activity & Audit Logs"
-        description="View detailed activity logs and audit trail for your organization"
-        icon={ScrollText}
-        headerAction={
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isRefetching}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+      <div className="flex flex-col gap-2 w-full">
+        {/* Compact Toolbar */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="relative w-52">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search logs..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-xs"
+            />
+          </div>
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger className="w-[110px] h-8 text-xs">
+              <SelectValue placeholder="Date range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="1">Last 24h</SelectItem>
+              <SelectItem value="7">Last 7 Days</SelectItem>
+              <SelectItem value="30">Last 30 Days</SelectItem>
+              <SelectItem value="90">Last 90 Days</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={actionFilter} onValueChange={setActionFilter}>
+            <SelectTrigger className="w-[110px] h-8 text-xs">
+              <SelectValue placeholder="Action" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Actions</SelectItem>
+              <SelectItem value="created">Created</SelectItem>
+              <SelectItem value="updated">Updated</SelectItem>
+              <SelectItem value="deleted">Deleted</SelectItem>
+              <SelectItem value="assigned">Assigned</SelectItem>
+              <SelectItem value="password_reset">Password Reset</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={moduleFilter} onValueChange={setModuleFilter}>
+            <SelectTrigger className="w-[110px] h-8 text-xs">
+              <SelectValue placeholder="Module" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Modules</SelectItem>
+              <SelectItem value="helpdesk_tickets">Tickets</SelectItem>
+              <SelectItem value="helpdesk_problems">Problems</SelectItem>
+              <SelectItem value="helpdesk_changes">Changes</SelectItem>
+              <SelectItem value="itam_assets">Assets</SelectItem>
+              <SelectItem value="users">Users</SelectItem>
+              <SelectItem value="user_tools">Tools</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant={showSessionActivity ? "default" : "outline"}
+            className="h-8 text-xs px-3"
+            onClick={() => setShowSessionActivity(!showSessionActivity)}
+          >
+            <Filter className="h-3 w-3 mr-1" />
+            Sessions
+          </Button>
+          <Badge variant="secondary" className="text-xs font-normal h-6 px-2">
+            {(totalCount || 0).toLocaleString()} logs
+          </Badge>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => refetch()} disabled={isRefetching}>
+              <RefreshCw className={`h-3 w-3 mr-1 ${isRefetching ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="h-4 w-4 mr-2" />
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleExport}>
+              <Download className="h-3 w-3 mr-1" />
               Export
             </Button>
           </div>
-        }
-      >
-        <div className="space-y-4">
-          {/* Filters */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search logs..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Last 24 Hours</SelectItem>
-                <SelectItem value="7">Last 7 Days</SelectItem>
-                <SelectItem value="30">Last 30 Days</SelectItem>
-                <SelectItem value="90">Last 90 Days</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={actionFilter} onValueChange={setActionFilter}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Action" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="created">Created</SelectItem>
-                <SelectItem value="updated">Updated</SelectItem>
-                <SelectItem value="deleted">Deleted</SelectItem>
-                <SelectItem value="assigned">Assigned</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={moduleFilter} onValueChange={setModuleFilter}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Module" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Modules</SelectItem>
-                <SelectItem value="helpdesk_tickets">Tickets</SelectItem>
-                <SelectItem value="helpdesk_problems">Problems</SelectItem>
-                <SelectItem value="itam_assets">Assets</SelectItem>
-                <SelectItem value="users">Users</SelectItem>
-                <SelectItem value="user_tools">Tools</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="show-sessions"
-                checked={showSessionActivity}
-                onCheckedChange={setShowSessionActivity}
-              />
-              <Label htmlFor="show-sessions" className="text-sm">
-                Show Session Activity
-              </Label>
-            </div>
-          </div>
+        </div>
 
-          {/* Pagination Info */}
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              {(totalCount || 0) > 0 ? (
-                <>
-                  Showing {showingFrom}-{showingTo} of {(totalCount || 0).toLocaleString()} logs
-                  {search && ` (${filteredLogs.length} filtered)`}
-                </>
+        {/* Table */}
+        <div className="overflow-auto rounded-lg border flex-1">
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
+              <TableRow>
+                <TableHead className="w-[130px] text-xs">Timestamp</TableHead>
+                <TableHead className="w-[130px] text-xs">User</TableHead>
+                <TableHead className="w-[120px] text-xs">Action</TableHead>
+                <TableHead className="w-[120px] text-xs">Module</TableHead>
+                <TableHead className="text-xs">Details</TableHead>
+                <TableHead className="w-[60px] text-xs">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredLogs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                    <div className="flex flex-col items-center gap-2">
+                      <ScrollText className="h-8 w-8 text-muted-foreground/50" />
+                      <p className="text-sm">No audit logs found</p>
+                      <p className="text-xs">Try adjusting your filters or date range</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : (
-                "No logs found"
+                filteredLogs.map((log) => {
+                  const badgeConfig = getBadgeConfig(log.actionCategory);
+
+                  return (
+                    <TableRow key={log.id} className="h-10">
+                      <TableCell className="text-xs py-1.5 whitespace-nowrap text-muted-foreground">
+                        {log.createdAt
+                          ? format(new Date(log.createdAt), "MMM d, yyyy HH:mm")
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-xs font-medium truncate block max-w-[140px] cursor-default">
+                                {log.userName || log.userEmail || "System"}
+                              </span>
+                            </TooltipTrigger>
+                            {(log.userEmail || log.userName) && (
+                              <TooltipContent side="top">
+                                <p>{log.userName && log.userEmail ? `${log.userName} (${log.userEmail})` : log.userEmail || log.userName}</p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <Badge
+                          variant="outline"
+                          className={`${badgeConfig.className} border text-[10px] gap-1 px-1.5 py-0`}
+                        >
+                          {ACTION_ICONS[log.actionCategory]}
+                          <span>{badgeConfig.label}</span>
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-1.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[140px]">
+                        <span className="text-xs font-medium">
+                          {MODULE_DISPLAY_NAMES[log.entityType || ""] || log.entityType || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-1.5 max-w-[300px]">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-xs text-muted-foreground truncate block cursor-default">
+                                {summarizeLogChanges(log, uuidNameMap)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs">
+                              <p className="text-xs">{summarizeLogChanges(log, uuidNameMap)}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleViewDetails(log)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          {log.canRevert && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                              onClick={() => handleRevert(log)}
+                            >
+                              <Undo2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
-            </span>
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination */}
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {(totalCount || 0) > 0
+              ? `Showing ${showingFrom}–${showingTo} of ${(totalCount || 0).toLocaleString()}`
+              : "No logs found"}
+            {search && filteredLogs.length !== logs.length && ` (${filteredLogs.length} filtered)`}
+          </span>
+          <div className="flex items-center gap-2">
             <Select value={String(perPage)} onValueChange={handlePerPageChange}>
-              <SelectTrigger className="w-28">
+              <SelectTrigger className="w-[90px] h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="25">25 / page</SelectItem>
-                <SelectItem value="50">50 / page</SelectItem>
                 <SelectItem value="100">100 / page</SelectItem>
+                <SelectItem value="200">200 / page</SelectItem>
+                <SelectItem value="500">500 / page</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Table */}
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[140px]">Timestamp</TableHead>
-                  <TableHead className="w-[140px]">User</TableHead>
-                  <TableHead className="w-[150px]">Action</TableHead>
-                  <TableHead className="w-[180px]">Module / Record</TableHead>
-                  <TableHead>Changes</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <ScrollText className="h-8 w-8 text-muted-foreground/50" />
-                        <p>No audit logs found</p>
-                        <p className="text-xs">Try adjusting your filters or date range</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredLogs.map((log) => {
-                    const badgeConfig = getBadgeConfig(log.actionCategory);
-                    const isExpanded = expandedChanges.has(log.id);
-                    const visibleChanges = isExpanded ? log.changes : log.changes.slice(0, 2);
-                    const hasMoreChanges = log.changes.length > 2;
-
-                    return (
-                      <TableRow key={log.id}>
-                        <TableCell className="text-sm">
-                          {log.createdAt
-                            ? format(new Date(log.createdAt), "MMM d, HH:mm")
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="font-medium truncate max-w-[120px]">
-                              {log.userName || "System"}
-                            </p>
-                            {log.userEmail && (
-                              <p className="text-xs text-muted-foreground truncate max-w-[120px]">
-                                {log.userEmail}
-                              </p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`${badgeConfig.className} border gap-1.5`}
-                          >
-                            {ACTION_ICONS[log.actionCategory]}
-                            <span>{badgeConfig.label}</span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="font-medium">
-                              {MODULE_DISPLAY_NAMES[log.entityType || ""] || log.entityType || "—"}
-                            </p>
-                            {(log.entityName || log.entityId) && (
-                              <p className="text-xs text-muted-foreground truncate max-w-[160px]">
-                                {log.entityName || (log.entityId ? `#${log.entityId.slice(0, 8)}` : "")}
-                              </p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {log.changes.length === 0 ? (
-                            <span className="text-muted-foreground">—</span>
-                          ) : (
-                            <div className="space-y-1">
-                              {visibleChanges.map((change, idx) => (
-                                <div key={idx} className="flex items-center gap-1.5 text-xs">
-                                  <span className="font-medium text-primary">{change.field}:</span>
-                                  {change.oldValue !== null && (
-                                    <>
-                                      <span className="text-muted-foreground line-through">
-                                        {formatChangeValue(change.oldValue)}
-                                      </span>
-                                      <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                                    </>
-                                  )}
-                                  <span className="text-foreground">
-                                    {formatChangeValue(change.newValue)}
-                                  </span>
-                                </div>
-                              ))}
-                              {hasMoreChanges && (
-                                <button
-                                  onClick={() => toggleExpandChanges(log.id)}
-                                  className="text-xs text-primary hover:underline"
-                                >
-                                  {isExpanded
-                                    ? "Show less"
-                                    : `+${log.changes.length - 2} more`}
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => handleViewDetails(log)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>View Details</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            {log.canRevert && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                                      onClick={() => handleRevert(log)}
-                                    >
-                                      <Undo2 className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Revert Changes</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
-              </p>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setPage(1)}
-                  disabled={page === 1}
-                >
-                  <ChevronsLeft className="h-4 w-4" />
+            {totalPages > 1 && (
+              <div className="flex items-center gap-0.5">
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setPage(1)} disabled={page === 1}>
+                  <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <div className="flex items-center gap-1 mx-2">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum: number;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (page <= 3) {
-                      pageNum = i + 1;
-                    } else if (page >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = page - 2 + i;
-                    }
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={page === pageNum ? "default" : "outline"}
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => setPage(pageNum)}
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  })}
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                >
-                  <ChevronRight className="h-4 w-4" />
+                <span className="px-2 text-muted-foreground">
+                  {page} / {totalPages}
+                </span>
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setPage(totalPages)}
-                  disabled={page === totalPages}
-                >
-                  <ChevronsRight className="h-4 w-4" />
+                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setPage(totalPages)} disabled={page === totalPages}>
+                  <ChevronsRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </SettingsCard>
+      </div>
 
       {/* Dialogs */}
       <AuditLogDetailsDialog
         log={selectedLog}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
+        uuidNameMap={uuidNameMap}
       />
       <AuditLogRevertDialog
         log={selectedLog}

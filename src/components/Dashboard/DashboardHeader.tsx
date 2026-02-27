@@ -15,7 +15,7 @@ import { NotificationPanel } from "@/components/NotificationPanel";
 export const DashboardHeader = () => {
   const { data: currentUser } = useCurrentUser();
   const { signOut } = useAuth();
-  const orgName = currentUser?.organisation?.name || 'RT-IT-Hub';
+  const orgName = 'RT-IT-Hub';
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">

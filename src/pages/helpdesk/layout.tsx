@@ -1,15 +1,20 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, Navigate } from "react-router-dom";
 import { HelpdeskSidebar } from "@/components/helpdesk/HelpdeskSidebar";
-import { NotificationPanel } from "@/components/NotificationPanel";
+import { useAuth } from "@/contexts/AuthContext";
+import { Loader2 } from "lucide-react";
 
 const routeTitles: Record<string, string> = {
   "/": "Dashboard",
-  "/tickets": "All Tickets",
+  "/tickets": "Tickets Dashboard",
+  "/tickets/list": "All Tickets",
   "/tickets/create": "Create Ticket",
+  "/tickets/problems": "Problem Management",
+  "/tickets/settings": "Advanced",
+  "/tickets/reports": "Ticket Reports",
+  "/tickets/archive": "Closed Tickets Archive",
   "/tickets/assignment-rules": "Ticket Assignment Rules",
   "/tickets/closed-archive": "Closed Tickets Archive",
   "/tickets/linked-problems": "Linked Problems",
-  "/tickets/reports": "Ticket Reports",
   "/new": "New Ticket",
   "/queues": "Queues",
   "/sla": "SLA Policies",
@@ -22,16 +27,11 @@ const routeTitles: Record<string, string> = {
   "/assets/checkin": "Check In Asset",
   "/assets/dispose": "Dispose Asset",
   "/assets/reserve": "Reserve Asset",
-  "/assets/lists/maintenances": "Maintenance List",
-  "/assets/lists/warranties": "Warranty List",
-  "/assets/lists/contracts": "Contracts List",
-  "/assets/setup": "Asset Setup",
-  "/assets/setup/fields-setup": "Fields Setup",
-  "/assets/tools": "Asset Tools",
   "/assets/reports": "Asset Reports",
   "/assets/audit": "Asset Audit",
+  "/assets/logs": "Asset Logs",
+  "/assets/advanced": "Asset Advanced",
   "/assets/explore/bulk-actions": "Bulk Actions",
-  "/assets/explore/reports": "Asset Reports",
   "/assets/repairs": "Repairs & Maintenance",
   "/assets/repairs/create": "Create Repair",
   "/assets/licenses": "Software Licenses",
@@ -72,30 +72,43 @@ const routeTitles: Record<string, string> = {
   "/account": "Account Settings"
 };
 
-// Pages that render their own tabs/header in the portal area - don't show default title
 const pagesWithCustomHeader = [
-  "/tickets",
-  "/problems",
   "/reports",
   "/monitoring",
-  "/audit"
+  "/audit",
+  "/settings"
 ];
 
-// Pages that have their own inline h2 headers - don't show default title
 const pagesWithInlineHeader = [
   "/automation",
   "/sla",
   "/queues",
   "/changes",
-  "/dashboard"
+  "/dashboard",
+  "/assets/allassets",
+  "/assets/dashboard",
+  "/assets/add",
+  "/assets/checkout",
+  "/assets/checkin",
+  "/assets/dispose",
+  "/assets/reserve",
+  "/assets/reports",
+  "/assets/logs",
+  "/assets/advanced",
+  "/assets/alerts",
+  "/assets/import-export",
 ];
 
 const HelpdeskLayout = () => {
   const location = useLocation();
+  const { user, loading } = useAuth();
 
-  // Handle dynamic routes
+  if (!loading && !user) {
+    return <Navigate to="/login" replace />;
+  }
+
   let pageTitle = routeTitles[location.pathname] || "IT Helpdesk";
-  if (location.pathname.startsWith("/tickets/") && location.pathname !== "/tickets" && !location.pathname.includes("/create") && !location.pathname.includes("/assignment-rules") && !location.pathname.includes("/closed-archive") && !location.pathname.includes("/linked-problems") && !location.pathname.includes("/reports")) {
+  if (location.pathname.startsWith("/tickets/") && location.pathname !== "/tickets" && !location.pathname.includes("/create") && !location.pathname.includes("/assignment-rules") && !location.pathname.includes("/closed-archive") && !location.pathname.includes("/archive") && !location.pathname.includes("/linked-problems") && !location.pathname.includes("/reports") && !location.pathname.includes("/list") && !location.pathname.includes("/problems") && !location.pathname.includes("/settings")) {
     pageTitle = "Ticket Details";
   } else if (location.pathname.startsWith("/problems/") && location.pathname !== "/problems") {
     pageTitle = "Problem Details";
@@ -119,7 +132,6 @@ const HelpdeskLayout = () => {
     pageTitle = "Update Details";
   }
 
-  // Determine if we should show the default header title
   const hasCustomHeader = pagesWithCustomHeader.some(path => location.pathname === path);
   const hasInlineHeader = pagesWithInlineHeader.some(path => location.pathname === path);
   const showDefaultTitle = !hasCustomHeader && !hasInlineHeader;
@@ -129,20 +141,16 @@ const HelpdeskLayout = () => {
       <HelpdeskSidebar />
 
       <main className="flex-1 h-screen flex flex-col bg-background overflow-hidden will-change-auto">
-        <header className="border-b px-4 flex items-center justify-between shrink-0 h-11">
-          <div id="helpdesk-header-left" className="flex items-center gap-3">
+        <header className="border-b px-4 flex items-center shrink-0 min-h-[2.75rem]">
+          <div id="helpdesk-header-left" className="flex items-center gap-3 flex-1 min-w-0">
             {showDefaultTitle && (
               <h1 className="text-sm font-semibold text-foreground">{pageTitle}</h1>
             )}
-            <div id="settings-header-portal" />
-          </div>
-
-          <div className="flex items-center">
-            <NotificationPanel />
+            <div id="settings-header-portal" className="flex-shrink-0" />
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>
       </main>

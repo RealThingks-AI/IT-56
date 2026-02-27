@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Mail, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface EmailAssetDialogProps {
   open: boolean;
@@ -27,8 +28,9 @@ interface EmailAssetDialogProps {
 
 export function EmailAssetDialog({ open, onOpenChange, asset }: EmailAssetDialogProps) {
   const [email, setEmail] = useState("");
-  const [subject, setSubject] = useState(`Regarding Asset: ${asset.asset_tag || asset.name || 'Asset'}`);
-  const [message, setMessage] = useState("");
+  const [notes, setNotes] = useState("");
+  const [attachPhotos, setAttachPhotos] = useState(false);
+  const [attachDocuments, setAttachDocuments] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   const handleSend = async () => {
@@ -36,23 +38,42 @@ export function EmailAssetDialog({ open, onOpenChange, asset }: EmailAssetDialog
       toast.error("Please enter an email address");
       return;
     }
-    if (!message) {
-      toast.error("Please enter a message");
+
+    // Basic email validation
+    const emails = email.split(',').map(e => e.trim()).filter(Boolean);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emails.filter(e => !emailRegex.test(e));
+    
+    if (invalidEmails.length > 0) {
+      toast.error(`Invalid email address: ${invalidEmails[0]}`);
       return;
     }
 
     setIsSending(true);
     
-    // Simulate sending - in production this would call an edge function
     try {
-      // For now, we'll open the default mail client
-      const mailtoLink = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+      // Build subject line
+      const subject = `Regarding Asset: ${asset.asset_tag || asset.name || 'Asset'}`;
+      
+      // Build email body
+      let body = notes || '';
+      if (attachPhotos || attachDocuments) {
+        body += '\n\n---\nAttachments requested:';
+        if (attachPhotos) body += '\n• Photos';
+        if (attachDocuments) body += '\n• Documents';
+      }
+      
+      // Open the default mail client with all recipients
+      const mailtoLink = `mailto:${emails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       window.open(mailtoLink, '_blank');
       
       toast.success("Email client opened");
       onOpenChange(false);
+      // Reset form
       setEmail("");
-      setMessage("");
+      setNotes("");
+      setAttachPhotos(false);
+      setAttachDocuments(false);
     } catch (error) {
       toast.error("Failed to open email client");
     } finally {
@@ -62,12 +83,9 @@ export function EmailAssetDialog({ open, onOpenChange, asset }: EmailAssetDialog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Email About Asset
-          </DialogTitle>
+          <DialogTitle>Email Asset</DialogTitle>
           <DialogDescription>
             Send an email regarding asset "{asset.asset_tag || asset.name}"
           </DialogDescription>
@@ -75,53 +93,67 @@ export function EmailAssetDialog({ open, onOpenChange, asset }: EmailAssetDialog
         
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Recipient Email <span className="text-destructive">*</span></Label>
+            <Label htmlFor="email">Email to <span className="text-destructive">*</span></Label>
             <Input
               id="email"
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="user@example.com"
             />
-            {asset.assigned_to && (
-              <p className="text-xs text-muted-foreground">
-                Currently assigned to: {asset.assigned_to}
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              * separate each email with a comma.
+            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="subject">Subject</Label>
-            <Input
-              id="subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Email subject"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="message">Message <span className="text-destructive">*</span></Label>
+            <Label htmlFor="notes">Notes</Label>
             <Textarea
-              id="message"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder="Enter your message..."
-              rows={5}
+              rows={4}
             />
+          </div>
+
+          <div className="space-y-3">
+            <Label>Attachments</Label>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="attachPhotos"
+                  checked={attachPhotos}
+                  onCheckedChange={(checked) => setAttachPhotos(checked === true)}
+                />
+                <Label htmlFor="attachPhotos" className="font-normal cursor-pointer">
+                  Photos
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="attachDocuments"
+                  checked={attachDocuments}
+                  onCheckedChange={(checked) => setAttachDocuments(checked === true)}
+                />
+                <Label htmlFor="attachDocuments" className="font-normal cursor-pointer">
+                  Documents
+                </Label>
+              </div>
+            </div>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+        <DialogFooter className="flex-row-reverse sm:flex-row-reverse gap-2">
           <Button 
             onClick={handleSend} 
-            disabled={!email || !message || isSending}
+            disabled={!email || isSending}
           >
             {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Open in Email Client
+            Send Email
+          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -24,7 +24,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrganisation } from "@/contexts/OrganisationContext";
 
 const categorySchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -44,35 +43,6 @@ export const CreateCategoryDialog = ({
 }: CreateCategoryDialogProps) => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { organisation } = useOrganisation();
-
-  // Get current user's tenant_id
-  const { data: userProfile } = useQuery({
-    queryKey: ["user-profile-tenant", user?.id],
-    queryFn: async () => {
-      if (!user) return null;
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
-      const { data: orgFromFunction } = await supabase.rpc("get_user_org");
-
-      return {
-        tenant_id: profileData?.tenant_id,
-        organisation_id: orgFromFunction || userData?.organisation_id,
-      };
-    },
-    enabled: !!user,
-  });
 
   const form = useForm<z.infer<typeof categorySchema>>({
     resolver: zodResolver(categorySchema),
@@ -100,20 +70,11 @@ export const CreateCategoryDialog = ({
         if (error) throw error;
         return data;
       } else {
-        // Default tenant_id to 1 for org users (standard tenant)
-        const tenantId = userProfile?.tenant_id || 1;
-        const organisationId = userProfile?.organisation_id;
-
-        if (!organisationId) {
-          throw new Error("Organisation information is not configured. Please contact your administrator.");
-        }
-
-        // Check if category with same name already exists for this organisation
+        // Check if category with same name already exists
         const { data: existing } = await supabase
           .from("helpdesk_categories")
           .select("id")
           .eq("name", values.name)
-          .eq("organisation_id", organisationId)
           .maybeSingle();
 
         if (existing) {
@@ -125,8 +86,6 @@ export const CreateCategoryDialog = ({
           name: values.name,
           description: values.description || null,
           is_active: true,
-          tenant_id: tenantId,
-          organisation_id: organisationId,
         };
 
         const { data, error } = await supabase

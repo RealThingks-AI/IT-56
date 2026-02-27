@@ -30,19 +30,10 @@ export function DashboardSetupTab() {
   const { data: settings, isLoading } = useQuery({
     queryKey: ["itam-settings", "dashboard_widgets"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
+      // @ts-ignore - Bypass complex type inference
       const { data } = await supabase
         .from("itam_settings")
         .select("value")
-        .eq("organisation_id", userData?.organisation_id)
         .eq("key", "dashboard_widgets")
         .maybeSingle();
 
@@ -58,33 +49,25 @@ export function DashboardSetupTab() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
+      // @ts-ignore - Bypass complex type inference
       const { data: existing } = await supabase
         .from("itam_settings")
         .select("id")
-        .eq("organisation_id", userData?.organisation_id)
         .eq("key", "dashboard_widgets")
         .maybeSingle();
 
       if (existing) {
+        // @ts-ignore - Bypass complex type inference
         const { error } = await supabase
           .from("itam_settings")
           .update({ value: { enabled_widgets: enabledWidgets } })
           .eq("id", existing.id);
         if (error) throw error;
       } else {
+        // @ts-ignore - Bypass complex type inference
         const { error } = await supabase
           .from("itam_settings")
           .insert({
-            organisation_id: userData?.organisation_id,
             key: "dashboard_widgets",
             value: { enabled_widgets: enabledWidgets },
           });

@@ -116,7 +116,7 @@ export default function IngestLogPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate("/helpdesk/system-updates")}
+            onClick={() => navigate("/system-updates")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

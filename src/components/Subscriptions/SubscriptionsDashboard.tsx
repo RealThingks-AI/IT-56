@@ -3,34 +3,28 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Package, Calendar, AlertTriangle } from "lucide-react";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { format } from "date-fns";
 import { formatINR } from "@/lib/currencyConversion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const SubscriptionsDashboard = () => {
-  const { data: currentUser } = useCurrentUser();
-  const organisationId = currentUser?.organisationId;
   const queryClient = useQueryClient();
 
+  // Single-company mode: RLS handles access
   const { data: tools, isLoading: toolsLoading } = useQuery({
-    queryKey: ["subscriptions-tools", organisationId],
+    queryKey: ["subscriptions-tools"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("subscriptions_tools")
-        .select("*, subscriptions_vendors(name)")
-        .eq("organisation_id", organisationId!);
+        .select("*, subscriptions_vendors(name)");
       
       if (error) throw error;
       return data;
     },
-    enabled: !!organisationId,
   });
 
   // Real-time subscription for tools
   useEffect(() => {
-    if (!organisationId) return;
-
     const channel = supabase
       .channel('subscriptions-tools-changes')
       .on(
@@ -39,10 +33,9 @@ export const SubscriptionsDashboard = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_tools',
-          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["subscriptions-tools", organisationId] });
+          queryClient.invalidateQueries({ queryKey: ["subscriptions-tools"] });
         }
       )
       .subscribe();
@@ -50,7 +43,7 @@ export const SubscriptionsDashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organisationId, queryClient]);
+  }, [queryClient]);
 
   // Calculate monthly burn rate
   const monthlyBurnRate = tools

@@ -17,11 +17,7 @@ export function AssetPhotoPreview({ photoUrl, assetName }: AssetPhotoPreviewProp
   const [open, setOpen] = useState(false);
 
   if (!photoUrl) {
-    return (
-      <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
-        <ImageIcon className="h-4 w-4 text-muted-foreground" />
-      </div>
-    );
+    return <span className="text-muted-foreground text-sm">—</span>;
   }
 
   return (
@@ -39,6 +35,8 @@ export function AssetPhotoPreview({ photoUrl, assetName }: AssetPhotoPreviewProp
           src={photoUrl}
           alt={assetName || "Asset"}
           className="h-8 w-8 rounded object-cover"
+          loading="lazy"
+          decoding="async"
         />
         <span className="sr-only">View photo</span>
       </Button>
@@ -56,6 +54,8 @@ export function AssetPhotoPreview({ photoUrl, assetName }: AssetPhotoPreviewProp
               src={photoUrl}
               alt={assetName || "Asset"}
               className="max-h-[70vh] w-auto rounded-lg object-contain"
+              loading="lazy"
+              decoding="async"
             />
           </div>
         </DialogContent>

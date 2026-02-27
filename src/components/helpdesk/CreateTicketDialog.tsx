@@ -74,7 +74,7 @@ export const CreateTicketDialog = ({ open, onOpenChange }: CreateTicketDialogPro
 
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("id, organisation_id")
+        .select("id")
         .eq("auth_user_id", user.id)
         .single();
 
@@ -82,18 +82,8 @@ export const CreateTicketDialog = ({ open, onOpenChange }: CreateTicketDialogPro
         throw new Error("User not found in database");
       }
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const { data: orgFromFunction } = await supabase.rpc("get_user_org");
-
       return {
         userId: userData.id,
-        orgId: orgFromFunction || userData.organisation_id,
-        tenantId: profileData?.tenant_id,
       };
     },
   });
@@ -122,16 +112,10 @@ export const CreateTicketDialog = ({ open, onOpenChange }: CreateTicketDialogPro
         throw new Error("User information not available. Please try logging in again.");
       }
 
-      // Use tenant_id if available, otherwise default to 1 for org users
-      const tenantId = currentUser.tenantId || 1;
-
-      // Generate ticket number per-tenant (ignore organisation to avoid collisions across orgs)
+      // Generate ticket number
       const { data: ticketNumber, error: rpcError } = await supabase.rpc(
         "generate_helpdesk_ticket_number",
-        {
-          p_tenant_id: tenantId,
-          p_org_id: null as any,
-        }
+        {}
       );
 
       if (rpcError) {
@@ -145,8 +129,6 @@ export const CreateTicketDialog = ({ open, onOpenChange }: CreateTicketDialogPro
         category_id: values.category_id ? parseInt(values.category_id) : null,
         ticket_number: ticketNumber,
         requester_id: currentUser.userId,
-        organisation_id: currentUser.orgId,
-        tenant_id: tenantId,
         status: "open",
         request_type: values.request_type,
       };
@@ -216,7 +198,7 @@ export const CreateTicketDialog = ({ open, onOpenChange }: CreateTicketDialogPro
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
+                  <FormLabel>Title *</FormLabel>
                   <FormControl>
                     <Input placeholder="Brief description of the issue" {...field} />
                   </FormControl>
@@ -230,7 +212,7 @@ export const CreateTicketDialog = ({ open, onOpenChange }: CreateTicketDialogPro
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>Description *</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Provide detailed information about your request..."

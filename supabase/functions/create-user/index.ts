@@ -131,20 +131,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get the caller's organisation_id
-    const { data: callerData, error: callerDataError } = await supabaseAdmin
+    // Get the caller's info
+    const { data: callerData } = await supabaseAdmin
       .from("users")
-      .select("organisation_id, tenant_id")
+      .select("id")
       .eq("auth_user_id", callerUser.id)
       .single();
-
-    if (callerDataError || !callerData?.organisation_id) {
-      console.error("Error getting caller organisation:", callerDataError);
-      return new Response(
-        JSON.stringify({ error: "Failed to get organization information" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Create the user directly with password
     const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -153,7 +145,6 @@ Deno.serve(async (req) => {
       email_confirm: true, // Auto-confirm email
       user_metadata: {
         name: name || null,
-        organisation_id: callerData.organisation_id,
         created_by: callerUser.id,
         initial_role: role,
       },
@@ -167,40 +158,37 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create user record in public.users table
+    // The handle_new_auth_user trigger creates users + user_roles records automatically.
+    // Just update to ensure correct values.
     if (createData.user) {
-      const { error: userInsertError } = await supabaseAdmin
+      await supabaseAdmin
         .from("users")
-        .insert({
-          auth_user_id: createData.user.id,
-          email: emailLower,
-          name: name || null,
-          role: role,
-          organisation_id: callerData.organisation_id,
-          tenant_id: callerData.tenant_id,
-          status: "active",
-        });
+        .update({ name: name || null, role: role, status: "active" })
+        .eq("auth_user_id", createData.user.id);
 
-      if (userInsertError) {
-        console.error("Error creating user record:", userInsertError);
-        // Don't fail - auth user is created, record might be created by trigger
-      }
-
-      // Assign the role to the new user
-      const { error: roleInsertError } = await supabaseAdmin
+      await supabaseAdmin
         .from("user_roles")
-        .insert({
-          user_id: createData.user.id,
-          role: role,
-        });
-
-      if (roleInsertError) {
-        console.error("Error assigning role:", roleInsertError);
-        // Don't fail the whole operation
-      }
+        .upsert({ user_id: createData.user.id, role: role }, { onConflict: "user_id,role" });
     }
 
     console.log("User created successfully:", emailLower);
+
+    // Insert audit log for user creation
+    const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null;
+    await supabaseAdmin.from('audit_logs').insert({
+      action_type: 'user_created',
+      entity_type: 'users',
+      entity_id: createData.user?.id || null,
+      user_id: callerUser.id,
+      ip_address: ipAddress,
+      user_agent: req.headers.get('user-agent') || null,
+      metadata: {
+        target_email: emailLower,
+        created_by_email: callerUser.email,
+        role: role,
+        name: name || null,
+      },
+    });
 
     return new Response(
       JSON.stringify({ 

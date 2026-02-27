@@ -10,7 +10,7 @@ export const Navbar = () => {
     <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <img src={appLogo} alt="RT-IT-Hub" className="w-7 h-7" />
+          <img src={appLogo} alt="RT-IT-Hub" className="w-7 h-7 object-contain" />
           <span className="text-xl font-bold text-primary">RT-IT-Hub</span>
         </Link>
         

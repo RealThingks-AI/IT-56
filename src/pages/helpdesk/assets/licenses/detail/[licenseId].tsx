@@ -12,15 +12,22 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useState } from "react";
-import { Edit, Trash2, Key, Users, Calendar, DollarSign, Building } from "lucide-react";
+import { Edit, Trash2, Key, Users, Calendar, DollarSign, Building, Eye, EyeOff, Copy } from "lucide-react";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$", EUR: "€", GBP: "£", INR: "₹", JPY: "¥", AUD: "A$", CAD: "C$",
+};
 
 const LicenseDetail = () => {
   const { licenseId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const { settings } = useSystemSettings();
+  const currencySymbol = CURRENCY_SYMBOLS[settings.currency] || settings.currency;
 
-  // Fetch license details
   const { data: license, isLoading } = useQuery({
     queryKey: ["itam-license-detail", licenseId],
     queryFn: async () => {
@@ -29,32 +36,28 @@ const LicenseDetail = () => {
         .select("*, itam_vendors(id, name)")
         .eq("id", licenseId)
         .single();
-
       if (error) throw error;
       return data as any;
     },
     enabled: !!licenseId,
   });
 
-  // Fetch license allocations
+  // Fix Bug 3: use deallocated_at instead of is_active; join users for names
   const { data: allocations = [] } = useQuery<any[]>({
     queryKey: ["itam-license-allocations", licenseId],
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase
+      const { data, error } = await supabase
         .from("itam_license_allocations")
-        .select("*") as any)
-        .eq("license_id", licenseId)
-        .eq("is_active", true)
+        .select("*, users:user_id(id, first_name, last_name, email)")
+        .eq("license_id", licenseId!)
+        .is("deallocated_at", null)
         .order("allocated_at", { ascending: false });
-
       if (error) throw error;
       return data || [];
     },
     enabled: !!licenseId,
   });
 
-  // Delete license mutation
   const deleteLicense = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
@@ -68,15 +71,13 @@ const LicenseDetail = () => {
       queryClient.invalidateQueries({ queryKey: ["itam-licenses-list"] });
       navigate("/assets/licenses");
     },
-    onError: () => {
-      toast.error("Failed to delete license");
-    },
+    onError: () => toast.error("Failed to delete license"),
   });
 
   const getUtilizationColor = (percentage: number) => {
     if (percentage >= 90) return "text-destructive";
-    if (percentage >= 75) return "text-orange-600";
-    return "text-green-600";
+    if (percentage >= 75) return "text-amber-600 dark:text-amber-400";
+    return "text-emerald-600 dark:text-emerald-400";
   };
 
   const getExpiryStatus = (expiryDate: string | null) => {
@@ -84,29 +85,35 @@ const LicenseDetail = () => {
     const expiry = new Date(expiryDate);
     const today = new Date();
     const daysUntilExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
     if (daysUntilExpiry < 0) return { label: "Expired", variant: "destructive" as const };
     if (daysUntilExpiry <= 30) return { label: "Expiring Soon", variant: "destructive" as const };
     if (daysUntilExpiry <= 90) return { label: "Expiring", variant: "outline" as const };
     return { label: "Active", variant: "default" as const };
   };
 
+  const copyLicenseKey = () => {
+    if (license?.license_key) {
+      navigator.clipboard.writeText(license.license_key);
+      toast.success("License key copied");
+    }
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-6 space-y-4">
+      <div className="min-h-screen bg-background p-4 space-y-4">
         <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-48 w-full" />
       </div>
     );
   }
 
   if (!license) {
     return (
-      <div className="min-h-screen bg-background p-6">
+      <div className="min-h-screen bg-background p-4">
         <div className="text-center py-12">
-          <Key className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">License not found</p>
-          <Button variant="outline" className="mt-4" onClick={() => navigate("/assets/licenses")}>
+          <Key className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-sm text-muted-foreground">License not found</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate("/assets/licenses")}>
             Back to Licenses
           </Button>
         </div>
@@ -121,14 +128,14 @@ const LicenseDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="p-6 space-y-6">
+      <div className="p-4 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <BackButton />
             <div>
-              <h1 className="text-2xl font-bold">{license.name}</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-xl font-bold">{license.name}</h1>
+              <p className="text-xs text-muted-foreground">
                 {license.itam_vendors?.name || "No vendor"} • {license.license_type || "License"}
               </p>
             </div>
@@ -139,7 +146,7 @@ const LicenseDetail = () => {
               size="sm"
               onClick={() => navigate(`/assets/licenses/add-license?edit=${licenseId}`)}
             >
-              <Edit className="h-4 w-4 mr-2" />
+              <Edit className="h-3.5 w-3.5 mr-1.5" />
               Edit
             </Button>
             <Button
@@ -147,26 +154,26 @@ const LicenseDetail = () => {
               size="sm"
               onClick={() => setDeleteConfirmOpen(true)}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
               Delete
             </Button>
           </div>
         </div>
 
         {/* Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Users className="h-5 w-5 text-primary" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-primary/10 rounded-md">
+                  <Users className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Seats</p>
-                  <p className="text-xl font-semibold">{seatsAllocated} / {seatsTotal}</p>
+                  <p className="text-xs text-muted-foreground">Seats</p>
+                  <p className="text-lg font-semibold">{seatsAllocated} / {seatsTotal}</p>
                 </div>
               </div>
-              <Progress value={utilization} className="mt-3 h-2" />
+              <Progress value={utilization} className="mt-2.5 h-1.5" />
               <p className={`text-xs mt-1 ${getUtilizationColor(utilization)}`}>
                 {utilization.toFixed(0)}% utilized
               </p>
@@ -174,54 +181,51 @@ const LicenseDetail = () => {
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Calendar className="h-5 w-5 text-primary" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-primary/10 rounded-md">
+                  <Calendar className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Expiry</p>
-                  <p className="text-lg font-semibold">
+                  <p className="text-xs text-muted-foreground">Expiry</p>
+                  <p className="text-sm font-semibold">
                     {license.expiry_date
                       ? format(new Date(license.expiry_date), "MMM d, yyyy")
                       : "No expiry"}
                   </p>
                 </div>
               </div>
-              <Badge variant={expiryStatus.variant} className="mt-3">
+              <Badge variant={expiryStatus.variant} className="mt-2.5 text-[11px]">
                 {expiryStatus.label}
               </Badge>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <DollarSign className="h-5 w-5 text-primary" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-primary/10 rounded-md">
+                  <DollarSign className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Cost</p>
-                  <p className="text-xl font-semibold">
-                    {license.cost ? `₹${license.cost.toLocaleString()}` : "—"}
+                  <p className="text-xs text-muted-foreground">Cost</p>
+                  <p className="text-lg font-semibold">
+                    {license.cost ? `${currencySymbol}${license.cost.toLocaleString()}` : "—"}
                   </p>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {license.license_type && `Type: ${license.license_type}`}
-              </p>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Building className="h-5 w-5 text-primary" />
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-primary/10 rounded-md">
+                  <Building className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Vendor</p>
-                  <p className="text-lg font-semibold">
+                  <p className="text-xs text-muted-foreground">Vendor</p>
+                  <p className="text-sm font-semibold">
                     {license.itam_vendors?.name || "—"}
                   </p>
                 </div>
@@ -232,43 +236,59 @@ const LicenseDetail = () => {
 
         {/* License Details */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">License Details</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold">License Details</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+              <div className="space-y-0">
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">License Key</span>
-                  <span className="text-sm font-mono">
-                    {license.license_key ? "••••••••" : "—"}
-                  </span>
+                  <span className="text-xs text-muted-foreground">License Key</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono">
+                      {license.license_key
+                        ? showKey ? license.license_key : "••••••••••••"
+                        : "—"}
+                    </span>
+                    {license.license_key && (
+                      <>
+                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowKey(!showKey)}>
+                          {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={copyLicenseKey}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">License Type</span>
-                  <span className="text-sm">{license.license_type || "—"}</span>
+                  <span className="text-xs text-muted-foreground">License Type</span>
+                  <span className="text-xs">{license.license_type || "—"}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Purchase Date</span>
-                  <span className="text-sm">
+                  <span className="text-xs text-muted-foreground">Purchase Date</span>
+                  <span className="text-xs">
                     {license.purchase_date
                       ? format(new Date(license.purchase_date), "MMM d, yyyy")
                       : "—"}
                   </span>
                 </div>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-0">
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Seats Available</span>
-                  <span className="text-sm">{seatsTotal - seatsAllocated}</span>
+                  <span className="text-xs text-muted-foreground">Seats Available</span>
+                  <span className="text-xs">{seatsTotal - seatsAllocated}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">License Type</span>
-                  <span className="text-sm">{license.license_type || "—"}</span>
+                  <span className="text-xs text-muted-foreground">Status</span>
+                  <Badge variant={expiryStatus.variant} className="text-[10px] h-5">
+                    {expiryStatus.label}
+                  </Badge>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-sm text-muted-foreground">Created</span>
-                  <span className="text-sm">
+                  <span className="text-xs text-muted-foreground">Created</span>
+                  <span className="text-xs">
                     {license.created_at
                       ? format(new Date(license.created_at), "MMM d, yyyy")
                       : "—"}
@@ -277,9 +297,9 @@ const LicenseDetail = () => {
               </div>
             </div>
             {license.notes && (
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-sm text-muted-foreground mb-2">Notes</p>
-                <p className="text-sm">{license.notes}</p>
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-xs text-muted-foreground mb-1">Notes</p>
+                <p className="text-xs">{license.notes}</p>
               </div>
             )}
           </CardContent>
@@ -287,8 +307,8 @@ const LicenseDetail = () => {
 
         {/* Allocations */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Seat Allocations</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-sm font-semibold">Seat Allocations</CardTitle>
             <Button
               size="sm"
               variant="outline"
@@ -298,36 +318,36 @@ const LicenseDetail = () => {
               Allocate Seat
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             {allocations.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No allocations yet</p>
+              <div className="text-center py-6 text-muted-foreground">
+                <Users className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                <p className="text-xs">No allocations yet</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Allocated On</TableHead>
-                    <TableHead>Notes</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-xs">User</TableHead>
+                    <TableHead className="text-xs">Allocated On</TableHead>
+                    <TableHead className="text-xs">Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {allocations.map((allocation: any) => (
                     <TableRow key={allocation.id}>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium text-sm">
                         {allocation.users
                           ? `${allocation.users.first_name || ""} ${allocation.users.last_name || ""}`.trim() ||
                             allocation.users.email
-                          : allocation.allocated_to || "Unknown"}
+                          : "Unknown"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-xs">
                         {allocation.allocated_at
                           ? format(new Date(allocation.allocated_at), "MMM d, yyyy")
                           : "—"}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-xs text-muted-foreground">
                         {allocation.notes || "—"}
                       </TableCell>
                     </TableRow>

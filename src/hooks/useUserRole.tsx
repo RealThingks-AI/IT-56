@@ -1,6 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSessionStore } from "@/stores/useSessionStore";
 
 export type AppRole = "admin" | "manager" | "user" | "viewer";
 
@@ -17,40 +15,18 @@ interface UserRoleResult {
 }
 
 export function useUserRole(): UserRoleResult {
-  const { user, loading: authLoading } = useAuth();
+  const role = useSessionStore((s) => s.role);
+  const status = useSessionStore((s) => s.status);
 
-  const { data: role, isLoading, error } = useQuery({
-    queryKey: ["user-role", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      
-      // Use the security definer function to get role
-      const { data, error } = await supabase
-        .rpc("get_user_role", { _user_id: user.id });
-      
-      if (error) {
-        console.error("Error fetching user role:", error);
-        throw error;
-      }
-      
-      return data as AppRole | null;
-    },
-    enabled: !!user?.id && !authLoading,
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes - role rarely changes
-    gcTime: 15 * 60 * 1000, // 15 minutes cache retention
-  });
-
-  const currentRole = role || null;
-  
   return {
-    role: currentRole,
-    isAdmin: currentRole === "admin",
-    isManager: currentRole === "manager",
-    isUser: currentRole === "user",
-    isViewer: currentRole === "viewer",
-    isAdminOrAbove: currentRole === "admin",
-    isManagerOrAbove: currentRole === "admin" || currentRole === "manager",
-    isLoading: authLoading || isLoading,
-    error: error as Error | null,
+    role,
+    isAdmin: role === "admin",
+    isManager: role === "manager",
+    isUser: role === "user",
+    isViewer: role === "viewer",
+    isAdminOrAbove: role === "admin",
+    isManagerOrAbove: role === "admin" || role === "manager",
+    isLoading: status !== "ready",
+    error: null,
   };
 }

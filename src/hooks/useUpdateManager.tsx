@@ -20,8 +20,6 @@ export interface SystemDevice {
   assigned_to: string | null;
   notes: string | null;
   is_active: boolean;
-  organisation_id: string | null;
-  tenant_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -41,23 +39,11 @@ export const useUpdateDevices = () => {
   return useQuery({
     queryKey: ["update-devices"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-      const orgId = userData?.organisation_id;
-      if (!orgId) return [];
-
+      // Single-company mode: RLS handles access control, no org filter needed
       // @ts-ignore - Bypass deep type inference issue
       const { data, error } = await supabase
         .from("system_devices")
         .select("*")
-        .eq("organisation_id", orgId)
         .eq("is_active", true)
         .order("hostname");
 
@@ -71,44 +57,17 @@ export const useUpdateStats = () => {
   return useQuery({
     queryKey: ["update-stats"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return {
-        totalDevices: 0,
-        compliantDevices: 0,
-        complianceRate: 0,
-        pendingUpdates: 0,
-        failedUpdates: 0,
-        unreadAlerts: 0,
-      };
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-      const orgId = userData?.organisation_id;
-      if (!orgId) return {
-        totalDevices: 0,
-        compliantDevices: 0,
-        complianceRate: 0,
-        pendingUpdates: 0,
-        failedUpdates: 0,
-        unreadAlerts: 0,
-      };
-
+      // Single-company mode: RLS handles access control, no org filter needed
       // @ts-ignore - Bypass deep type inference issue
       const { data: devices } = await supabase
         .from("system_devices")
         .select("id, update_compliance_status, pending_updates_count")
-        .eq("organisation_id", orgId)
         .eq("is_active", true);
 
       // @ts-ignore - Bypass deep type inference issue
       const { data: alerts } = await supabase
         .from("system_update_alerts")
         .select("id")
-        .eq("organisation_id", orgId)
         .eq("is_resolved", false);
 
       const totalDevices = devices?.length || 0;
@@ -140,23 +99,11 @@ export const useUpdateAlerts = () => {
   return useQuery({
     queryKey: ["update-alerts"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-      const orgId = userData?.organisation_id;
-      if (!orgId) return [];
-
+      // Single-company mode: RLS handles access control, no org filter needed
       // @ts-ignore - Bypass deep type inference issue
       const { data, error } = await supabase
         .from("system_update_alerts")
         .select("*")
-        .eq("organisation_id", orgId)
         .order("created_at", { ascending: false })
         .limit(50);
 

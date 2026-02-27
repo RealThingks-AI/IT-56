@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,8 +14,6 @@ import { useToast } from "@/hooks/use-toast";
 import { convertToINR, formatINR } from "@/lib/currencyConversion";
 
 export const PaymentsList = () => {
-  const { data: currentUser } = useCurrentUser();
-  const organisationId = currentUser?.organisationId;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -24,16 +21,16 @@ export const PaymentsList = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
 
+  // Single-company mode: RLS handles access
   const { data: payments, isLoading, refetch } = useQuery({
-    queryKey: ["subscriptions-payments", organisationId, searchTerm, statusFilter],
+    queryKey: ["subscriptions-payments", searchTerm, statusFilter],
     queryFn: async () => {
       let query = supabase
         .from("subscriptions_payments")
         .select(`
           *,
           subscriptions_tools(tool_name)
-        `)
-        .eq("organisation_id", organisationId!);
+        `);
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);
@@ -44,13 +41,10 @@ export const PaymentsList = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!organisationId,
   });
 
   // Real-time subscription
   useEffect(() => {
-    if (!organisationId) return;
-
     const channel = supabase
       .channel('payments-changes')
       .on(
@@ -59,7 +53,6 @@ export const PaymentsList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_payments',
-          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-payments"] });
@@ -70,7 +63,7 @@ export const PaymentsList = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organisationId, queryClient]);
+  }, [queryClient]);
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase

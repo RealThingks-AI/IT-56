@@ -8,7 +8,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Settings } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface FeedFilters {
   newAssets: boolean;
@@ -16,14 +17,16 @@ export interface FeedFilters {
   checkedIn: boolean;
   underRepair: boolean;
   disposed: boolean;
+  lost: boolean;
 }
 
 const DEFAULT_FILTERS: FeedFilters = {
-  newAssets: false,
-  checkedOut: false,
+  newAssets: true,
+  checkedOut: true,
   checkedIn: true,
   underRepair: true,
   disposed: false,
+  lost: false,
 };
 
 interface FeedSettingsDropdownProps {
@@ -44,43 +47,62 @@ export function FeedSettingsDropdown({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Settings className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7">
+                <SlidersHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom"><p className="text-xs">Filter Feed</p></TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>Show Feeds</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs">Show Feeds</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
           checked={filters.newAssets}
           onCheckedChange={() => toggleFilter("newAssets")}
+          className="text-xs"
         >
           New Assets
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={filters.checkedOut}
           onCheckedChange={() => toggleFilter("checkedOut")}
+          className="text-xs"
         >
           Checked Out
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={filters.checkedIn}
           onCheckedChange={() => toggleFilter("checkedIn")}
+          className="text-xs"
         >
           Checked In
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={filters.underRepair}
           onCheckedChange={() => toggleFilter("underRepair")}
+          className="text-xs"
         >
           Under Repair
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={filters.disposed}
           onCheckedChange={() => toggleFilter("disposed")}
+          className="text-xs"
         >
           Disposed
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={filters.lost}
+          onCheckedChange={() => toggleFilter("lost")}
+          className="text-xs"
+        >
+          Lost
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>

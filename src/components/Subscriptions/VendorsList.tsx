@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,20 +11,18 @@ import { AddVendorDialog } from "./AddVendorDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const VendorsList = () => {
-  const { data: currentUser } = useCurrentUser();
-  const organisationId = currentUser?.organisationId;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
+  // Single-company mode: RLS handles access
   const { data: vendors, isLoading, refetch } = useQuery({
-    queryKey: ["subscriptions-vendors", organisationId, searchTerm],
+    queryKey: ["subscriptions-vendors", searchTerm],
     queryFn: async () => {
       let query = supabase
         .from("subscriptions_vendors")
-        .select("*, subscriptions_tools(count)")
-        .eq("organisation_id", organisationId!);
+        .select("*, subscriptions_tools(count)");
 
       if (searchTerm) {
         query = query.ilike("name", `%${searchTerm}%`);
@@ -36,13 +33,10 @@ export const VendorsList = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!organisationId,
   });
 
   // Real-time subscription
   useEffect(() => {
-    if (!organisationId) return;
-
     const vendorsChannel = supabase
       .channel('vendors-changes')
       .on(
@@ -51,7 +45,6 @@ export const VendorsList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_vendors',
-          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-vendors"] });
@@ -67,7 +60,6 @@ export const VendorsList = () => {
           event: '*',
           schema: 'public',
           table: 'subscriptions_tools',
-          filter: `organisation_id=eq.${organisationId}`
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["subscriptions-vendors"] });
@@ -79,7 +71,7 @@ export const VendorsList = () => {
       supabase.removeChannel(vendorsChannel);
       supabase.removeChannel(toolsChannel);
     };
-  }, [organisationId, queryClient]);
+  }, [queryClient]);
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase

@@ -7,7 +7,6 @@ const corsHeaders = {
 
 interface DepreciationProfile {
   id: string;
-  tenant_id: number;
   asset_id: number;
   method_id: string;
   cost_basis: number;
@@ -26,7 +25,6 @@ interface DepreciationMethod {
   parameters: any;
 }
 
-// Calculate depreciation for a period
 function calculateDepreciation(
   profile: DepreciationProfile,
   method: DepreciationMethod,
@@ -36,30 +34,23 @@ function calculateDepreciation(
   const depreciableAmount = profile.cost_basis - profile.salvage_value;
   
   switch (method.code) {
-    case 'SL': {
-      // Straight Line
+    case 'SL':
       return depreciableAmount / profile.useful_life_periods;
-    }
     
     case 'DB':
     case 'DDB': {
-      // Declining Balance
       const factor = method.parameters?.factor || 2.0;
       const rate = factor / profile.useful_life_years;
       const bookValue = profile.cost_basis - currentAccumulated;
       const depreciation = bookValue * rate;
-      
-      // Don't depreciate below salvage
       return Math.min(depreciation, bookValue - profile.salvage_value);
     }
     
     case 'SYD': {
-      // Sum of Years Digits
       const totalYears = profile.useful_life_years;
       const sumOfYears = (totalYears * (totalYears + 1)) / 2;
       const yearNumber = Math.floor(periodNumber / (profile.useful_life_periods / profile.useful_life_years)) + 1;
       const remainingYears = totalYears - yearNumber + 1;
-      
       return (depreciableAmount * remainingYears) / sumOfYears / (profile.useful_life_periods / profile.useful_life_years);
     }
     
@@ -79,11 +70,10 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { tenantId, dryRun = false } = await req.json();
+    const { dryRun = false } = await req.json();
 
-    console.log(`Starting depreciation run for tenant ${tenantId}, dryRun: ${dryRun}`);
+    console.log(`Starting depreciation run, dryRun: ${dryRun}`);
 
-    // Get current period dates
     const now = new Date();
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -92,7 +82,6 @@ Deno.serve(async (req) => {
     const { data: profiles, error: profilesError } = await supabase
       .from('asset_depreciation_profiles')
       .select('*, depreciation_methods(*), itam_assets(*)')
-      .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .eq('is_deleted', false);
 
@@ -108,7 +97,6 @@ Deno.serve(async (req) => {
 
     for (const profile of profiles || []) {
       try {
-        // Get current accumulated depreciation
         const { data: lastEntry } = await supabase
           .from('depreciation_entries')
           .select('accumulated_depreciation')
@@ -120,13 +108,11 @@ Deno.serve(async (req) => {
         const currentAccumulated = lastEntry?.accumulated_depreciation || 0;
         const currentBookValue = profile.cost_basis - currentAccumulated;
 
-        // Skip if fully depreciated
         if (currentBookValue <= profile.salvage_value) {
           console.log(`Asset ${profile.asset_id} fully depreciated, skipping`);
           continue;
         }
 
-        // Calculate period depreciation
         const periodDepreciation = calculateDepreciation(
           profile,
           profile.depreciation_methods,
@@ -137,13 +123,11 @@ Deno.serve(async (req) => {
         const newAccumulated = currentAccumulated + periodDepreciation;
         const newBookValue = profile.cost_basis - newAccumulated;
 
-        // Cap at salvage value
         const finalDepreciation = Math.min(periodDepreciation, currentBookValue - profile.salvage_value);
         const finalAccumulated = Math.min(newAccumulated, profile.cost_basis - profile.salvage_value);
         const finalBookValue = Math.max(newBookValue, profile.salvage_value);
 
         entries.push({
-          tenant_id: tenantId,
           profile_id: profile.id,
           asset_id: profile.asset_id,
           period_start: periodStart.toISOString().split('T')[0],
@@ -173,7 +157,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Insert depreciation entries
     if (entries.length > 0) {
       const { error: insertError } = await supabase
         .from('depreciation_entries')
@@ -184,7 +167,6 @@ Deno.serve(async (req) => {
         throw insertError;
       }
 
-      // Update assets with new accumulated depreciation and book values
       for (const entry of entries) {
         await supabase
           .from('itam_assets')
@@ -199,7 +181,6 @@ Deno.serve(async (req) => {
 
     // Log the run
     await supabase.from('depreciation_run_logs').insert({
-      tenant_id: tenantId,
       period_start: periodStart.toISOString().split('T')[0],
       period_end: periodEnd.toISOString().split('T')[0],
       status: errors.length === 0 ? 'success' : 'partial_success',

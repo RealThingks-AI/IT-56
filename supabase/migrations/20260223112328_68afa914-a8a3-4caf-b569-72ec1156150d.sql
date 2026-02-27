@@ -1,0 +1,1 @@
+DELETE FROM itam_assets WHERE is_active = false;

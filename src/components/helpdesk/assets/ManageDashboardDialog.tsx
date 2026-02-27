@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GripVertical, Package, CheckCircle2, DollarSign, ShoppingCart, Wrench, Trash2, FileText, Loader2 } from "lucide-react";
+import { Package, CheckCircle2, DollarSign, ShoppingCart, Wrench, Trash2, AlertTriangle, Calendar, Loader2, Clock, KeyRound } from "lucide-react";
 import { useUISettings, DashboardPreferencesSetting, DashboardWidgetSetting } from "@/hooks/useUISettings";
 
 export interface DashboardWidget {
@@ -25,9 +25,7 @@ export interface DashboardWidget {
 export interface DashboardPreferences {
   widgets: DashboardWidget[];
   columns: number;
-  showChart: boolean;
   showFeeds: boolean;
-  showAlerts: boolean;
   showCalendar: boolean;
 }
 
@@ -36,10 +34,13 @@ const DEFAULT_WIDGETS: DashboardWidget[] = [
   { id: "availableAssets", label: "Available Assets", icon: CheckCircle2, enabled: true },
   { id: "assetValue", label: "Value of Assets", icon: DollarSign, enabled: true },
   { id: "fiscalPurchases", label: "Purchases in Fiscal Year", icon: ShoppingCart, enabled: true },
-  { id: "checkedOut", label: "Checked-out Assets", icon: Package, enabled: false },
-  { id: "underRepair", label: "Under Repair", icon: Wrench, enabled: false },
-  { id: "disposed", label: "Disposed Assets", icon: Trash2, enabled: false },
-  { id: "contracts", label: "Active Contracts", icon: FileText, enabled: false },
+  { id: "checkedOut", label: "Checked-out Assets", icon: Package, enabled: true },
+  { id: "underRepair", label: "Under Repair", icon: Wrench, enabled: true },
+  { id: "disposed", label: "Disposed Assets", icon: Trash2, enabled: true },
+  { id: "overdueAssets", label: "Overdue Assets", icon: Clock, enabled: true },
+  { id: "licenses", label: "Licenses", icon: KeyRound, enabled: true },
+  { id: "warrantyExpiring", label: "Warranty Expiring", icon: AlertTriangle, enabled: true },
+  { id: "leaseExpiring", label: "Lease Expiring", icon: Calendar, enabled: false },
 ];
 
 const WIDGET_ICON_MAP: Record<string, React.ElementType> = {
@@ -50,15 +51,16 @@ const WIDGET_ICON_MAP: Record<string, React.ElementType> = {
   checkedOut: Package,
   underRepair: Wrench,
   disposed: Trash2,
-  contracts: FileText,
+  overdueAssets: Clock,
+  licenses: KeyRound,
+  warrantyExpiring: AlertTriangle,
+  leaseExpiring: Calendar,
 };
 
 const DEFAULT_PREFERENCES: DashboardPreferences = {
   widgets: DEFAULT_WIDGETS,
-  columns: 4,
-  showChart: true,
+  columns: 5,
   showFeeds: true,
-  showAlerts: true,
   showCalendar: true,
 };
 
@@ -76,10 +78,8 @@ function dbSettingsToPreferences(dbSettings?: DashboardPreferencesSetting): Dash
 
   return {
     widgets,
-    columns: dbSettings.columns ?? 4,
-    showChart: dbSettings.showChart ?? true,
+    columns: dbSettings.columns ?? 5,
     showFeeds: dbSettings.showFeeds ?? true,
-    showAlerts: dbSettings.showAlerts ?? true,
     showCalendar: dbSettings.showCalendar ?? true,
   };
 }
@@ -89,24 +89,13 @@ function preferencesToDbSettings(prefs: DashboardPreferences): DashboardPreferen
   return {
     widgets: prefs.widgets.map(w => ({ id: w.id, enabled: w.enabled })),
     columns: prefs.columns,
-    showChart: prefs.showChart,
+    showChart: false,
     showFeeds: prefs.showFeeds,
-    showAlerts: prefs.showAlerts,
+    showAlerts: false,
     showCalendar: prefs.showCalendar,
   };
 }
 
-// Load preferences - uses hook data or returns defaults
-export function loadDashboardPreferences(): DashboardPreferences {
-  // This is now a synchronous fallback - actual loading happens via hook
-  return DEFAULT_PREFERENCES;
-}
-
-// Save preferences - deprecated, use hook instead
-export function saveDashboardPreferences(prefs: DashboardPreferences): void {
-  // This is now a no-op - saving happens via hook
-  console.warn("saveDashboardPreferences is deprecated. Use useUISettings hook instead.");
-}
 
 interface ManageDashboardDialogProps {
   open: boolean;
@@ -127,11 +116,13 @@ export function ManageDashboardDialog({
 
   useEffect(() => {
     if (open) {
-      // Use database settings if available, otherwise use passed preferences
-      const dbPrefs = dbSettingsToPreferences(dashboardPreferences);
-      setLocalPrefs(preferences.widgets.length > 0 ? preferences : dbPrefs);
+      if (dashboardPreferences) {
+        setLocalPrefs(dbSettingsToPreferences(dashboardPreferences));
+      } else {
+        setLocalPrefs(preferences);
+      }
     }
-  }, [open, preferences, dashboardPreferences]);
+  }, [open, dashboardPreferences]);
 
   const toggleWidget = (id: string) => {
     setLocalPrefs(prev => ({
@@ -193,9 +184,8 @@ export function ManageDashboardDialog({
                   return (
                     <div
                       key={widget.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors"
+                      className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-accent/50 transition-colors"
                     >
-                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
                       <Checkbox
                         id={widget.id}
                         checked={widget.enabled}
@@ -224,9 +214,10 @@ export function ManageDashboardDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2">2 Columns</SelectItem>
                     <SelectItem value="3">3 Columns</SelectItem>
                     <SelectItem value="4">4 Columns</SelectItem>
+                    <SelectItem value="5">5 Columns</SelectItem>
+                    <SelectItem value="6">6 Columns</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -236,33 +227,13 @@ export function ManageDashboardDialog({
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Checkbox
-                      id="showChart"
-                      checked={localPrefs.showChart}
-                      onCheckedChange={(checked) =>
-                        setLocalPrefs(prev => ({ ...prev, showChart: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="showChart" className="text-sm cursor-pointer">Asset Value Chart</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
                       id="showFeeds"
                       checked={localPrefs.showFeeds}
                       onCheckedChange={(checked) =>
                         setLocalPrefs(prev => ({ ...prev, showFeeds: !!checked }))
                       }
                     />
-                    <Label htmlFor="showFeeds" className="text-sm cursor-pointer">Feeds Panel</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="showAlerts"
-                      checked={localPrefs.showAlerts}
-                      onCheckedChange={(checked) =>
-                        setLocalPrefs(prev => ({ ...prev, showAlerts: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="showAlerts" className="text-sm cursor-pointer">Alerts Section</Label>
+                    <Label htmlFor="showFeeds" className="text-sm cursor-pointer">Activity Feed</Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox

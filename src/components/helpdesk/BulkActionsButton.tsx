@@ -101,7 +101,7 @@ export const BulkActionsButton = ({ selectedIds, onClearSelection }: BulkActions
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-8">
+          <Button variant="outline" size="sm" className="h-7">
             Actions ({selectedIds.length})
             <ChevronDown className="h-4 w-4 ml-2" />
           </Button>
@@ -181,6 +181,15 @@ export const BulkActionsButton = ({ selectedIds, onClearSelection }: BulkActions
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
+          </DropdownMenuItem>
+          
+          <DropdownMenuSeparator />
+          
+          <DropdownMenuItem 
+            onClick={() => bulkUpdateMutation.mutate({ field: 'status', value: 'closed' })}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Close Selected
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

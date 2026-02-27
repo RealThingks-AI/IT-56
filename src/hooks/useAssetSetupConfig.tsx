@@ -54,7 +54,7 @@ export const useAssetSetupConfig = () => {
       if (error) throw error;
       return (data || []) as Site[];
     },
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: locations = [], isLoading: locationsLoading } = useQuery({
@@ -69,7 +69,7 @@ export const useAssetSetupConfig = () => {
       if (error) throw error;
       return (data || []) as Location[];
     },
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery({
@@ -84,7 +84,7 @@ export const useAssetSetupConfig = () => {
       if (error) throw error;
       return (data || []) as Category[];
     },
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: departments = [], isLoading: departmentsLoading } = useQuery({
@@ -99,7 +99,7 @@ export const useAssetSetupConfig = () => {
       if (error) throw error;
       return (data || []) as Department[];
     },
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: makes = [], isLoading: makesLoading } = useQuery({
@@ -114,7 +114,7 @@ export const useAssetSetupConfig = () => {
       if (error) throw error;
       return (data || []) as Make[];
     },
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: tagFormat } = useQuery({
@@ -128,7 +128,7 @@ export const useAssetSetupConfig = () => {
       if (error) throw error;
       return (data || { prefix: "AST-", start_number: "0001", auto_increment: true, padding_length: 6 }) as TagFormat;
     },
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Helper functions to get ID by name (for backward compatibility)

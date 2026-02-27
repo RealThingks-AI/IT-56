@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,7 +22,6 @@ serve(async (req) => {
       }
     );
 
-    // Get the authenticated user
     const {
       data: { user },
       error: userError,
@@ -36,7 +34,6 @@ serve(async (req) => {
       );
     }
 
-    // Get category_id from request body
     const { category_id } = await req.json();
 
     if (!category_id) {
@@ -46,28 +43,11 @@ serve(async (req) => {
       );
     }
 
-    // Get user's organization
-    const { data: userData, error: userDataError } = await supabaseClient
-      .from('users')
-      .select('organisation_id')
-      .eq('auth_user_id', user.id)
-      .single();
-
-    if (userDataError || !userData?.organisation_id) {
-      return new Response(
-        JSON.stringify({ error: 'Organization not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const organisationId = userData.organisation_id;
-
     // Get category tag format configuration
     const { data: tagFormat, error: tagError } = await supabaseClient
       .from('category_tag_formats')
       .select('prefix, current_number, zero_padding')
       .eq('category_id', category_id)
-      .eq('organisation_id', organisationId)
       .maybeSingle();
 
     if (tagError) {
@@ -88,38 +68,63 @@ serve(async (req) => {
       );
     }
 
-    // Calculate next asset ID and find unique one
-    let currentNumber = tagFormat.current_number;
+    const prefix = tagFormat.prefix;
     const paddingLength = tagFormat.zero_padding || 2;
-    let nextAssetId = '';
-    let isUnique = false;
-    const maxAttempts = 1000; // Prevent infinite loop
-    let attempts = 0;
 
-    // Keep incrementing until we find a unique ID
-    while (!isUnique && attempts < maxAttempts) {
-      const paddedNumber = currentNumber.toString().padStart(paddingLength, '0');
-      nextAssetId = `${tagFormat.prefix}${paddedNumber}`;
+    // Fetch all existing asset tags for this prefix to find gaps
+    const { data: existingAssets, error: queryError } = await supabaseClient
+      .from('itam_assets')
+      .select('asset_tag')
+      .like('asset_tag', `${prefix}%`);
 
-      // Check if this ID exists
-      const { data: existingAsset } = await supabaseClient
-        .from('itam_assets')
-        .select('id')
-        .eq('asset_id', nextAssetId)
-        .maybeSingle();
+    if (queryError) {
+      console.error('Error querying existing assets:', queryError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to query existing assets' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-      if (!existingAsset) {
-        isUnique = true;
-      } else {
-        currentNumber++;
-        attempts++;
+    // Extract all used numbers into a Set
+    const usedNumbers = new Set<number>();
+    if (existingAssets && existingAssets.length > 0) {
+      for (const asset of existingAssets) {
+        const tag = asset.asset_tag;
+        if (tag && tag.startsWith(prefix)) {
+          const numPart = tag.substring(prefix.length);
+          const num = parseInt(numPart, 10);
+          if (!isNaN(num) && num > 0) {
+            usedNumbers.add(num);
+          }
+        }
       }
     }
 
-    if (!isUnique) {
+    // Find the first available gap starting from 1
+    let nextNumber = 1;
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber++;
+    }
+
+    const paddedNumber = nextNumber.toString().padStart(paddingLength, '0');
+    const nextAssetId = `${prefix}${paddedNumber}`;
+
+    // Final uniqueness check
+    const { data: duplicate } = await supabaseClient
+      .from('itam_assets')
+      .select('id')
+      .eq('asset_tag', nextAssetId)
+      .maybeSingle();
+
+    if (duplicate) {
+      // If somehow still a duplicate, increment once more
+      const fallbackNumber = nextNumber + 1;
+      const fallbackPadded = fallbackNumber.toString().padStart(paddingLength, '0');
+      const fallbackId = `${prefix}${fallbackPadded}`;
+
       return new Response(
-        JSON.stringify({ error: 'Could not generate unique asset ID after maximum attempts' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ assetId: fallbackId }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

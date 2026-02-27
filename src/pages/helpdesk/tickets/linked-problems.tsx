@@ -55,7 +55,7 @@ export default function LinkedProblems() {
           <div>
             <Button
               variant="ghost"
-              onClick={() => navigate("/helpdesk/tickets")}
+              onClick={() => navigate("/tickets")}
               className="mb-2"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -155,7 +155,7 @@ export default function LinkedProblems() {
                               key={ticket.id}
                               variant="outline"
                               size="sm"
-                              onClick={() => navigate(`/helpdesk/tickets/${ticket.id}`)}
+                              onClick={() => navigate(`/tickets/${ticket.id}`)}
                             >
                               {ticket.ticket_number}
                               <ExternalLink className="h-3 w-3 ml-1" />

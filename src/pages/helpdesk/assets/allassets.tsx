@@ -1,254 +1,311 @@
-import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, UserCheck, Wrench, Settings, Package, ChevronDown, X } from "lucide-react";
+import { X, Search, Plus, ChevronDown, Settings, FileSpreadsheet, CheckSquare, UserCheck, Wrench, Package, Trash2 } from "lucide-react";
 import { AssetsList } from "@/components/helpdesk/assets/AssetsList";
-import { AssetModuleTopBar } from "@/components/helpdesk/assets/AssetModuleTopBar";
+import { AssetColumnSettings, SYSTEM_COLUMN_ORDER } from "@/components/helpdesk/assets/AssetColumnSettings";
 import { useAssetSetupConfig } from "@/hooks/useAssetSetupConfig";
-import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ASSET_STATUS_OPTIONS } from "@/lib/assetStatusUtils";
+import { useUISettings } from "@/hooks/useUISettings";
+import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+// XLSX export utility - dynamically loaded
+const exportToXLSX = async (data: any[], filename: string, columns: { id: string; label: string }[]) => {
+  if (!data || data.length === 0) { toast.error("No data to export"); return; }
+  const resolveValue = (item: any, colId: string): string => {
+    switch (colId) {
+      case "asset_tag": return item.asset_tag || "";
+      case "category": return item.category?.name || "";
+      case "status": return item.status || "";
+      case "make": return item.make?.name || "";
+      case "model": return item.model || "";
+      case "serial_number": return item.serial_number || "";
+      case "assigned_to": return item.assigned_user?.name || item.assigned_user?.email || item.assigned_to || "";
+      case "location": return item.location?.name || "";
+      case "site": return item.location?.site?.name || "";
+      case "department": return item.department?.name || "";
+      case "cost": return item.purchase_price?.toString() || "";
+      case "purchase_date": return item.purchase_date || "";
+      case "purchased_from": return item.vendor?.name || "";
+      case "description": return item.description || "";
+      case "created_at": return item.created_at || "";
+      case "created_by": return item.created_user?.name || item.created_user?.email || item.created_by || "";
+      default: return "";
+    }
+  };
+  const rows = data.map(item => {
+    const row: Record<string, string> = {};
+    columns.forEach(col => { row[col.label] = resolveValue(item, col.id); });
+    return row;
+  });
+  const XLSX = await import("xlsx");
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Assets");
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+  toast.success(`Exported ${data.length} records to ${filename}.xlsx`);
+};
 
 export default function AllAssets() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<Record<string, any>>({
     search: searchParams.get("search") || "",
     status: searchParams.get("status") || null,
     type: null,
+    warranty: searchParams.get("warranty") || null,
+    recent: searchParams.get("recent") || null,
   });
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [bulkActions, setBulkActions] = useState<any>(null);
   const [assetsData, setAssetsData] = useState<any[]>([]);
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  const [localSearch, setLocalSearch] = useState(searchParams.get("search") || "");
   const { categories } = useAssetSetupConfig();
-
+  const { assetColumns: savedColumns } = useUISettings();
   // Confirmation dialog states
   const [confirmDialog, setConfirmDialog] = useState<{
-    open: boolean;
-    title: string;
-    description: string;
-    action: () => void;
-    variant: "default" | "destructive";
-  }>({
-    open: false,
-    title: "",
-    description: "",
-    action: () => {},
-    variant: "default",
-  });
+    open: boolean; title: string; description: string; action: () => void; variant: "default" | "destructive";
+  }>({ open: false, title: "", description: "", action: () => {}, variant: "default" });
+
+  // Sync portal target directly (no useEffect delay)
+  const portalTarget = document.getElementById("module-header-portal");
 
   // Sync URL params to filters
   useEffect(() => {
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || null;
-    setFilters(prev => ({ ...prev, search, status }));
+    const warranty = searchParams.get("warranty") || null;
+    const recent = searchParams.get("recent") || null;
+    setFilters(prev => ({ ...prev, search, status, warranty, recent }));
+    setLocalSearch(search);
   }, [searchParams]);
+
+  // Clear selection when exiting bulk select mode
+  useEffect(() => {
+    if (!bulkSelectMode) { setSelectedAssetIds([]); setBulkActions(null); }
+  }, [bulkSelectMode]);
 
   const handleSearchChange = (value: string) => {
     setFilters(prev => ({ ...prev, search: value }));
-    if (value) {
-      searchParams.set("search", value);
-    } else {
-      searchParams.delete("search");
-    }
+    if (value) { searchParams.set("search", value); } else { searchParams.delete("search"); }
     setSearchParams(searchParams, { replace: true });
+  };
+
+  // Debounced live search (300ms)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleLocalSearchChange = useCallback((value: string) => {
+    setLocalSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      handleSearchChange(value.trim());
+    }, 300);
+  }, []);
+
+  // Cleanup debounce on unmount
+  useEffect(() => { return () => { if (debounceRef.current) clearTimeout(debounceRef.current); }; }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    handleSearchChange(localSearch.trim());
+  };
+
+  const handleSearchClear = () => {
+    setLocalSearch("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    handleSearchChange("");
   };
 
   const handleStatusChange = (value: string) => {
     const status = value === "all" ? null : value;
     setFilters(prev => ({ ...prev, status }));
-    if (status) {
-      searchParams.set("status", status);
-    } else {
-      searchParams.delete("status");
-    }
+    if (status) { searchParams.set("status", status); } else { searchParams.delete("status"); }
     setSearchParams(searchParams, { replace: true });
   };
 
   const handleTypeChange = (value: string) => {
     const selectedCategory = value === "all" ? null : categories.find(c => c.name === value);
-    setFilters(prev => ({ 
-      ...prev, 
-      type: selectedCategory?.id || null,
-      typeName: value === "all" ? null : value 
-    }));
+    setFilters(prev => ({ ...prev, type: selectedCategory?.id || null, typeName: value === "all" ? null : value }));
   };
 
   const clearFilters = () => {
-    setFilters({ search: "", status: null, type: null, typeName: null });
+    setFilters({ search: "", status: null, type: null, typeName: null, warranty: null, recent: null });
     setSearchParams({}, { replace: true });
+    setLocalSearch("");
   };
 
-  const hasActiveFilters = filters.search || filters.status || filters.type;
-
-  // Confirmation handlers for destructive actions
-  const confirmBulkAction = (
-    title: string,
-    description: string,
-    action: () => void,
-    variant: "default" | "destructive" = "default"
-  ) => {
-    setConfirmDialog({
-      open: true,
-      title,
-      description,
-      action,
-      variant,
-    });
+  const getVisibleColumnsForExport = () => {
+    const columns = savedColumns && savedColumns.length > 0
+      ? SYSTEM_COLUMN_ORDER.map(systemCol => {
+          const savedCol = savedColumns.find(c => c.id === systemCol.id);
+          return savedCol ? { ...systemCol, visible: savedCol.visible } : systemCol;
+        })
+      : [...SYSTEM_COLUMN_ORDER];
+    return columns.filter(c => c.visible).sort((a, b) => a.order_index - b.order_index);
   };
+
+  const handleExportToExcel = () => {
+    const visibleColumns = getVisibleColumnsForExport();
+    if (assetsData.length > 0) { exportToXLSX(assetsData, "assets-export", visibleColumns); }
+    else { toast.info("No data available to export. Load assets first."); }
+  };
+
+  const hasActiveFilters = filters.search || filters.status || filters.type || filters.warranty || filters.recent;
+
+  const headerContent = (
+    <div className="flex items-center gap-2 flex-1 min-w-0">
+      {/* Search */}
+      <form onSubmit={handleSearchSubmit} className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          placeholder="Search assets..."
+          value={localSearch}
+          onChange={(e) => handleLocalSearchChange(e.target.value)}
+          className="pl-7 pr-7 h-7 w-[280px] text-xs"
+        />
+        {localSearch && (
+          <Button type="button" variant="ghost" size="icon" onClick={handleSearchClear} className="absolute right-0.5 top-1/2 -translate-y-1/2 h-5 w-5">
+            <X className="h-3 w-3" />
+          </Button>
+        )}
+      </form>
+
+      {/* Add Asset */}
+      <Button size="sm" onClick={() => navigate("/assets/add")} className="gap-1 h-7 px-3">
+        <Plus className="h-3.5 w-3.5" />
+        <span className="text-xs">Add Asset</span>
+      </Button>
+
+      {/* Filters */}
+      <Select value={filters.status || "all"} onValueChange={handleStatusChange}>
+        <SelectTrigger className="w-[160px] h-7 text-xs">
+          <SelectValue placeholder="Status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Status</SelectItem>
+          {ASSET_STATUS_OPTIONS.map(opt => (
+            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={filters.typeName || "all"} onValueChange={handleTypeChange}>
+        <SelectTrigger className="w-[160px] h-7 text-xs">
+          <SelectValue placeholder="Type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Types</SelectItem>
+          {categories.map((category) => (
+            <SelectItem key={category.id} value={category.name}>{category.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {hasActiveFilters && (
+        <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-1 text-xs px-2">
+          <X className="h-3 w-3" />
+          Clear
+        </Button>
+      )}
+
+      {/* Actions - pushed to the right */}
+      <div className="ml-auto">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+              Actions
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48 bg-popover">
+            <DropdownMenuItem onClick={() => setColumnSettingsOpen(true)}>
+              <Settings className="mr-2 h-3.5 w-3.5" />
+              Customize Columns
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportToExcel}>
+              <FileSpreadsheet className="mr-2 h-3.5 w-3.5" />
+              Export to Excel
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setBulkSelectMode(!bulkSelectMode)}>
+              <CheckSquare className="mr-2 h-3.5 w-3.5" />
+              {bulkSelectMode ? "Exit Bulk Select" : "Bulk Select"}
+            </DropdownMenuItem>
+            {bulkSelectMode && selectedAssetIds.length > 0 && bulkActions && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setConfirmDialog({
+                  open: true,
+                  title: "Check Out Assets",
+                  description: `Are you sure you want to check out ${selectedAssetIds.length} asset(s)? This will mark them as in use. Note: Bulk check-out does not assign to a specific user. Use the individual check-out action to assign assets.`,
+                  action: bulkActions.handleCheckOut,
+                  variant: "default",
+                })}>
+                  <UserCheck className="mr-2 h-3.5 w-3.5" />Check Out ({selectedAssetIds.length})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setConfirmDialog({
+                  open: true,
+                  title: "Check In Assets",
+                  description: `Are you sure you want to check in ${selectedAssetIds.length} asset(s)? This will mark them as available and close any open assignments.`,
+                  action: bulkActions.handleCheckIn,
+                  variant: "default",
+                })}>
+                  <UserCheck className="mr-2 h-3.5 w-3.5" />Check In ({selectedAssetIds.length})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setConfirmDialog({
+                  open: true,
+                  title: "Send for Repair",
+                  description: `Are you sure you want to send ${selectedAssetIds.length} asset(s) for repair/maintenance?`,
+                  action: bulkActions.handleMaintenance,
+                  variant: "default",
+                })}>
+                  <Wrench className="mr-2 h-3.5 w-3.5" />Repair ({selectedAssetIds.length})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setConfirmDialog({
+                  open: true,
+                  title: "Dispose Assets",
+                  description: `Are you sure you want to dispose ${selectedAssetIds.length} asset(s)? This will mark them as disposed.`,
+                  action: bulkActions.handleDispose,
+                  variant: "destructive",
+                })}>
+                  <Package className="mr-2 h-3.5 w-3.5" />Dispose ({selectedAssetIds.length})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setConfirmDialog({
+                  open: true,
+                  title: "Delete Assets",
+                  description: `Are you sure you want to delete ${selectedAssetIds.length} asset(s)? This action can be reversed by an administrator.`,
+                  action: bulkActions.handleDelete,
+                  variant: "destructive",
+                })} className="text-destructive">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />Delete ({selectedAssetIds.length})
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-background">
-      <AssetModuleTopBar 
-        onColumnsChange={() => {/* React Query cache is auto-invalidated by useUISettings */}}
-        onSearch={(query) => handleSearchChange(query)}
-        exportData={assetsData}
-        exportFilename="assets-export"
-      >
-        {/* Unified Filter Row - inside top bar */}
-        <div className="flex items-center gap-2 flex-wrap">
+    <div className="h-full flex flex-col overflow-hidden bg-background">
+      {/* Portal toolbar into layout header */}
+      {portalTarget && createPortal(headerContent, portalTarget)}
 
-          {/* Status Filter */}
-          <Select
-            value={filters.status || "all"}
-            onValueChange={handleStatusChange}
-          >
-            <SelectTrigger className="w-[120px] h-7 text-xs">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="available">Available</SelectItem>
-              <SelectItem value="in_use">In Use</SelectItem>
-              <SelectItem value="maintenance">Maintenance</SelectItem>
-              <SelectItem value="retired">Retired</SelectItem>
-              <SelectItem value="disposed">Disposed</SelectItem>
-              <SelectItem value="lost">Lost</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Type Filter */}
-          <Select
-            value={filters.typeName || "all"}
-            onValueChange={handleTypeChange}
-          >
-            <SelectTrigger className="w-[120px] h-7 text-xs">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.name}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Bulk Actions */}
-          {selectedAssetIds.length > 0 && bulkActions && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-7 text-xs">
-                  Bulk ({selectedAssetIds.length})
-                  <ChevronDown className="ml-1 h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={bulkActions.handleCheckOut}>
-                  <UserCheck className="mr-2 h-3.5 w-3.5" />
-                  Check Out
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={bulkActions.handleCheckIn}>
-                  <UserCheck className="mr-2 h-3.5 w-3.5" />
-                  Check In
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => confirmBulkAction(
-                    "Send to Maintenance",
-                    `Are you sure you want to mark ${selectedAssetIds.length} asset(s) as under maintenance?`,
-                    bulkActions.handleMaintenance
-                  )}
-                >
-                  <Wrench className="mr-2 h-3.5 w-3.5" />
-                  Maintenance
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => confirmBulkAction(
-                    "Dispose Assets",
-                    `Are you sure you want to dispose ${selectedAssetIds.length} asset(s)? This will mark them as disposed.`,
-                    bulkActions.handleDispose,
-                    "destructive"
-                  )}
-                >
-                  <Settings className="mr-2 h-3.5 w-3.5" />
-                  Dispose
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => confirmBulkAction(
-                    "Delete Assets",
-                    `Are you sure you want to delete ${selectedAssetIds.length} asset(s)? This action cannot be undone.`,
-                    bulkActions.handleDelete,
-                    "destructive"
-                  )}
-                  className="text-destructive"
-                >
-                  <Package className="mr-2 h-3.5 w-3.5" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Clear Filters */}
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-1 text-xs px-2">
-              <X className="h-3 w-3" />
-              Clear
-            </Button>
-          )}
-        </div>
-      </AssetModuleTopBar>
-
-      <div className="px-3 py-2 space-y-2">
-        {/* Active Filters Display - Compact */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Filters:</span>
-            {filters.search && (
-              <Badge variant="secondary" className="gap-1 text-[10px] h-5 px-1.5">
-                {filters.search}
-                <X
-                  className="h-2.5 w-2.5 cursor-pointer"
-                  onClick={() => handleSearchChange("")}
-                />
-              </Badge>
-            )}
-            {filters.status && (
-              <Badge variant="secondary" className="gap-1 text-[10px] h-5 px-1.5 capitalize">
-                {filters.status.replace("_", " ")}
-                <X
-                  className="h-2.5 w-2.5 cursor-pointer"
-                  onClick={() => handleStatusChange("all")}
-                />
-              </Badge>
-            )}
-            {filters.typeName && (
-              <Badge variant="secondary" className="gap-1 text-[10px] h-5 px-1.5">
-                {filters.typeName}
-                <X
-                  className="h-2.5 w-2.5 cursor-pointer"
-                  onClick={() => handleTypeChange("all")}
-                />
-              </Badge>
-            )}
-          </div>
-        )}
-
-        {/* Assets List */}
+      <div className="px-3 py-2 flex-1 overflow-hidden flex flex-col">
         <AssetsList
           filters={filters}
+          showSelection={bulkSelectMode}
           onSelectionChange={(selectedIds, actions) => {
             setSelectedAssetIds(selectedIds);
             setBulkActions(actions);
@@ -257,14 +314,16 @@ export default function AllAssets() {
         />
       </div>
 
-      {/* Confirmation Dialog */}
+      <AssetColumnSettings
+        open={columnSettingsOpen}
+        onOpenChange={setColumnSettingsOpen}
+        onColumnsChange={() => {}}
+      />
+
       <ConfirmDialog
         open={confirmDialog.open}
         onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}
-        onConfirm={() => {
-          confirmDialog.action();
-          setConfirmDialog(prev => ({ ...prev, open: false }));
-        }}
+        onConfirm={() => { confirmDialog.action(); setConfirmDialog(prev => ({ ...prev, open: false })); }}
         title={confirmDialog.title}
         description={confirmDialog.description}
         confirmText="Confirm"

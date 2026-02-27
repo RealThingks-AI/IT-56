@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { SettingsCard } from "./SettingsCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -16,10 +20,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { HardDrive, Download, RefreshCw, Loader2, Calendar, Settings2, Trash2 } from "lucide-react";
+import {
+  HardDrive,
+  Download,
+  RefreshCw,
+  Loader2,
+  Calendar,
+  Trash2,
+  Monitor,
+  Ticket,
+  RotateCcw,
+  Database,
+  Archive,
+  Clock,
+  FileArchive,
+} from "lucide-react";
 import { format } from "date-fns";
 import { SettingsLoadingSkeleton } from "./SettingsLoadingSkeleton";
+
+const MODULES = [
+  { name: "Assets", tables: ["itam_assets"], icon: Monitor, filterCol: "is_active", filterVal: true },
+  { name: "Tickets", tables: ["helpdesk_tickets"], icon: Ticket, filterCol: "is_deleted", filterVal: false },
+];
+
+const ALL_TABLES = MODULES.flatMap((m) => m.tables);
+
+const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => {
+  const h = i.toString().padStart(2, "0");
+  return { value: `${h}:00:00`, label: `${h}:00` };
+});
 
 interface Backup {
   id: string;
@@ -30,117 +70,163 @@ interface Backup {
   status: string;
   created_at: string;
   completed_at: string | null;
-}
-
-interface BackupSchedule {
-  id: string;
-  enabled: boolean;
-  frequency_days: number;
-  retention_count: number;
-  last_backup_at: string | null;
-  next_backup_at: string | null;
+  record_count: number | null;
+  tables_included: string[] | null;
 }
 
 export function AdminBackup() {
-  const { data: currentUser } = useCurrentUser();
-  const organisationId = currentUser?.organisationId;
   const queryClient = useQueryClient();
-  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [backingUpModule, setBackingUpModule] = useState<string | null>(null);
+  const [isFullBackup, setIsFullBackup] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState<Backup | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Backup | null>(null);
 
   const { data: backups = [], isLoading: backupsLoading } = useQuery({
-    queryKey: ["system-backups", organisationId],
+    queryKey: ["system-backups"],
     queryFn: async () => {
-      if (!organisationId) return [];
       const { data, error } = await supabase
         .from("system_backups")
         .select("*")
-        .eq("organisation_id", organisationId)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(30);
       if (error) throw error;
       return data as Backup[];
     },
-    enabled: !!organisationId,
   });
 
   const { data: schedule, isLoading: scheduleLoading } = useQuery({
-    queryKey: ["backup-schedule", organisationId],
+    queryKey: ["backup-schedule"],
     queryFn: async () => {
-      if (!organisationId) return null;
       const { data, error } = await supabase
         .from("backup_schedules")
         .select("*")
-        .eq("organisation_id", organisationId)
-        .single();
+        .limit(1)
+        .maybeSingle();
       if (error && error.code !== "PGRST116") throw error;
-      return data as BackupSchedule | null;
+      return data;
     },
-    enabled: !!organisationId,
+  });
+
+  const { data: moduleCounts = {}, refetch: refetchCounts } = useQuery({
+    queryKey: ["backup-module-counts"],
+    queryFn: async () => {
+      const counts: Record<string, number> = {};
+      for (const mod of MODULES) {
+        let total = 0;
+        for (const table of mod.tables) {
+          let query = (supabase as any).from(table).select("*", { count: "exact", head: true });
+          if (mod.filterCol) {
+            query = query.eq(mod.filterCol, mod.filterVal);
+          }
+          const { count, error } = await query;
+          if (!error && count !== null) total += count;
+        }
+        counts[mod.name] = total;
+      }
+      return counts;
+    },
   });
 
   const updateSchedule = useMutation({
-    mutationFn: async (updates: Partial<BackupSchedule>) => {
-      if (!organisationId) throw new Error("No organization");
-      
+    mutationFn: async (updates: Record<string, unknown>) => {
       const { data: existing } = await supabase
         .from("backup_schedules")
         .select("id")
-        .eq("organisation_id", organisationId)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (existing) {
         const { error } = await supabase
           .from("backup_schedules")
-          .update({ ...updates, updated_at: new Date().toISOString() })
-          .eq("organisation_id", organisationId);
+          .update({ ...updates, updated_at: new Date().toISOString() } as any)
+          .eq("id", existing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("backup_schedules")
           .insert({
-            organisation_id: organisationId,
             ...updates,
-            next_backup_at: updates.enabled 
-              ? new Date(Date.now() + (updates.frequency_days || 3) * 24 * 60 * 60 * 1000).toISOString()
+            next_backup_at: (updates as any).enabled
+              ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
               : null,
-          });
+          } as any);
         if (error) throw error;
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["backup-schedule"] });
-      toast.success("Backup schedule updated");
-    },
-    onError: (error: Error) => {
-      toast.error("Failed to update schedule: " + error.message);
+      toast.success("Schedule updated");
     },
   });
 
-  const createManualBackup = async () => {
-    setIsCreatingBackup(true);
+  const triggerBackup = async (type: "full" | "module", moduleName?: string, tables?: string[]) => {
+    if (type === "full") setIsFullBackup(true);
+    else setBackingUpModule(moduleName || null);
+
     try {
-      // Create a backup record
-      const backupName = `backup-${format(new Date(), "yyyy-MM-dd-HHmmss")}`;
-      const { error } = await supabase
-        .from("system_backups")
-        .insert({
-          organisation_id: organisationId,
-          backup_name: backupName,
-          file_path: `${organisationId}/${backupName}.json`,
-          backup_type: "manual",
-          status: "pending",
-          tables_included: ["users", "helpdesk_tickets", "itam_assets", "helpdesk_categories"],
-        });
-      
+      const { data, error } = await supabase.functions.invoke("create-backup", {
+        body: {
+          type,
+          module_name: moduleName,
+          tables: type === "full" ? ALL_TABLES : tables,
+        },
+      });
       if (error) throw error;
-      
+      if (data?.error) throw new Error(data.error);
+      toast.success(`Backup completed — ${data.record_count} records`);
       queryClient.invalidateQueries({ queryKey: ["system-backups"] });
-      toast.success("Backup initiated. This may take a few minutes.");
-    } catch (error: any) {
-      toast.error("Failed to create backup: " + error.message);
+    } catch (err: any) {
+      toast.error("Backup failed: " + err.message);
     } finally {
-      setIsCreatingBackup(false);
+      setIsFullBackup(false);
+      setBackingUpModule(null);
     }
+  };
+
+  const handleDownload = async (backup: Backup) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("system-backups")
+        .createSignedUrl(backup.file_path, 60);
+      if (error || !data?.signedUrl) throw error || new Error("No URL");
+      const a = document.createElement("a");
+      a.href = data.signedUrl;
+      a.download = `${backup.backup_name}.json`;
+      a.click();
+    } catch {
+      toast.error("Download failed");
+    }
+  };
+
+  const handleDelete = async (backup: Backup) => {
+    try {
+      await supabase.storage.from("system-backups").remove([backup.file_path]);
+      await supabase.from("system_backups").delete().eq("id", backup.id);
+      queryClient.invalidateQueries({ queryKey: ["system-backups"] });
+      toast.success("Backup deleted");
+    } catch {
+      toast.error("Delete failed");
+    }
+    setConfirmDelete(null);
+  };
+
+  const handleRestore = async (backup: Backup) => {
+    try {
+      toast.info("Restoring backup…");
+      const { data, error } = await supabase.functions.invoke("restore-backup", {
+        body: { backup_id: backup.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const totalRestored = Object.values(data.records_restored as Record<string, number>).reduce(
+        (a, b) => a + b,
+        0
+      );
+      toast.success(`Restore complete — ${totalRestored} records`);
+    } catch (err: any) {
+      toast.error("Restore failed: " + err.message);
+    }
+    setConfirmRestore(null);
   };
 
   const formatFileSize = (bytes: number | null) => {
@@ -153,14 +239,23 @@ export function AdminBackup() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Completed</Badge>;
+        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-[10px]">Completed</Badge>;
       case "in_progress":
-        return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">In Progress</Badge>;
+        return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 text-[10px]">In Progress</Badge>;
       case "failed":
-        return <Badge variant="destructive">Failed</Badge>;
+        return <Badge variant="destructive" className="text-[10px]">Failed</Badge>;
       default:
-        return <Badge variant="secondary">Pending</Badge>;
+        return <Badge variant="secondary" className="text-[10px]">Pending</Badge>;
     }
+  };
+
+  const totalActiveRecords = Object.values(moduleCounts).reduce((a, b) => a + b, 0);
+  const lastBackup = backups.find((b) => b.status === "completed");
+
+  const getLastModuleBackup = (moduleName: string) => {
+    return backups.find(
+      (b) => b.status === "completed" && b.backup_name?.toLowerCase().startsWith(moduleName.toLowerCase())
+    );
   };
 
   if (backupsLoading || scheduleLoading) {
@@ -168,122 +263,228 @@ export function AdminBackup() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Schedule Settings */}
-      <SettingsCard
-        title="Automatic Backup Schedule"
-        description="Configure automated backups to run every 3 days, keeping the last 20 backups"
-        icon={Calendar}
-      >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <Label className="text-sm font-medium">Enable Automatic Backups</Label>
-              <p className="text-xs text-muted-foreground">
-                Backups will run automatically based on schedule
-              </p>
-            </div>
+    <div className="space-y-4">
+      {/* Top row: Full Backup + Schedule side by side */}
+      <div className="grid gap-3 md:grid-cols-2">
+        {/* Full System Backup */}
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Full System Backup</h3>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Archive className="h-3 w-3" />
+              {totalActiveRecords} records
+            </span>
+            <span className="flex items-center gap-1">
+              <HardDrive className="h-3 w-3" />
+              {MODULES.length} modules
+            </span>
+            {lastBackup && (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Last: {format(new Date(lastBackup.created_at), "MMM d, HH:mm")}
+              </span>
+            )}
+          </div>
+          <Button size="sm" onClick={() => triggerBackup("full")} disabled={isFullBackup || !!backingUpModule} className="w-full">
+            {isFullBackup ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5 mr-1.5" />}
+            Backup Now
+          </Button>
+        </div>
+
+        {/* Scheduled Backups */}
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Scheduled Backups</h3>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Enable Auto-Backup</Label>
             <Switch
               checked={schedule?.enabled || false}
               onCheckedChange={(checked) => updateSchedule.mutate({ enabled: checked })}
             />
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Frequency (days)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={schedule?.frequency_days || 3}
-                onChange={(e) => updateSchedule.mutate({ frequency_days: parseInt(e.target.value) || 3 })}
-                disabled={!schedule?.enabled}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Retention Count</Label>
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={schedule?.retention_count || 20}
-                onChange={(e) => updateSchedule.mutate({ retention_count: parseInt(e.target.value) || 20 })}
-                disabled={!schedule?.enabled}
-              />
-            </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Time</Label>
+            <Select
+              value={schedule?.backup_time || "02:00:00"}
+              onValueChange={(val) => updateSchedule.mutate({ backup_time: val })}
+              disabled={!schedule?.enabled}
+            >
+              <SelectTrigger className="w-[100px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_OPTIONS.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Label className="text-xs whitespace-nowrap">Every</Label>
+            <Select
+              value={String(schedule?.frequency_days || 3)}
+              onValueChange={(val) => updateSchedule.mutate({ frequency_days: parseInt(val) })}
+              disabled={!schedule?.enabled}
+            >
+              <SelectTrigger className="w-[90px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 5, 7, 14, 30].map((d) => (
+                  <SelectItem key={d} value={String(d)}>{d} day{d > 1 ? "s" : ""}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-
-          {schedule?.enabled && (
-            <div className="flex gap-4 text-sm text-muted-foreground pt-2">
-              <span>Last backup: {schedule.last_backup_at ? format(new Date(schedule.last_backup_at), "MMM d, yyyy HH:mm") : "Never"}</span>
-              <span>Next backup: {schedule.next_backup_at ? format(new Date(schedule.next_backup_at), "MMM d, yyyy HH:mm") : "Not scheduled"}</span>
-            </div>
+          {schedule?.next_backup_at && schedule?.enabled && (
+            <p className="text-[10px] text-muted-foreground">
+              Next: {format(new Date(schedule.next_backup_at), "MMM d, yyyy HH:mm")}
+            </p>
           )}
         </div>
-      </SettingsCard>
+      </div>
 
-      {/* Backup List */}
-      <SettingsCard
-        title="Backup History"
-        description="View and manage your database backups"
-        icon={HardDrive}
-        headerAction={
-          <Button onClick={createManualBackup} disabled={isCreatingBackup}>
-            {isCreatingBackup ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            Create Backup
+      {/* Module Backup — flat cards */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold">Module Backup</h3>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetchCounts()}>
+            <RefreshCw className="h-3 w-3 mr-1" /> Refresh
           </Button>
-        }
-      >
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-[80px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {backups.length === 0 ? (
+        </div>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+          {MODULES.map((mod) => {
+            const Icon = mod.icon;
+            const isLoading = backingUpModule === mod.name;
+            const lastModBackup = getLastModuleBackup(mod.name);
+            return (
+              <div key={mod.name} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+                <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Icon className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold">{mod.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {moduleCounts[mod.name] ?? "—"} records
+                    {lastModBackup && ` · Last: ${format(new Date(lastModBackup.created_at), "MMM d, HH:mm")}`}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => triggerBackup("module", mod.name, mod.tables)}
+                  disabled={isLoading || isFullBackup || (!!backingUpModule && backingUpModule !== mod.name)}
+                >
+                  {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <HardDrive className="h-3 w-3" />}
+                  <span className="ml-1">Backup</span>
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Backup History — flat table */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold">Backup History</h3>
+          <Badge variant="outline" className="text-[10px]">{backups.length} / 30</Badge>
+        </div>
+        {backups.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center rounded-lg border">
+            <FileArchive className="h-6 w-6 text-muted-foreground/50 mb-2" />
+            <p className="text-xs text-muted-foreground">No backups yet</p>
+          </div>
+        ) : (
+          <div className="rounded-lg border overflow-hidden">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    No backups yet. Create your first backup to get started.
-                  </TableCell>
+                  <TableHead className="text-xs">Type</TableHead>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Records</TableHead>
+                  <TableHead className="text-xs">Size</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs w-[100px] text-right">Actions</TableHead>
                 </TableRow>
-              ) : (
-                backups.map((backup) => (
-                  <TableRow key={backup.id}>
-                    <TableCell className="font-medium">{backup.backup_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {backup.backup_type}
+              </TableHeader>
+              <TableBody>
+                {backups.map((b) => (
+                  <TableRow key={b.id} className="h-9">
+                    <TableCell className="py-1">
+                      <Badge variant="outline" className="capitalize text-[10px]">
+                        {b.backup_name?.startsWith("full-") ? "Full" : b.backup_name?.split("-backup-")[0] || b.backup_type}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatFileSize(backup.file_size)}</TableCell>
-                    <TableCell>{getStatusBadge(backup.status)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(backup.created_at), "MMM d, yyyy HH:mm")}
+                    <TableCell className="text-xs text-muted-foreground py-1">
+                      {format(new Date(b.created_at), "MMM d, yyyy HH:mm")}
                     </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                        <Download className="h-4 w-4" />
-                      </Button>
+                    <TableCell className="text-xs py-1">{b.record_count ?? "—"}</TableCell>
+                    <TableCell className="text-xs py-1">{formatFileSize(b.file_size)}</TableCell>
+                    <TableCell className="py-1">{getStatusBadge(b.status)}</TableCell>
+                    <TableCell className="py-1">
+                      <div className="flex items-center justify-end gap-0.5">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDownload(b)} disabled={b.status !== "completed"} title="Download">
+                          <Download className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setConfirmRestore(b)} disabled={b.status !== "completed"} title="Restore">
+                          <RotateCcw className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setConfirmDelete(b)} title="Delete">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </SettingsCard>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Restore Confirm */}
+      <AlertDialog open={!!confirmRestore} onOpenChange={() => setConfirmRestore(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore Backup</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will overwrite existing data with the backup contents. This action cannot be undone. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmRestore && handleRestore(confirmRestore)}>
+              Restore
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirm */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Backup</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this backup file. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => confirmDelete && handleDelete(confirmDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -164,15 +164,7 @@ export const ContractsTab = ({ assetId }: ContractsTabProps) => {
             </div>
           )}
 
-          {!vendor && purchaseOrders.length === 0 && (
-            <div className="text-center py-6">
-              <FileText className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">No contracts linked to this asset</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Link a vendor to see contract information
-              </p>
-            </div>
-          )}
+          {/* Removed duplicate empty state - already handled above at line 130 */}
         </div>
       </CardContent>
     </Card>

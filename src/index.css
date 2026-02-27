@@ -29,10 +29,10 @@ Use font-sans, font-serif, or font-display utility classes in Tailwind
     --popover: 214 31% 91%;
     --popover-foreground: 222 47% 11%;
 
-    /* AppMaster Blue - Professional Brand Color */
-    --primary: 216 19% 26%;
-    --primary-foreground: 210 19% 98%;
-    --primary-hover: 211 100% 45%;
+    /* AppMaster Blue - Professional Brand Color with WCAG AA contrast (4.5:1 with white) */
+    --primary: 211 100% 35%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 211 100% 30%;
 
     /* Muted Grays for Structure */
     --secondary: 215 19% 34%;
@@ -172,14 +172,14 @@ Use font-sans, font-serif, or font-display utility classes in Tailwind
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
-    overflow-x: hidden;
+    overflow: hidden;
     margin: 0;
     padding: 0;
     width: 100%;
   }
 
   html {
-    overflow-x: hidden;
+    overflow: hidden;
     margin: 0;
     padding: 0;
     width: 100%;
@@ -188,7 +188,8 @@ Use font-sans, font-serif, or font-display utility classes in Tailwind
 
   #root {
     width: 100%;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     margin: 0;
     padding: 0;
   }

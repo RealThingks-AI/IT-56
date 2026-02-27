@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { getUserDisplayName } from "@/lib/userUtils";
+import { useUsers } from "@/hooks/useUsers";
 
 const assignSchema = z.object({
   assignee_id: z.string().min(1, "Please select an assignee"),
@@ -43,32 +44,8 @@ interface AssignTicketDialogProps {
 export const AssignTicketDialog = ({ open, onOpenChange, ticket }: AssignTicketDialogProps) => {
   const queryClient = useQueryClient();
 
-  const { data: users = [] } = useQuery({
-    queryKey: ["org-users"],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
-      if (!userData?.organisation_id) return [];
-
-      const { data, error } = await supabase
-        .from("users")
-        .select("id, name, email")
-        .eq("organisation_id", userData.organisation_id)
-        .eq("status", "active")
-        .order("name");
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: open,
-  });
+  // Use shared hook instead of custom query
+  const { data: users = [] } = useUsers();
 
   const form = useForm<z.infer<typeof assignSchema>>({
     resolver: zodResolver(assignSchema),

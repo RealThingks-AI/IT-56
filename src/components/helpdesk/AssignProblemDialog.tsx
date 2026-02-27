@@ -3,10 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/contexts/AuthContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUsers } from "@/hooks/useUsers";
 
 interface AssignProblemDialogProps {
   open: boolean;
@@ -15,36 +15,12 @@ interface AssignProblemDialogProps {
 }
 
 export function AssignProblemDialog({ open, onOpenChange, problem }: AssignProblemDialogProps) {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [assigneeId, setAssigneeId] = useState(problem?.assigned_to ?? "unassigned");
 
-  const { data: users } = useQuery({
-    queryKey: ["org-users"],
-    queryFn: async () => {
-      if (!user?.id) return [];
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
-      if (!userData?.organisation_id) return [];
-
-      const { data, error } = await supabase
-        .from("users")
-        .select("id, auth_user_id, name, email")
-        .eq("organisation_id", userData.organisation_id)
-        .order("name");
-
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!user?.id,
-  });
+  // Use shared hook instead of custom query
+  const { data: users } = useUsers();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,19 +37,11 @@ export function AssignProblemDialog({ open, onOpenChange, problem }: AssignProbl
 
       if (error) throw error;
 
-      toast({
-        title: "Success",
-        description: "Problem assigned successfully",
-      });
-
+      toast.success("Problem assigned successfully");
       queryClient.invalidateQueries({ queryKey: ["helpdesk-problems"] });
       onOpenChange(false);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to assign problem: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +49,7 @@ export function AssignProblemDialog({ open, onOpenChange, problem }: AssignProbl
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>Assign Problem - {problem?.problem_number}</DialogTitle>
         </DialogHeader>

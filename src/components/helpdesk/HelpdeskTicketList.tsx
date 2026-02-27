@@ -9,6 +9,7 @@ import { Loader2, AlertCircle, Edit, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { EditTicketDialog } from "./EditTicketDialog";
 import { AssignTicketDialog } from "./AssignTicketDialog";
+import { getStatusColor, getPriorityColor } from "@/lib/ticketUtils";
 
 interface HelpdeskTicketListProps {
   status?: string;
@@ -42,27 +43,6 @@ export const HelpdeskTicketList = ({ status }: HelpdeskTicketListProps) => {
       return data;
     },
   });
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "urgent": return "bg-red-500 hover:bg-red-600";
-      case "high": return "bg-orange-500 hover:bg-orange-600";
-      case "medium": return "bg-yellow-500 hover:bg-yellow-600";
-      case "low": return "bg-green-500 hover:bg-green-600";
-      default: return "bg-gray-500 hover:bg-gray-600";
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
-      case "in_progress": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
-      case "resolved": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
-      case "closed": return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
-      case "on_hold": return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
-    }
-  };
 
   if (isLoading) {
     return (
@@ -156,6 +136,7 @@ export const HelpdeskTicketList = ({ status }: HelpdeskTicketListProps) => {
                       e.stopPropagation();
                       setAssignDialog({ open: true, ticket });
                     }}
+                    aria-label="Assign ticket"
                   >
                     <UserPlus className="h-4 w-4" />
                   </Button>
@@ -166,6 +147,7 @@ export const HelpdeskTicketList = ({ status }: HelpdeskTicketListProps) => {
                       e.stopPropagation();
                       setEditDialog({ open: true, ticket });
                     }}
+                    aria-label="Edit ticket"
                   >
                     <Edit className="h-4 w-4" />
                   </Button>

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Mail, LogIn, LogOut, Bell, Wrench, Clock, Shield, FileText, Save, Eye, RotateCcw } from "lucide-react";
+import { Mail, LogIn, LogOut, Bell, Wrench, Clock, Shield, FileText, Save, Eye, RotateCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface EmailTemplate {
@@ -21,6 +23,22 @@ interface EmailTemplate {
   description: string;
   variables: string[];
 }
+
+interface EmailSettings {
+  senderName: string;
+  replyToEmail: string;
+  sendCopyToAdmins: boolean;
+  includeAssetPhoto: boolean;
+  warrantyReminderDays: number;
+}
+
+const defaultSettings: EmailSettings = {
+  senderName: "IT Asset Management",
+  replyToEmail: "",
+  sendCopyToAdmins: false,
+  includeAssetPhoto: true,
+  warrantyReminderDays: 30,
+};
 
 const defaultTemplates: EmailTemplate[] = [
   {
@@ -183,10 +201,65 @@ IT Asset Management Team`,
   }
 ];
 
+const iconMap: Record<string, any> = {
+  checkout: LogOut,
+  checkin: LogIn,
+  warranty_expiring: Shield,
+  maintenance_due: Wrench,
+  overdue_return: Clock,
+  license_expiring: FileText,
+  reservation_reminder: Bell,
+};
+
 export function EmailsTab() {
+  const queryClient = useQueryClient();
   const [templates, setTemplates] = useState<EmailTemplate[]>(defaultTemplates);
+  const [emailSettings, setEmailSettings] = useState<EmailSettings>(defaultSettings);
   const [activeTemplate, setActiveTemplate] = useState("checkout");
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Load saved templates from DB
+  const { data: savedConfigs, isLoading } = useQuery({
+    queryKey: ["itam-email-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("itam_email_config")
+        .select("*");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Apply saved configs on load
+  useEffect(() => {
+    if (!savedConfigs || savedConfigs.length === 0) return;
+
+    // Merge saved templates
+    const templateConfigs = savedConfigs.filter((c: any) => c.config_type === "template");
+    if (templateConfigs.length > 0) {
+      setTemplates(prev => prev.map(t => {
+        const saved = templateConfigs.find((c: any) => c.config_key === t.id);
+        if (saved) {
+          const val = saved.config_value as any;
+          return { ...t, subject: val.subject ?? t.subject, body: val.body ?? t.body, enabled: val.enabled ?? t.enabled };
+        }
+        return t;
+      }));
+    }
+
+    // Load settings
+    const settingsConfig = savedConfigs.find((c: any) => c.config_type === "settings" && c.config_key === "global_settings");
+    if (settingsConfig) {
+      const val = settingsConfig.config_value as any;
+      setEmailSettings({
+        senderName: val.senderName ?? defaultSettings.senderName,
+        replyToEmail: val.replyToEmail ?? defaultSettings.replyToEmail,
+        sendCopyToAdmins: val.sendCopyToAdmins ?? defaultSettings.sendCopyToAdmins,
+        includeAssetPhoto: val.includeAssetPhoto ?? defaultSettings.includeAssetPhoto,
+        warrantyReminderDays: val.warrantyReminderDays ?? defaultSettings.warrantyReminderDays,
+      });
+    }
+  }, [savedConfigs]);
 
   const currentTemplate = templates.find(t => t.id === activeTemplate) || templates[0];
 
@@ -195,26 +268,65 @@ export function EmailsTab() {
     setHasChanges(true);
   };
 
+  const updateEmailSettings = (updates: Partial<EmailSettings>) => {
+    setEmailSettings(prev => ({ ...prev, ...updates }));
+    setHasChanges(true);
+  };
+
+  // Save mutation
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      // Upsert each template
+      for (const t of templates) {
+        const { error } = await supabase
+          .from("itam_email_config")
+          .upsert({
+            config_type: "template",
+            config_key: t.id,
+            config_value: { subject: t.subject, body: t.body, enabled: t.enabled },
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "tenant_id,config_type,config_key" });
+        if (error) throw error;
+      }
+
+      // Upsert settings
+      const { error } = await supabase
+        .from("itam_email_config")
+        .upsert({
+          config_type: "settings",
+          config_key: "global_settings",
+          config_value: emailSettings as any,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "tenant_id,config_type,config_key" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Email configuration saved successfully");
+      setHasChanges(false);
+      queryClient.invalidateQueries({ queryKey: ["itam-email-config"] });
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to save: " + error.message);
+    },
+  });
+
   const handleSave = () => {
-    // In a real app, this would save to the database
-    toast.success("Email templates saved successfully");
-    setHasChanges(false);
+    saveMutation.mutate();
   };
 
   const handleReset = () => {
     setTemplates(defaultTemplates);
-    setHasChanges(false);
-    toast.info("Templates reset to defaults");
+    setEmailSettings(defaultSettings);
+    setHasChanges(true);
+    toast.info("Templates reset to defaults. Click Save to persist.");
   };
 
   const handlePreview = () => {
-    // Create a preview with sample data
     let preview = currentTemplate.body;
     currentTemplate.variables.forEach(v => {
       preview = preview.replace(new RegExp(`{{${v}}}`, 'g'), `[${v.replace(/_/g, ' ').toUpperCase()}]`);
     });
     
-    // Open in new window
     const previewWindow = window.open('', '_blank', 'width=600,height=600');
     if (previewWindow) {
       previewWindow.document.write(`
@@ -237,6 +349,14 @@ export function EmailsTab() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -255,8 +375,8 @@ export function EmailsTab() {
               <RotateCcw className="h-3 w-3 mr-2" />
               Reset
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={!hasChanges}>
-              <Save className="h-3 w-3 mr-2" />
+            <Button size="sm" onClick={handleSave} disabled={!hasChanges || saveMutation.isPending}>
+              {saveMutation.isPending ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : <Save className="h-3 w-3 mr-2" />}
               Save Changes
             </Button>
           </div>
@@ -266,7 +386,7 @@ export function EmailsTab() {
             <ScrollArea className="w-full whitespace-nowrap">
               <TabsList className="inline-flex h-9 items-center justify-start rounded-md bg-muted p-1 w-auto">
                 {templates.map(template => {
-                  const Icon = template.icon;
+                  const Icon = iconMap[template.id] || Mail;
                   return (
                     <TabsTrigger key={template.id} value={template.id} className="shrink-0 gap-1.5 text-xs">
                       <Icon className="h-3 w-3" />
@@ -369,11 +489,21 @@ export function EmailsTab() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-xs">Sender Name</Label>
-              <Input placeholder="IT Asset Management" className="text-sm" />
+              <Input
+                placeholder="IT Asset Management"
+                className="text-sm"
+                value={emailSettings.senderName}
+                onChange={(e) => updateEmailSettings({ senderName: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-xs">Reply-To Email</Label>
-              <Input placeholder="itam@company.com" className="text-sm" />
+              <Input
+                placeholder="itam@company.com"
+                className="text-sm"
+                value={emailSettings.replyToEmail}
+                onChange={(e) => updateEmailSettings({ replyToEmail: e.target.value })}
+              />
             </div>
           </div>
           
@@ -383,7 +513,10 @@ export function EmailsTab() {
                 <Label className="text-sm">Send copy to administrators</Label>
                 <p className="text-xs text-muted-foreground">Send a copy of all emails to admin users</p>
               </div>
-              <Switch />
+              <Switch
+                checked={emailSettings.sendCopyToAdmins}
+                onCheckedChange={(checked) => updateEmailSettings({ sendCopyToAdmins: checked })}
+              />
             </div>
             
             <div className="flex items-center justify-between">
@@ -391,7 +524,10 @@ export function EmailsTab() {
                 <Label className="text-sm">Include asset photo</Label>
                 <p className="text-xs text-muted-foreground">Attach asset photo in checkout/checkin emails</p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={emailSettings.includeAssetPhoto}
+                onCheckedChange={(checked) => updateEmailSettings({ includeAssetPhoto: checked })}
+              />
             </div>
             
             <div className="flex items-center justify-between">
@@ -399,7 +535,12 @@ export function EmailsTab() {
                 <Label className="text-sm">Warranty reminder days</Label>
                 <p className="text-xs text-muted-foreground">Days before expiry to send reminder</p>
               </div>
-              <Input type="number" defaultValue={30} className="w-20 text-sm" />
+              <Input
+                type="number"
+                value={emailSettings.warrantyReminderDays}
+                onChange={(e) => updateEmailSettings({ warrantyReminderDays: parseInt(e.target.value) || 30 })}
+                className="w-20 text-sm"
+              />
             </div>
           </div>
         </CardContent>

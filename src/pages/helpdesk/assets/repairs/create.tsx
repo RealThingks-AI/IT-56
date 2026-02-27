@@ -15,13 +15,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
 
 const CreateRepair = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const preSelectedAssetId = searchParams.get("assetId");
@@ -98,20 +98,12 @@ const CreateRepair = () => {
       return repairData;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["itam-repairs"] });
-      queryClient.invalidateQueries({ queryKey: ["itam-assets"] });
-      toast({
-        title: "Success",
-        description: "Repair ticket created successfully",
-      });
+      invalidateAllAssetQueries(queryClient);
+      toast.success("Repair ticket created successfully");
       navigate(`/assets/repairs/detail/${data.id}`);
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create repair",
-        variant: "destructive",
-      });
+      toast.error(error.message || "Failed to create repair");
     },
   });
 
@@ -119,11 +111,7 @@ const CreateRepair = () => {
     e.preventDefault();
 
     if (!formData.asset_id || !formData.issue_description) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in required fields",
-        variant: "destructive",
-      });
+      toast.error("Please fill in required fields");
       return;
     }
 

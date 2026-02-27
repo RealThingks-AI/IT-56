@@ -107,6 +107,24 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
         throw new Error(`Failed to update role: ${roleError.message}`);
       }
 
+      // Insert audit log for user update
+      const changes: Record<string, { old: string | null; new: string }> = {};
+      if (values.name !== (user.name || "")) changes.name = { old: user.name, new: values.name };
+      if (values.status !== (user.status || "active")) changes.status = { old: user.status, new: values.status };
+      if (values.role !== normalizeRole(user.role)) changes.role = { old: user.role, new: values.role };
+
+      if (Object.keys(changes).length > 0) {
+        await supabase.from("audit_logs").insert({
+          action_type: "user_updated",
+          entity_type: "users",
+          entity_id: user.authUserId,
+          metadata: {
+            target_email: user.email,
+            changes,
+          },
+        });
+      }
+
       return { success: true };
     },
     onSuccess: () => {

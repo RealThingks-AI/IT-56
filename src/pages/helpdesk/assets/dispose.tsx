@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AssetTopBar } from "@/components/helpdesk/assets/AssetTopBar";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,14 +17,15 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { CalendarIcon, Search, Trash2, X, AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeSearchInput } from "@/lib/utils";
+import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
 
 const DisposePage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
-  const [disposalMethod, setDisposalMethod] = useState("");
+  const [disposalMethod, setDisposalMethod] = useState<string | undefined>(undefined);
   const [disposalDate, setDisposalDate] = useState<Date>(new Date());
   const [disposalValue, setDisposalValue] = useState("");
   const [notes, setNotes] = useState("");
@@ -41,7 +42,8 @@ const DisposePage = () => {
         .order("name");
 
       if (search) {
-        query = query.or(`name.ilike.%${search}%,asset_tag.ilike.%${search}%,asset_id.ilike.%${search}%`);
+        const s = sanitizeSearchInput(search);
+        query = query.or(`name.ilike.%${s}%,asset_tag.ilike.%${s}%,asset_id.ilike.%${s}%`);
       }
 
       const { data } = await query.limit(50);
@@ -55,25 +57,67 @@ const DisposePage = () => {
       if (selectedAssets.length === 0) throw new Error("Please select at least one asset");
       if (!disposalMethod) throw new Error("Please select a disposal method");
 
-      // Update assets to disposed status - store disposal details in custom_fields
-      const { error } = await supabase
-        .from("itam_assets")
-        .update({ 
-          status: "disposed",
-          notes: notes || null,
-          custom_fields: {
-            disposal_date: disposalDate.toISOString(),
-            disposal_method: disposalMethod,
-            disposal_value: disposalValue ? parseFloat(disposalValue) : null,
-          }
-        })
-        .in("id", selectedAssets);
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-      if (error) throw error;
+      // Process each asset individually to merge custom_fields
+      for (const assetId of selectedAssets) {
+        // Fetch existing asset to preserve custom_fields
+        const { data: existing } = await supabase
+          .from("itam_assets")
+          .select("custom_fields, status")
+          .eq("id", assetId)
+          .single();
+
+        const existingFields = (existing?.custom_fields as Record<string, any>) || {};
+        const mergedFields = {
+          ...existingFields,
+          disposal_date: disposalDate.toISOString(),
+          disposal_method: disposalMethod,
+          disposal_value: disposalValue ? parseFloat(disposalValue) : null,
+        };
+
+        const { error } = await supabase
+          .from("itam_assets")
+          .update({ 
+            status: "disposed",
+            notes: notes || null,
+            custom_fields: mergedFields,
+            assigned_to: null,
+            checked_out_to: null,
+            checked_out_at: null,
+            expected_return_date: null,
+            check_out_notes: null,
+          })
+          .eq("id", assetId);
+
+        if (error) throw error;
+
+        // Close any open assignments for this asset
+        await supabase
+          .from("itam_asset_assignments")
+          .update({ returned_at: new Date().toISOString() })
+          .eq("asset_id", assetId)
+          .is("returned_at", null);
+
+        // Log to history
+        await supabase.from("itam_asset_history").insert({
+          asset_id: assetId,
+          action: "disposed",
+          old_value: existing?.status,
+          new_value: "disposed",
+          details: {
+            disposal_method: disposalMethod,
+            disposal_date: disposalDate.toISOString(),
+            disposal_value: disposalValue ? parseFloat(disposalValue) : null,
+            notes,
+          },
+          performed_by: currentUser?.id,
+        });
+      }
     },
     onSuccess: () => {
       toast.success(`${selectedAssets.length} asset(s) disposed successfully`);
-      queryClient.invalidateQueries({ queryKey: ["itam-assets"] });
+      invalidateAllAssetQueries(queryClient);
       navigate("/assets/allassets");
     },
     onError: (error: any) => {
@@ -98,9 +142,6 @@ const DisposePage = () => {
     .reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0);
 
   return (
-    <div className="min-h-screen bg-background">
-      <AssetTopBar />
-      
       <div className="p-4 space-y-4">
         {/* Warning Banner */}
         <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
@@ -182,7 +223,16 @@ const DisposePage = () => {
                           <Badge variant="secondary">{asset.status}</Badge>
                         </TableCell>
                         <TableCell>
-                          {asset.purchase_price ? `$${parseFloat(String(asset.purchase_price)).toLocaleString()}` : 'N/A'}
+                          {asset.purchase_price 
+                            ? (() => {
+                                const cf = (asset.custom_fields as Record<string, any>) || {};
+                                const currency = cf.currency || "INR";
+                                const symbols: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
+                                const symbol = symbols[currency] || "₹";
+                                const locale = currency === "INR" ? "en-IN" : "en-US";
+                                return `${symbol}${parseFloat(String(asset.purchase_price)).toLocaleString(locale)}`;
+                              })()
+                            : 'N/A'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -212,14 +262,15 @@ const DisposePage = () => {
                 <div className="p-3 bg-accent rounded-lg">
                   <p className="text-sm">
                     <span className="font-medium">Total Value:</span>{' '}
-                    ${totalValue.toLocaleString()}
+                    {totalValue.toLocaleString("en-IN")}
+                    <span className="text-xs text-muted-foreground ml-1">(mixed currencies possible)</span>
                   </p>
                 </div>
               )}
 
               <div className="space-y-2">
                 <Label>Disposal Method *</Label>
-                <Select value={disposalMethod} onValueChange={setDisposalMethod}>
+                <Select value={disposalMethod || undefined} onValueChange={setDisposalMethod}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select method" />
                   </SelectTrigger>
@@ -302,7 +353,6 @@ const DisposePage = () => {
           </Card>
         </div>
       </div>
-    </div>
   );
 };
 

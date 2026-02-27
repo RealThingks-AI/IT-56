@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -26,13 +27,13 @@ export interface AssetColumn {
 
 // System-controlled column order - positions are FIXED and cannot be changed by users
 const SYSTEM_COLUMN_ORDER: AssetColumn[] = [
-  { id: "asset_tag", label: "Asset Tag ID", visible: true, locked: true, required: true, order_index: 0, category: "asset" },
-  { id: "category", label: "Category", visible: true, order_index: 1, category: "linking" },
+  { id: "asset_photo", label: "Image", visible: false, order_index: 0, category: "asset" },
+  { id: "asset_tag", label: "Asset Tag ID", visible: true, locked: true, required: true, order_index: 1, category: "asset" },
   { id: "status", label: "Status", visible: true, order_index: 2, category: "event" },
-  { id: "make", label: "Make", visible: true, order_index: 3, category: "asset" },
-  { id: "model", label: "Model", visible: true, order_index: 4, category: "asset" },
-  { id: "serial_number", label: "Serial No", visible: true, order_index: 5, category: "asset" },
-  { id: "assigned_to", label: "Assigned To", visible: true, order_index: 6, category: "event" },
+  { id: "category", label: "Category", visible: true, order_index: 3, category: "linking" },
+  { id: "make", label: "Make", visible: true, order_index: 4, category: "asset" },
+  { id: "model", label: "Model", visible: true, order_index: 5, category: "asset" },
+  { id: "serial_number", label: "Serial No", visible: true, order_index: 6, category: "asset" },
   { id: "asset_configuration", label: "Asset Configuration", visible: false, order_index: 7, category: "asset" },
   { id: "description", label: "Description", visible: false, order_index: 8, category: "asset" },
   { id: "cost", label: "Cost", visible: true, order_index: 9, category: "asset" },
@@ -42,12 +43,12 @@ const SYSTEM_COLUMN_ORDER: AssetColumn[] = [
   { id: "department", label: "Department", visible: false, order_index: 13, category: "linking" },
   { id: "location", label: "Location", visible: true, order_index: 14, category: "linking" },
   { id: "site", label: "Site", visible: false, order_index: 15, category: "linking" },
-  { id: "asset_photo", label: "Asset Photo", visible: false, order_index: 16, category: "asset" },
-  { id: "event_date", label: "Event Date", visible: false, order_index: 17, category: "event" },
-  { id: "event_due_date", label: "Event Due Date", visible: false, order_index: 18, category: "event" },
-  { id: "event_notes", label: "Event Notes", visible: false, order_index: 19, category: "event" },
-  { id: "created_by", label: "Created By", visible: false, order_index: 20, category: "asset" },
-  { id: "created_at", label: "Date Created", visible: false, order_index: 21, category: "asset" },
+  { id: "event_date", label: "Event Date", visible: false, order_index: 16, category: "event" },
+  { id: "event_due_date", label: "Event Due Date", visible: false, order_index: 17, category: "event" },
+  { id: "event_notes", label: "Event Notes", visible: false, order_index: 18, category: "event" },
+  { id: "created_by", label: "Created By", visible: false, order_index: 19, category: "asset" },
+  { id: "created_at", label: "Date Created", visible: false, order_index: 20, category: "asset" },
+  { id: "assigned_to", label: "Assigned To", visible: true, order_index: 21, category: "event" },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -148,6 +149,9 @@ export function AssetColumnSettings({ open, onOpenChange, onColumnsChange }: Ass
               {visibleCount} of {columns.length} visible
             </span>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Configure which columns are visible in the asset list
+          </DialogDescription>
         </DialogHeader>
 
         <p className="text-xs text-muted-foreground mb-2">
@@ -174,24 +178,29 @@ export function AssetColumnSettings({ open, onOpenChange, onColumnsChange }: Ass
               </Button>
             </div>
 
+        <div className="relative">
             <ScrollArea className="h-[400px] pr-4">
               <div className="space-y-4">
                 {categoryOrder.map((category) => {
                   const categoryColumns = groupedColumns[category] || [];
                   if (categoryColumns.length === 0) return null;
+                  const visibleInCategory = categoryColumns.filter(c => c.visible).length;
                   
                   return (
                     <div key={category}>
                       <div className="sticky top-0 bg-background py-1.5 mb-2 border-b">
                         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                           {CATEGORY_LABELS[category]}
+                          <span className="ml-2 font-normal text-[10px]">
+                            ({visibleInCategory} of {categoryColumns.length})
+                          </span>
                         </span>
                       </div>
                       <div className="space-y-1">
                         {categoryColumns.map((column) => (
                           <div
                             key={column.id}
-                            className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors"
+                            className="flex items-center gap-3 p-1.5 rounded-md hover:bg-muted/50 transition-colors"
                           >
                             <Checkbox
                               id={`col-${column.id}`}
@@ -219,6 +228,9 @@ export function AssetColumnSettings({ open, onOpenChange, onColumnsChange }: Ass
                 })}
               </div>
             </ScrollArea>
+            {/* Scroll fade indicator */}
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent" />
+          </div>
           </>
         )}
 

@@ -449,6 +449,140 @@ export const generateMaintenancePastDueReport = (data: ReportData) => {
   toast.success("Report downloaded");
 };
 
+// ============= AUDIT BY SITE REPORT =============
+
+export const generateAuditBySiteReport = (data: ReportData) => {
+  const auditRecords = data.assetHistory.filter(h => h.action === "audit");
+  if (!auditRecords.length) {
+    toast.error("No audit records found");
+    return;
+  }
+  const headers = ["Site", "Location", "Asset Tag", "Asset Name", "Audit Date", "Audited By"];
+  const rows = auditRecords.map(record => {
+    const asset = data.assets.find(a => a.id === record.asset_id);
+    const location = data.locations.find(l => l.id === asset?.location_id);
+    const site = data.sites.find(s => s.id === location?.site_id);
+    return {
+      "Site": site?.name || "N/A",
+      "Location": location?.name || "N/A",
+      "Asset Tag": asset?.asset_tag || "N/A",
+      "Asset Name": asset?.name || "N/A",
+      "Audit Date": formatDate(record.created_at),
+      "Audited By": record.performed_by || "N/A"
+    };
+  });
+  const csv = generateCSV(rows, headers);
+  downloadCSV(csv, "audit_by_site");
+  toast.success("Report downloaded");
+};
+
+// ============= CHECKOUT BY SITE REPORT =============
+
+export const generateCheckoutBySiteReport = (data: ReportData) => {
+  const active = data.assignments.filter(a => !a.returned_at);
+  if (!active.length) {
+    toast.error("No active check-outs found");
+    return;
+  }
+  const headers = ["Site", "Location", "Asset Tag", "Asset Name", "Assigned To", "Check-Out Date"];
+  const rows = active.map(assignment => {
+    const asset = data.assets.find(a => a.id === assignment.asset_id);
+    const location = data.locations.find(l => l.id === asset?.location_id);
+    const site = data.sites.find(s => s.id === location?.site_id);
+    return {
+      "Site": site?.name || "N/A",
+      "Location": location?.name || "N/A",
+      "Asset Tag": asset?.asset_tag || "N/A",
+      "Asset Name": asset?.name || "N/A",
+      "Assigned To": assignment.assigned_to || "N/A",
+      "Check-Out Date": formatDate(assignment.assigned_at)
+    };
+  });
+  const csv = generateCSV(rows, headers);
+  downloadCSV(csv, "checkout_by_site");
+  toast.success("Report downloaded");
+};
+
+// ============= MAINTENANCE BY PERSON REPORT =============
+
+export const generateMaintenanceByPersonReport = (data: ReportData) => {
+  if (!data.maintenanceSchedules.length && !data.repairs.length) {
+    toast.error("No maintenance records found");
+    return;
+  }
+  const headers = ["Assigned To", "Asset Tag", "Asset Name", "Type", "Description", "Date", "Status"];
+  const maintenanceRows = data.maintenanceSchedules.map(m => {
+    const asset = data.assets.find(a => a.id === m.asset_id);
+    return {
+      "Assigned To": m.assigned_to || "Unassigned",
+      "Asset Tag": asset?.asset_tag || "N/A",
+      "Asset Name": asset?.name || "N/A",
+      "Type": "Scheduled",
+      "Description": m.description || "N/A",
+      "Date": formatDate(m.scheduled_date),
+      "Status": m.status || "Pending"
+    };
+  });
+  const repairRows = data.repairs.map(r => {
+    const asset = data.assets.find(a => a.id === r.asset_id);
+    return {
+      "Assigned To": r.assigned_to || "Unassigned",
+      "Asset Tag": asset?.asset_tag || "N/A",
+      "Asset Name": asset?.name || "N/A",
+      "Type": "Repair",
+      "Description": r.issue_description || "N/A",
+      "Date": formatDate(r.created_at),
+      "Status": r.status || "N/A"
+    };
+  });
+  const allRows = [...maintenanceRows, ...repairRows].sort((a, b) => 
+    (a["Assigned To"]).localeCompare(b["Assigned To"])
+  );
+  const csv = generateCSV(allRows, headers);
+  downloadCSV(csv, "maintenance_by_person");
+  toast.success("Report downloaded");
+};
+
+// ============= MAINTENANCE HISTORY BY DATE REPORT =============
+
+export const generateMaintenanceHistoryByDateReport = (data: ReportData) => {
+  if (!data.maintenanceSchedules.length && !data.repairs.length) {
+    toast.error("No maintenance records found");
+    return;
+  }
+  const headers = ["Date", "Asset Tag", "Asset Name", "Type", "Description", "Status", "Cost"];
+  const maintenanceRows = data.maintenanceSchedules.map(m => {
+    const asset = data.assets.find(a => a.id === m.asset_id);
+    return {
+      "Date": formatDate(m.scheduled_date),
+      "Asset Tag": asset?.asset_tag || "N/A",
+      "Asset Name": asset?.name || "N/A",
+      "Type": "Scheduled",
+      "Description": m.description || "N/A",
+      "Status": m.status || "Pending",
+      "Cost": formatCurrency(m.cost)
+    };
+  });
+  const repairRows = data.repairs.map(r => {
+    const asset = data.assets.find(a => a.id === r.asset_id);
+    return {
+      "Date": formatDate(r.created_at),
+      "Asset Tag": asset?.asset_tag || "N/A",
+      "Asset Name": asset?.name || "N/A",
+      "Type": "Repair",
+      "Description": r.issue_description || "N/A",
+      "Status": r.status || "N/A",
+      "Cost": formatCurrency(r.cost)
+    };
+  });
+  const allRows = [...maintenanceRows, ...repairRows].sort((a, b) => 
+    new Date(b["Date"]).getTime() - new Date(a["Date"]).getTime()
+  );
+  const csv = generateCSV(allRows, headers);
+  downloadCSV(csv, "maintenance_history_by_date");
+  toast.success("Report downloaded");
+};
+
 // ============= STATUS REPORTS =============
 
 export const generateStatusReport = (data: ReportData, status: string, filename: string) => {

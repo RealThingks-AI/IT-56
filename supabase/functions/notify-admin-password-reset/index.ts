@@ -134,10 +134,10 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // First, find the user requesting reset to get their organisation
+    // Find the user requesting reset
     const { data: requestingUser, error: userError } = await supabase
       .from("users")
-      .select("id, email, name, organisation_id")
+      .select("id, email, name")
       .eq("email", trimmedEmail)
       .maybeSingle();
 
@@ -145,20 +145,12 @@ serve(async (req) => {
       console.error("Error finding user:", userError);
     }
 
-    // Get admin emails - filter by organisation if user was found
-    let adminQuery = supabase
+    // Get all active admin emails (single company - no org filtering needed)
+    const { data: admins, error: adminError } = await supabase
       .from("users")
-      .select("email, name, organisation_id")
+      .select("email, name")
       .eq("role", "admin")
       .eq("status", "active");
-
-    // If user belongs to an organisation, only notify admins from that organisation
-    if (requestingUser?.organisation_id) {
-      console.log(`User belongs to organisation: ${requestingUser.organisation_id}`);
-      adminQuery = adminQuery.eq("organisation_id", requestingUser.organisation_id);
-    }
-
-    const { data: admins, error: adminError } = await adminQuery;
 
     if (adminError) {
       console.error("Error fetching admins:", adminError);

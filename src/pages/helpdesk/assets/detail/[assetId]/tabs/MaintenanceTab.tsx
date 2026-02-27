@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Wrench, Plus, Calendar, CheckCircle } from "lucide-react";
+import { Wrench, Plus, Calendar, CheckCircle, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -56,15 +56,6 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
 
   const createSchedule = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
       const { error } = await supabase
         .from("itam_maintenance_schedules")
         .insert({
@@ -74,7 +65,6 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
           frequency: data.frequency,
           next_due_date: data.next_due_date || null,
           is_active: true,
-          tenant_id: profileData?.tenant_id || 1,
         });
 
       if (error) throw error;
@@ -87,6 +77,23 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to create schedule");
+    },
+  });
+
+  const deleteSchedule = useMutation({
+    mutationFn: async (scheduleId: string) => {
+      const { error } = await supabase
+        .from("itam_maintenance_schedules")
+        .delete()
+        .eq("id", scheduleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-maintenance", assetId] });
+      toast.success("Maintenance schedule deleted");
+    },
+    onError: () => {
+      toast.error("Failed to delete schedule");
     },
   });
 
@@ -283,15 +290,30 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
                       <p className="text-xs text-muted-foreground mt-1">{schedule.description}</p>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                    onClick={() => markComplete.mutate(schedule)}
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Complete
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {schedule.last_completed_date && (
+                      <span className="text-[10px] text-muted-foreground mr-1">
+                        Last: {format(new Date(schedule.last_completed_date), "dd MMM")}
+                      </span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                      onClick={() => markComplete.mutate(schedule)}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Complete
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteSchedule.mutate(schedule.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

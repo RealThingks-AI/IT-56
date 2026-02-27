@@ -23,7 +23,6 @@ export type Database = {
           id: string
           ip_address: unknown
           metadata: Json | null
-          organisation_id: string | null
           user_agent: string | null
           user_id: string | null
         }
@@ -35,7 +34,6 @@ export type Database = {
           id?: string
           ip_address?: unknown
           metadata?: Json | null
-          organisation_id?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
@@ -47,18 +45,10 @@ export type Database = {
           id?: string
           ip_address?: unknown
           metadata?: Json | null
-          organisation_id?: string | null
           user_agent?: string | null
           user_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "audit_logs_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "audit_logs_user_id_fkey"
             columns: ["user_id"]
@@ -74,7 +64,6 @@ export type Database = {
           created_at: string | null
           error_message: string | null
           id: string
-          organisation_id: string | null
           records_restored: Json | null
           restored_at: string | null
           restored_by: string | null
@@ -86,7 +75,6 @@ export type Database = {
           created_at?: string | null
           error_message?: string | null
           id?: string
-          organisation_id?: string | null
           records_restored?: Json | null
           restored_at?: string | null
           restored_by?: string | null
@@ -98,7 +86,6 @@ export type Database = {
           created_at?: string | null
           error_message?: string | null
           id?: string
-          organisation_id?: string | null
           records_restored?: Json | null
           restored_at?: string | null
           restored_by?: string | null
@@ -111,13 +98,6 @@ export type Database = {
             columns: ["backup_id"]
             isOneToOne: false
             referencedRelation: "system_backups"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "backup_restore_logs_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
         ]
@@ -134,7 +114,6 @@ export type Database = {
           next_backup_at: string | null
           notify_email: string | null
           notify_on_completion: boolean | null
-          organisation_id: string | null
           retention_count: number | null
           updated_at: string | null
         }
@@ -149,7 +128,6 @@ export type Database = {
           next_backup_at?: string | null
           notify_email?: string | null
           notify_on_completion?: boolean | null
-          organisation_id?: string | null
           retention_count?: number | null
           updated_at?: string | null
         }
@@ -164,19 +142,10 @@ export type Database = {
           next_backup_at?: string | null
           notify_email?: string | null
           notify_on_completion?: boolean | null
-          organisation_id?: string | null
           retention_count?: number | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "backup_schedules_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: true
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       category_tag_formats: {
         Row: {
@@ -184,7 +153,6 @@ export type Database = {
           created_at: string | null
           current_number: number | null
           id: string
-          organisation_id: string | null
           prefix: string
           tenant_id: number | null
           updated_at: string | null
@@ -195,7 +163,6 @@ export type Database = {
           created_at?: string | null
           current_number?: number | null
           id?: string
-          organisation_id?: string | null
           prefix: string
           tenant_id?: number | null
           updated_at?: string | null
@@ -206,7 +173,6 @@ export type Database = {
           created_at?: string | null
           current_number?: number | null
           id?: string
-          organisation_id?: string | null
           prefix?: string
           tenant_id?: number | null
           updated_at?: string | null
@@ -218,13 +184,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "itam_categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "category_tag_formats_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
         ]
@@ -317,7 +276,6 @@ export type Database = {
           is_active: boolean | null
           last_executed_at: string | null
           name: string
-          organisation_id: string | null
           tenant_id: number
           trigger_type: string
           updated_at: string | null
@@ -334,8 +292,7 @@ export type Database = {
           is_active?: boolean | null
           last_executed_at?: string | null
           name: string
-          organisation_id?: string | null
-          tenant_id: number
+          tenant_id?: number
           trigger_type: string
           updated_at?: string | null
         }
@@ -351,19 +308,11 @@ export type Database = {
           is_active?: boolean | null
           last_executed_at?: string | null
           name?: string
-          organisation_id?: string | null
           tenant_id?: number
           trigger_type?: string
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "helpdesk_automation_rules_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "helpdesk_automation_rules_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -381,7 +330,6 @@ export type Database = {
           created_by: string | null
           id: number
           is_public: boolean | null
-          organisation_id: string | null
           shortcut: string | null
           tenant_id: number | null
           title: string
@@ -394,7 +342,6 @@ export type Database = {
           created_by?: string | null
           id?: number
           is_public?: boolean | null
-          organisation_id?: string | null
           shortcut?: string | null
           tenant_id?: number | null
           title: string
@@ -407,7 +354,6 @@ export type Database = {
           created_by?: string | null
           id?: number
           is_public?: boolean | null
-          organisation_id?: string | null
           shortcut?: string | null
           tenant_id?: number | null
           title?: string
@@ -429,13 +375,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "helpdesk_canned_responses_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "helpdesk_canned_responses_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -452,7 +391,6 @@ export type Database = {
           is_active: boolean | null
           is_deleted: boolean | null
           name: string
-          organisation_id: string | null
           parent_id: number | null
           tenant_id: number
           updated_at: string | null
@@ -464,9 +402,8 @@ export type Database = {
           is_active?: boolean | null
           is_deleted?: boolean | null
           name: string
-          organisation_id?: string | null
           parent_id?: number | null
-          tenant_id: number
+          tenant_id?: number
           updated_at?: string | null
         }
         Update: {
@@ -476,19 +413,11 @@ export type Database = {
           is_active?: boolean | null
           is_deleted?: boolean | null
           name?: string
-          organisation_id?: string | null
           parent_id?: number | null
           tenant_id?: number
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "helpdesk_categories_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "helpdesk_categories_parent_id_fkey"
             columns: ["parent_id"]
@@ -556,7 +485,6 @@ export type Database = {
           id: number
           impact: string | null
           implementation_plan: string | null
-          organisation_id: string | null
           priority: string | null
           requested_by: string | null
           requires_approval: boolean | null
@@ -582,7 +510,6 @@ export type Database = {
           id?: number
           impact?: string | null
           implementation_plan?: string | null
-          organisation_id?: string | null
           priority?: string | null
           requested_by?: string | null
           requires_approval?: boolean | null
@@ -591,7 +518,7 @@ export type Database = {
           scheduled_end?: string | null
           scheduled_start?: string | null
           status?: string | null
-          tenant_id: number
+          tenant_id?: number
           title: string
           type?: string | null
           updated_at?: string | null
@@ -608,7 +535,6 @@ export type Database = {
           id?: number
           impact?: string | null
           implementation_plan?: string | null
-          organisation_id?: string | null
           priority?: string | null
           requested_by?: string | null
           requires_approval?: boolean | null
@@ -628,13 +554,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "helpdesk_categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "helpdesk_changes_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -733,7 +652,6 @@ export type Database = {
           helpful_count: number | null
           id: number
           not_helpful_count: number | null
-          organisation_id: string | null
           published_at: string | null
           status: string | null
           summary: string | null
@@ -752,12 +670,11 @@ export type Database = {
           helpful_count?: number | null
           id?: number
           not_helpful_count?: number | null
-          organisation_id?: string | null
           published_at?: string | null
           status?: string | null
           summary?: string | null
           tags?: string[] | null
-          tenant_id: number
+          tenant_id?: number
           title: string
           updated_at?: string | null
           views_count?: number | null
@@ -771,7 +688,6 @@ export type Database = {
           helpful_count?: number | null
           id?: number
           not_helpful_count?: number | null
-          organisation_id?: string | null
           published_at?: string | null
           status?: string | null
           summary?: string | null
@@ -787,13 +703,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "helpdesk_kb_categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "helpdesk_kb_articles_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -814,7 +723,6 @@ export type Database = {
           id: number
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           parent_id: number | null
           tenant_id: number
           updated_at: string | null
@@ -827,9 +735,8 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           parent_id?: number | null
-          tenant_id: number
+          tenant_id?: number
           updated_at?: string | null
         }
         Update: {
@@ -840,19 +747,11 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           parent_id?: number | null
           tenant_id?: number
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "helpdesk_kb_categories_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "helpdesk_kb_categories_parent_id_fkey"
             columns: ["parent_id"]
@@ -916,7 +815,6 @@ export type Database = {
           id: number
           is_deleted: boolean | null
           linked_ticket_ids: string[] | null
-          organisation_id: string | null
           permanent_fix: string | null
           priority: string | null
           problem_number: string
@@ -941,7 +839,6 @@ export type Database = {
           id?: number
           is_deleted?: boolean | null
           linked_ticket_ids?: string[] | null
-          organisation_id?: string | null
           permanent_fix?: string | null
           priority?: string | null
           problem_number: string
@@ -950,7 +847,7 @@ export type Database = {
           root_cause?: string | null
           solution?: string | null
           status?: string | null
-          tenant_id: number
+          tenant_id?: number
           title: string
           updated_at?: string | null
           updated_by?: string | null
@@ -966,7 +863,6 @@ export type Database = {
           id?: number
           is_deleted?: boolean | null
           linked_ticket_ids?: string[] | null
-          organisation_id?: string | null
           permanent_fix?: string | null
           priority?: string | null
           problem_number?: string
@@ -987,13 +883,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "helpdesk_categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "helpdesk_problems_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -1050,7 +939,6 @@ export type Database = {
           id: number
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           sla_policy_id: number | null
           tenant_id: number
           updated_at: string | null
@@ -1064,9 +952,8 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           sla_policy_id?: number | null
-          tenant_id: number
+          tenant_id?: number
           updated_at?: string | null
         }
         Update: {
@@ -1078,19 +965,11 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           sla_policy_id?: number | null
           tenant_id?: number
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "helpdesk_queues_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "helpdesk_queues_sla_policy_id_fkey"
             columns: ["sla_policy_id"]
@@ -1115,7 +994,6 @@ export type Database = {
           is_default: boolean | null
           is_shared: boolean | null
           name: string
-          organisation_id: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -1126,7 +1004,6 @@ export type Database = {
           is_default?: boolean | null
           is_shared?: boolean | null
           name: string
-          organisation_id?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -1137,18 +1014,10 @@ export type Database = {
           is_default?: boolean | null
           is_shared?: boolean | null
           name?: string
-          organisation_id?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "helpdesk_saved_views_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "helpdesk_saved_views_user_id_fkey"
             columns: ["user_id"]
@@ -1165,7 +1034,6 @@ export type Database = {
           id: number
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           priority: string
           resolution_time_hours: number
           resolution_time_minutes: number | null
@@ -1180,13 +1048,12 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           priority: string
           resolution_time_hours: number
           resolution_time_minutes?: number | null
           response_time_hours: number
           response_time_minutes?: number | null
-          tenant_id: number
+          tenant_id?: number
           updated_at?: string | null
         }
         Update: {
@@ -1195,7 +1062,6 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           priority?: string
           resolution_time_hours?: number
           resolution_time_minutes?: number | null
@@ -1205,13 +1071,6 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "helpdesk_sla_policies_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "helpdesk_sla_policies_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1241,7 +1100,7 @@ export type Database = {
           file_type?: string | null
           file_url: string
           id?: number
-          tenant_id: number
+          tenant_id?: number
           ticket_id: number
           uploaded_at?: string | null
           uploaded_by?: string | null
@@ -1301,7 +1160,7 @@ export type Database = {
           created_at?: string | null
           id?: number
           is_internal?: boolean | null
-          tenant_id: number
+          tenant_id?: number
           ticket_id: number
           updated_at?: string | null
           updated_by?: string | null
@@ -1361,7 +1220,7 @@ export type Database = {
           id?: number
           new_value?: string | null
           old_value?: string | null
-          tenant_id: number
+          tenant_id?: number
           ticket_id: number
           timestamp?: string | null
           user_id?: string | null
@@ -1411,7 +1270,6 @@ export type Database = {
           id: number
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           priority: string | null
           tenant_id: number | null
           title: string | null
@@ -1426,7 +1284,6 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           priority?: string | null
           tenant_id?: number | null
           title?: string | null
@@ -1441,7 +1298,6 @@ export type Database = {
           id?: number
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           priority?: string | null
           tenant_id?: number | null
           title?: string | null
@@ -1460,13 +1316,6 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "helpdesk_ticket_templates_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -1542,7 +1391,6 @@ export type Database = {
           is_deleted: boolean | null
           is_escalated: boolean | null
           merged_into_id: number | null
-          organisation_id: string | null
           priority: string
           queue_id: number | null
           rejected_at: string | null
@@ -1584,7 +1432,6 @@ export type Database = {
           is_deleted?: boolean | null
           is_escalated?: boolean | null
           merged_into_id?: number | null
-          organisation_id?: string | null
           priority?: string
           queue_id?: number | null
           rejected_at?: string | null
@@ -1602,7 +1449,7 @@ export type Database = {
           subcategory?: string | null
           tags?: string[] | null
           team?: string | null
-          tenant_id: number
+          tenant_id?: number
           ticket_number: string
           time_spent_minutes?: number | null
           title: string
@@ -1626,7 +1473,6 @@ export type Database = {
           is_deleted?: boolean | null
           is_escalated?: boolean | null
           merged_into_id?: number | null
-          organisation_id?: string | null
           priority?: string
           queue_id?: number | null
           rejected_at?: string | null
@@ -1678,13 +1524,6 @@ export type Database = {
             columns: ["merged_into_id"]
             isOneToOne: false
             referencedRelation: "helpdesk_tickets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "helpdesk_tickets_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -1774,7 +1613,6 @@ export type Database = {
           created_at: string | null
           id: string
           notes: string | null
-          organisation_id: string | null
           returned_at: string | null
           tenant_id: number | null
         }
@@ -1786,7 +1624,6 @@ export type Database = {
           created_at?: string | null
           id?: string
           notes?: string | null
-          organisation_id?: string | null
           returned_at?: string | null
           tenant_id?: number | null
         }
@@ -1798,7 +1635,6 @@ export type Database = {
           created_at?: string | null
           id?: string
           notes?: string | null
-          organisation_id?: string | null
           returned_at?: string | null
           tenant_id?: number | null
         }
@@ -1808,13 +1644,6 @@ export type Database = {
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "itam_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_asset_assignments_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -1836,7 +1665,6 @@ export type Database = {
           id: string
           mime_type: string | null
           name: string
-          organisation_id: string | null
           uploaded_by: string | null
         }
         Insert: {
@@ -1848,7 +1676,6 @@ export type Database = {
           id?: string
           mime_type?: string | null
           name: string
-          organisation_id?: string | null
           uploaded_by?: string | null
         }
         Update: {
@@ -1860,7 +1687,6 @@ export type Database = {
           id?: string
           mime_type?: string | null
           name?: string
-          organisation_id?: string | null
           uploaded_by?: string | null
         }
         Relationships: [
@@ -1869,13 +1695,6 @@ export type Database = {
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "itam_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_asset_documents_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
         ]
@@ -1890,7 +1709,6 @@ export type Database = {
           id: string
           new_value: string | null
           old_value: string | null
-          organisation_id: string | null
           performed_by: string | null
           tenant_id: number | null
         }
@@ -1903,7 +1721,6 @@ export type Database = {
           id?: string
           new_value?: string | null
           old_value?: string | null
-          organisation_id?: string | null
           performed_by?: string | null
           tenant_id?: number | null
         }
@@ -1916,7 +1733,6 @@ export type Database = {
           id?: string
           new_value?: string | null
           old_value?: string | null
-          organisation_id?: string | null
           performed_by?: string | null
           tenant_id?: number | null
         }
@@ -1926,13 +1742,6 @@ export type Database = {
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "itam_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_asset_history_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -1952,7 +1761,6 @@ export type Database = {
           id: string
           link_type: string | null
           notes: string | null
-          organisation_id: string | null
           parent_asset_id: string
         }
         Insert: {
@@ -1962,7 +1770,6 @@ export type Database = {
           id?: string
           link_type?: string | null
           notes?: string | null
-          organisation_id?: string | null
           parent_asset_id: string
         }
         Update: {
@@ -1972,7 +1779,6 @@ export type Database = {
           id?: string
           link_type?: string | null
           notes?: string | null
-          organisation_id?: string | null
           parent_asset_id?: string
         }
         Relationships: [
@@ -1981,13 +1787,6 @@ export type Database = {
             columns: ["child_asset_id"]
             isOneToOne: false
             referencedRelation: "itam_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_asset_links_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -2006,7 +1805,6 @@ export type Database = {
           end_date: string
           id: string
           notes: string | null
-          organisation_id: string | null
           purpose: string | null
           reserved_by: string | null
           reserved_for: string | null
@@ -2021,7 +1819,6 @@ export type Database = {
           end_date: string
           id?: string
           notes?: string | null
-          organisation_id?: string | null
           purpose?: string | null
           reserved_by?: string | null
           reserved_for?: string | null
@@ -2036,7 +1833,6 @@ export type Database = {
           end_date?: string
           id?: string
           notes?: string | null
-          organisation_id?: string | null
           purpose?: string | null
           reserved_by?: string | null
           reserved_for?: string | null
@@ -2051,13 +1847,6 @@ export type Database = {
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "itam_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_asset_reservations_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -2092,7 +1881,6 @@ export type Database = {
           model: string | null
           name: string
           notes: string | null
-          organisation_id: string | null
           purchase_date: string | null
           purchase_price: number | null
           qr_code: string | null
@@ -2128,7 +1916,6 @@ export type Database = {
           model?: string | null
           name: string
           notes?: string | null
-          organisation_id?: string | null
           purchase_date?: string | null
           purchase_price?: number | null
           qr_code?: string | null
@@ -2164,7 +1951,6 @@ export type Database = {
           model?: string | null
           name?: string
           notes?: string | null
-          organisation_id?: string | null
           purchase_date?: string | null
           purchase_price?: number | null
           qr_code?: string | null
@@ -2215,13 +2001,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "itam_assets_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "itam_assets_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -2245,7 +2024,6 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           parent_id: string | null
           tenant_id: number | null
           updated_at: string | null
@@ -2257,7 +2035,6 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           parent_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
@@ -2269,19 +2046,11 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           parent_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_categories_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_categories_parent_id_fkey"
             columns: ["parent_id"]
@@ -2306,7 +2075,6 @@ export type Database = {
           email: string | null
           id: string
           logo_url: string | null
-          organisation_id: string | null
           phone: string | null
           tenant_id: number | null
           updated_at: string | null
@@ -2319,7 +2087,6 @@ export type Database = {
           email?: string | null
           id?: string
           logo_url?: string | null
-          organisation_id?: string | null
           phone?: string | null
           tenant_id?: number | null
           updated_at?: string | null
@@ -2332,20 +2099,12 @@ export type Database = {
           email?: string | null
           id?: string
           logo_url?: string | null
-          organisation_id?: string | null
           phone?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           website?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_company_info_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: true
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_company_info_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2363,7 +2122,6 @@ export type Database = {
           is_active: boolean | null
           manager_id: string | null
           name: string
-          organisation_id: string | null
           tenant_id: number | null
           updated_at: string | null
         }
@@ -2374,7 +2132,6 @@ export type Database = {
           is_active?: boolean | null
           manager_id?: string | null
           name: string
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
         }
@@ -2385,18 +2142,10 @@ export type Database = {
           is_active?: boolean | null
           manager_id?: string | null
           name?: string
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_departments_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_departments_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2405,6 +2154,80 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      itam_depreciation_profiles: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          method: string
+          name: string
+          salvage_value_percent: number
+          updated_at: string
+          useful_life_years: number
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          method?: string
+          name: string
+          salvage_value_percent?: number
+          updated_at?: string
+          useful_life_years?: number
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          method?: string
+          name?: string
+          salvage_value_percent?: number
+          updated_at?: string
+          useful_life_years?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "itam_depreciation_profiles_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "itam_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      itam_email_config: {
+        Row: {
+          config_key: string
+          config_type: string
+          config_value: Json
+          created_at: string | null
+          id: string
+          tenant_id: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          config_key: string
+          config_type: string
+          config_value?: Json
+          created_at?: string | null
+          id?: string
+          tenant_id?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_type?: string
+          config_value?: Json
+          created_at?: string | null
+          id?: string
+          tenant_id?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       itam_license_allocations: {
         Row: {
@@ -2415,7 +2238,6 @@ export type Database = {
           id: string
           license_id: string
           notes: string | null
-          organisation_id: string | null
           tenant_id: number | null
           user_id: string | null
         }
@@ -2427,7 +2249,6 @@ export type Database = {
           id?: string
           license_id: string
           notes?: string | null
-          organisation_id?: string | null
           tenant_id?: number | null
           user_id?: string | null
         }
@@ -2439,7 +2260,6 @@ export type Database = {
           id?: string
           license_id?: string
           notes?: string | null
-          organisation_id?: string | null
           tenant_id?: number | null
           user_id?: string | null
         }
@@ -2456,13 +2276,6 @@ export type Database = {
             columns: ["license_id"]
             isOneToOne: false
             referencedRelation: "itam_licenses"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_license_allocations_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -2485,7 +2298,6 @@ export type Database = {
           license_type: string | null
           name: string
           notes: string | null
-          organisation_id: string | null
           purchase_date: string | null
           seats_allocated: number | null
           seats_total: number | null
@@ -2503,7 +2315,6 @@ export type Database = {
           license_type?: string | null
           name: string
           notes?: string | null
-          organisation_id?: string | null
           purchase_date?: string | null
           seats_allocated?: number | null
           seats_total?: number | null
@@ -2521,7 +2332,6 @@ export type Database = {
           license_type?: string | null
           name?: string
           notes?: string | null
-          organisation_id?: string | null
           purchase_date?: string | null
           seats_allocated?: number | null
           seats_total?: number | null
@@ -2530,13 +2340,6 @@ export type Database = {
           vendor_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_licenses_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_licenses_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2560,7 +2363,6 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           room: string | null
           site_id: string | null
           tenant_id: number | null
@@ -2572,7 +2374,6 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           room?: string | null
           site_id?: string | null
           tenant_id?: number | null
@@ -2584,20 +2385,12 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           room?: string | null
           site_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_locations_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_locations_site_id_fkey"
             columns: ["site_id"]
@@ -2627,7 +2420,6 @@ export type Database = {
           last_completed_date: string | null
           next_due_date: string | null
           notify_before_days: number | null
-          organisation_id: string | null
           schedule_type: string | null
           title: string
           updated_at: string | null
@@ -2644,7 +2436,6 @@ export type Database = {
           last_completed_date?: string | null
           next_due_date?: string | null
           notify_before_days?: number | null
-          organisation_id?: string | null
           schedule_type?: string | null
           title: string
           updated_at?: string | null
@@ -2661,7 +2452,6 @@ export type Database = {
           last_completed_date?: string | null
           next_due_date?: string | null
           notify_before_days?: number | null
-          organisation_id?: string | null
           schedule_type?: string | null
           title?: string
           updated_at?: string | null
@@ -2681,13 +2471,6 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "itam_maintenance_schedules_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
         ]
       }
       itam_makes: {
@@ -2696,7 +2479,6 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           support_email: string | null
           support_phone: string | null
           tenant_id: number | null
@@ -2708,7 +2490,6 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           support_email?: string | null
           support_phone?: string | null
           tenant_id?: number | null
@@ -2720,7 +2501,6 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           support_email?: string | null
           support_phone?: string | null
           tenant_id?: number | null
@@ -2728,13 +2508,6 @@ export type Database = {
           website?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_makes_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_makes_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2753,7 +2526,6 @@ export type Database = {
           items: Json | null
           notes: string | null
           order_date: string | null
-          organisation_id: string | null
           po_number: string
           received_date: string | null
           status: string | null
@@ -2770,7 +2542,6 @@ export type Database = {
           items?: Json | null
           notes?: string | null
           order_date?: string | null
-          organisation_id?: string | null
           po_number: string
           received_date?: string | null
           status?: string | null
@@ -2787,7 +2558,6 @@ export type Database = {
           items?: Json | null
           notes?: string | null
           order_date?: string | null
-          organisation_id?: string | null
           po_number?: string
           received_date?: string | null
           status?: string | null
@@ -2797,13 +2567,6 @@ export type Database = {
           vendor_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_purchase_orders_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_purchase_orders_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2831,7 +2594,6 @@ export type Database = {
           id: string
           issue_description: string
           notes: string | null
-          organisation_id: string | null
           repair_number: string | null
           resolution: string | null
           started_at: string | null
@@ -2850,7 +2612,6 @@ export type Database = {
           id?: string
           issue_description: string
           notes?: string | null
-          organisation_id?: string | null
           repair_number?: string | null
           resolution?: string | null
           started_at?: string | null
@@ -2869,7 +2630,6 @@ export type Database = {
           id?: string
           issue_description?: string
           notes?: string | null
-          organisation_id?: string | null
           repair_number?: string | null
           resolution?: string | null
           started_at?: string | null
@@ -2884,13 +2644,6 @@ export type Database = {
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "itam_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "itam_repairs_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -2914,7 +2667,6 @@ export type Database = {
           created_at: string | null
           id: string
           key: string
-          organisation_id: string | null
           tenant_id: number | null
           updated_at: string | null
           value: Json | null
@@ -2923,7 +2675,6 @@ export type Database = {
           created_at?: string | null
           id?: string
           key: string
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           value?: Json | null
@@ -2932,19 +2683,11 @@ export type Database = {
           created_at?: string | null
           id?: string
           key?: string
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           value?: Json | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_settings_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_settings_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2963,7 +2706,6 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
-          organisation_id: string | null
           tenant_id: number | null
           updated_at: string | null
         }
@@ -2975,7 +2717,6 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
         }
@@ -2987,18 +2728,10 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_sites_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_sites_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3014,7 +2747,6 @@ export type Database = {
           created_at: string | null
           id: string
           next_number: number | null
-          organisation_id: string | null
           padding_length: number | null
           prefix: string
           tenant_id: number | null
@@ -3025,7 +2757,6 @@ export type Database = {
           created_at?: string | null
           id?: string
           next_number?: number | null
-          organisation_id?: string | null
           padding_length?: number | null
           prefix?: string
           tenant_id?: number | null
@@ -3036,20 +2767,12 @@ export type Database = {
           created_at?: string | null
           id?: string
           next_number?: number | null
-          organisation_id?: string | null
           padding_length?: number | null
           prefix?: string
           tenant_id?: number | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_tag_format_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_tag_format_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3066,7 +2789,6 @@ export type Database = {
           current_number: number | null
           id: string
           is_active: boolean | null
-          organisation_id: string | null
           padding_length: number | null
           prefix: string
           tenant_id: number | null
@@ -3078,7 +2800,6 @@ export type Database = {
           current_number?: number | null
           id?: string
           is_active?: boolean | null
-          organisation_id?: string | null
           padding_length?: number | null
           prefix: string
           tenant_id?: number | null
@@ -3090,20 +2811,12 @@ export type Database = {
           current_number?: number | null
           id?: string
           is_active?: boolean | null
-          organisation_id?: string | null
           padding_length?: number | null
           prefix?: string
           tenant_id?: number | null
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_tag_series_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_tag_series_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3124,7 +2837,6 @@ export type Database = {
           is_active: boolean | null
           name: string
           notes: string | null
-          organisation_id: string | null
           tenant_id: number | null
           updated_at: string | null
           website: string | null
@@ -3139,7 +2851,6 @@ export type Database = {
           is_active?: boolean | null
           name: string
           notes?: string | null
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           website?: string | null
@@ -3154,19 +2865,11 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           notes?: string | null
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           website?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "itam_vendors_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "itam_vendors_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3181,7 +2884,6 @@ export type Database = {
           error_message: string | null
           id: string
           monitor_id: string
-          organisation_id: string | null
           recorded_at: string | null
           response_time_ms: number | null
           status: string
@@ -3192,7 +2894,6 @@ export type Database = {
           error_message?: string | null
           id?: string
           monitor_id: string
-          organisation_id?: string | null
           recorded_at?: string | null
           response_time_ms?: number | null
           status: string
@@ -3203,7 +2904,6 @@ export type Database = {
           error_message?: string | null
           id?: string
           monitor_id?: string
-          organisation_id?: string | null
           recorded_at?: string | null
           response_time_ms?: number | null
           status?: string
@@ -3216,13 +2916,6 @@ export type Database = {
             columns: ["monitor_id"]
             isOneToOne: false
             referencedRelation: "monitors"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "monitor_data_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -3242,7 +2935,6 @@ export type Database = {
           is_resolved: boolean | null
           message: string | null
           monitor_id: string | null
-          organisation_id: string | null
           resolved_at: string | null
           severity: string | null
           tenant_id: number | null
@@ -3255,7 +2947,6 @@ export type Database = {
           is_resolved?: boolean | null
           message?: string | null
           monitor_id?: string | null
-          organisation_id?: string | null
           resolved_at?: string | null
           severity?: string | null
           tenant_id?: number | null
@@ -3268,7 +2959,6 @@ export type Database = {
           is_resolved?: boolean | null
           message?: string | null
           monitor_id?: string | null
-          organisation_id?: string | null
           resolved_at?: string | null
           severity?: string | null
           tenant_id?: number | null
@@ -3280,13 +2970,6 @@ export type Database = {
             columns: ["monitor_id"]
             isOneToOne: false
             referencedRelation: "monitors"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "monitoring_alerts_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -3304,7 +2987,6 @@ export type Database = {
           description: string | null
           id: string
           monitor_id: string | null
-          organisation_id: string | null
           resolution: string | null
           resolved_at: string | null
           root_cause: string | null
@@ -3320,7 +3002,6 @@ export type Database = {
           description?: string | null
           id?: string
           monitor_id?: string | null
-          organisation_id?: string | null
           resolution?: string | null
           resolved_at?: string | null
           root_cause?: string | null
@@ -3336,7 +3017,6 @@ export type Database = {
           description?: string | null
           id?: string
           monitor_id?: string | null
-          organisation_id?: string | null
           resolution?: string | null
           resolved_at?: string | null
           root_cause?: string | null
@@ -3353,13 +3033,6 @@ export type Database = {
             columns: ["monitor_id"]
             isOneToOne: false
             referencedRelation: "monitors"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "monitoring_incidents_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -3382,7 +3055,6 @@ export type Database = {
           last_check: string | null
           last_status: string | null
           name: string
-          organisation_id: string | null
           target: string
           tenant_id: number | null
           timeout_seconds: number | null
@@ -3400,7 +3072,6 @@ export type Database = {
           last_check?: string | null
           last_status?: string | null
           name: string
-          organisation_id?: string | null
           target: string
           tenant_id?: number | null
           timeout_seconds?: number | null
@@ -3418,7 +3089,6 @@ export type Database = {
           last_check?: string | null
           last_status?: string | null
           name?: string
-          organisation_id?: string | null
           target?: string
           tenant_id?: number | null
           timeout_seconds?: number | null
@@ -3427,13 +3097,6 @@ export type Database = {
           uptime_percent?: number | null
         }
         Relationships: [
-          {
-            foreignKeyName: "monitors_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "monitors_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3450,7 +3113,6 @@ export type Database = {
           is_read: boolean
           message: string
           metadata: Json | null
-          organisation_id: string | null
           read_at: string | null
           tenant_id: number | null
           title: string
@@ -3463,7 +3125,6 @@ export type Database = {
           is_read?: boolean
           message: string
           metadata?: Json | null
-          organisation_id?: string | null
           read_at?: string | null
           tenant_id?: number | null
           title: string
@@ -3476,69 +3137,11 @@ export type Database = {
           is_read?: boolean
           message?: string
           metadata?: Json | null
-          organisation_id?: string | null
           read_at?: string | null
           tenant_id?: number | null
           title?: string
           type?: Database["public"]["Enums"]["notification_type"]
           user_id?: string
-        }
-        Relationships: []
-      }
-      organisations: {
-        Row: {
-          account_type: string | null
-          active_tools: string[] | null
-          address: string | null
-          billing_email: string | null
-          created_at: string | null
-          domain: string | null
-          gst_number: string | null
-          id: string
-          logo_url: string | null
-          name: string
-          plan: string | null
-          plan_activated_at: string | null
-          plan_expires_at: string | null
-          plan_id: string | null
-          timezone: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          account_type?: string | null
-          active_tools?: string[] | null
-          address?: string | null
-          billing_email?: string | null
-          created_at?: string | null
-          domain?: string | null
-          gst_number?: string | null
-          id?: string
-          logo_url?: string | null
-          name: string
-          plan?: string | null
-          plan_activated_at?: string | null
-          plan_expires_at?: string | null
-          plan_id?: string | null
-          timezone?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          account_type?: string | null
-          active_tools?: string[] | null
-          address?: string | null
-          billing_email?: string | null
-          created_at?: string | null
-          domain?: string | null
-          gst_number?: string | null
-          id?: string
-          logo_url?: string | null
-          name?: string
-          plan?: string | null
-          plan_activated_at?: string | null
-          plan_expires_at?: string | null
-          plan_id?: string | null
-          timezone?: string | null
-          updated_at?: string | null
         }
         Relationships: []
       }
@@ -3549,7 +3152,6 @@ export type Database = {
           description: string | null
           id: string
           manager_access: boolean | null
-          organisation_id: string | null
           page_name: string
           route: string
           updated_at: string | null
@@ -3562,7 +3164,6 @@ export type Database = {
           description?: string | null
           id?: string
           manager_access?: boolean | null
-          organisation_id?: string | null
           page_name: string
           route: string
           updated_at?: string | null
@@ -3575,22 +3176,13 @@ export type Database = {
           description?: string | null
           id?: string
           manager_access?: boolean | null
-          organisation_id?: string | null
           page_name?: string
           route?: string
           updated_at?: string | null
           user_access?: boolean | null
           viewer_access?: boolean | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "page_access_control_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       permissions: {
         Row: {
@@ -3641,7 +3233,7 @@ export type Database = {
           is_active?: boolean | null
           last_name?: string | null
           selected_tools?: string[] | null
-          tenant_id: number
+          tenant_id?: number
           updated_at?: string | null
         }
         Update: {
@@ -3737,32 +3329,21 @@ export type Database = {
           created_at: string | null
           description: string | null
           id: string
-          organisation_id: string
           role_name: string
         }
         Insert: {
           created_at?: string | null
           description?: string | null
           id?: string
-          organisation_id: string
           role_name: string
         }
         Update: {
           created_at?: string | null
           description?: string | null
           id?: string
-          organisation_id?: string
           role_name?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "roles_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       subscriptions_licenses: {
         Row: {
@@ -3775,7 +3356,6 @@ export type Database = {
           id: string
           license_key: string | null
           notes: string | null
-          organisation_id: string | null
           status: string | null
           tenant_id: number | null
           tool_id: string
@@ -3791,7 +3371,6 @@ export type Database = {
           id?: string
           license_key?: string | null
           notes?: string | null
-          organisation_id?: string | null
           status?: string | null
           tenant_id?: number | null
           tool_id: string
@@ -3807,20 +3386,12 @@ export type Database = {
           id?: string
           license_key?: string | null
           notes?: string | null
-          organisation_id?: string | null
           status?: string | null
           tenant_id?: number | null
           tool_id?: string
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "subscriptions_licenses_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "subscriptions_licenses_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3845,7 +3416,6 @@ export type Database = {
           id: string
           invoice_number: string | null
           notes: string | null
-          organisation_id: string | null
           payment_date: string
           payment_method: string | null
           status: string | null
@@ -3859,7 +3429,6 @@ export type Database = {
           id?: string
           invoice_number?: string | null
           notes?: string | null
-          organisation_id?: string | null
           payment_date: string
           payment_method?: string | null
           status?: string | null
@@ -3873,7 +3442,6 @@ export type Database = {
           id?: string
           invoice_number?: string | null
           notes?: string | null
-          organisation_id?: string | null
           payment_date?: string
           payment_method?: string | null
           status?: string | null
@@ -3881,13 +3449,6 @@ export type Database = {
           tool_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "subscriptions_payments_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "subscriptions_payments_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3910,7 +3471,6 @@ export type Database = {
           id: string
           is_sent: boolean | null
           message: string | null
-          organisation_id: string | null
           reminder_date: string
           reminder_type: string | null
           sent_at: string | null
@@ -3922,7 +3482,6 @@ export type Database = {
           id?: string
           is_sent?: boolean | null
           message?: string | null
-          organisation_id?: string | null
           reminder_date: string
           reminder_type?: string | null
           sent_at?: string | null
@@ -3934,7 +3493,6 @@ export type Database = {
           id?: string
           is_sent?: boolean | null
           message?: string | null
-          organisation_id?: string | null
           reminder_date?: string
           reminder_type?: string | null
           sent_at?: string | null
@@ -3942,13 +3500,6 @@ export type Database = {
           tool_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "subscriptions_reminders_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "subscriptions_reminders_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3978,7 +3529,6 @@ export type Database = {
           is_active: boolean | null
           license_count: number | null
           notes: string | null
-          organisation_id: string | null
           renewal_date: string | null
           status: string | null
           tenant_id: number | null
@@ -4000,7 +3550,6 @@ export type Database = {
           is_active?: boolean | null
           license_count?: number | null
           notes?: string | null
-          organisation_id?: string | null
           renewal_date?: string | null
           status?: string | null
           tenant_id?: number | null
@@ -4022,7 +3571,6 @@ export type Database = {
           is_active?: boolean | null
           license_count?: number | null
           notes?: string | null
-          organisation_id?: string | null
           renewal_date?: string | null
           status?: string | null
           tenant_id?: number | null
@@ -4033,13 +3581,6 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "subscriptions_tools_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "subscriptions_tools_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -4067,7 +3608,6 @@ export type Database = {
           is_active: boolean | null
           name: string
           notes: string | null
-          organisation_id: string | null
           tenant_id: number | null
           updated_at: string | null
           website: string | null
@@ -4082,7 +3622,6 @@ export type Database = {
           is_active?: boolean | null
           name: string
           notes?: string | null
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           website?: string | null
@@ -4097,19 +3636,11 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           notes?: string | null
-          organisation_id?: string | null
           tenant_id?: number | null
           updated_at?: string | null
           website?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "subscriptions_vendors_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "subscriptions_vendors_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -4132,7 +3663,6 @@ export type Database = {
           file_path: string
           file_size: number | null
           id: string
-          organisation_id: string | null
           progress_percentage: number | null
           record_count: number | null
           retry_count: number | null
@@ -4152,7 +3682,6 @@ export type Database = {
           file_path: string
           file_size?: number | null
           id?: string
-          organisation_id?: string | null
           progress_percentage?: number | null
           record_count?: number | null
           retry_count?: number | null
@@ -4172,7 +3701,6 @@ export type Database = {
           file_path?: string
           file_size?: number | null
           id?: string
-          organisation_id?: string | null
           progress_percentage?: number | null
           record_count?: number | null
           retry_count?: number | null
@@ -4180,15 +3708,7 @@ export type Database = {
           status?: string | null
           tables_included?: string[] | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "system_backups_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       system_devices: {
         Row: {
@@ -4205,7 +3725,6 @@ export type Database = {
           last_update_check: string | null
           mac_address: string | null
           notes: string | null
-          organisation_id: string | null
           os_build: string | null
           os_name: string | null
           os_version: string | null
@@ -4229,7 +3748,6 @@ export type Database = {
           last_update_check?: string | null
           mac_address?: string | null
           notes?: string | null
-          organisation_id?: string | null
           os_build?: string | null
           os_name?: string | null
           os_version?: string | null
@@ -4253,7 +3771,6 @@ export type Database = {
           last_update_check?: string | null
           mac_address?: string | null
           notes?: string | null
-          organisation_id?: string | null
           os_build?: string | null
           os_name?: string | null
           os_version?: string | null
@@ -4264,13 +3781,6 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "system_devices_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "system_devices_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -4288,7 +3798,6 @@ export type Database = {
           installed_at: string | null
           installed_by: string | null
           kb_number: string | null
-          organisation_id: string | null
           result: string | null
           tenant_id: number | null
           title: string | null
@@ -4301,7 +3810,6 @@ export type Database = {
           installed_at?: string | null
           installed_by?: string | null
           kb_number?: string | null
-          organisation_id?: string | null
           result?: string | null
           tenant_id?: number | null
           title?: string | null
@@ -4314,7 +3822,6 @@ export type Database = {
           installed_at?: string | null
           installed_by?: string | null
           kb_number?: string | null
-          organisation_id?: string | null
           result?: string | null
           tenant_id?: number | null
           title?: string | null
@@ -4326,13 +3833,6 @@ export type Database = {
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "system_devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "system_installed_updates_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -4358,7 +3858,6 @@ export type Database = {
           device_id: string
           id: string
           kb_number: string | null
-          organisation_id: string | null
           severity: string | null
           status: string | null
           tenant_id: number | null
@@ -4371,7 +3870,6 @@ export type Database = {
           device_id: string
           id?: string
           kb_number?: string | null
-          organisation_id?: string | null
           severity?: string | null
           status?: string | null
           tenant_id?: number | null
@@ -4384,7 +3882,6 @@ export type Database = {
           device_id?: string
           id?: string
           kb_number?: string | null
-          organisation_id?: string | null
           severity?: string | null
           status?: string | null
           tenant_id?: number | null
@@ -4397,13 +3894,6 @@ export type Database = {
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "system_devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "system_pending_updates_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -4430,7 +3920,6 @@ export type Database = {
           id: string
           is_resolved: boolean | null
           message: string | null
-          organisation_id: string | null
           resolved_at: string | null
           resolved_by: string | null
           severity: string | null
@@ -4444,7 +3933,6 @@ export type Database = {
           id?: string
           is_resolved?: boolean | null
           message?: string | null
-          organisation_id?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           severity?: string | null
@@ -4458,7 +3946,6 @@ export type Database = {
           id?: string
           is_resolved?: boolean | null
           message?: string | null
-          organisation_id?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           severity?: string | null
@@ -4471,13 +3958,6 @@ export type Database = {
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "system_devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "system_update_alerts_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -4496,7 +3976,6 @@ export type Database = {
           details: Json | null
           device_id: string | null
           id: string
-          organisation_id: string | null
           performed_by: string | null
           tenant_id: number | null
           update_id: string | null
@@ -4507,7 +3986,6 @@ export type Database = {
           details?: Json | null
           device_id?: string | null
           id?: string
-          organisation_id?: string | null
           performed_by?: string | null
           tenant_id?: number | null
           update_id?: string | null
@@ -4518,7 +3996,6 @@ export type Database = {
           details?: Json | null
           device_id?: string | null
           id?: string
-          organisation_id?: string | null
           performed_by?: string | null
           tenant_id?: number | null
           update_id?: string | null
@@ -4529,13 +4006,6 @@ export type Database = {
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "system_devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "system_update_history_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -4563,7 +4033,6 @@ export type Database = {
           id: string
           ingested_at: string | null
           installed_count: number | null
-          organisation_id: string | null
           pending_count: number | null
           raw_data: Json | null
           status: string | null
@@ -4577,7 +4046,6 @@ export type Database = {
           id?: string
           ingested_at?: string | null
           installed_count?: number | null
-          organisation_id?: string | null
           pending_count?: number | null
           raw_data?: Json | null
           status?: string | null
@@ -4591,7 +4059,6 @@ export type Database = {
           id?: string
           ingested_at?: string | null
           installed_count?: number | null
-          organisation_id?: string | null
           pending_count?: number | null
           raw_data?: Json | null
           status?: string | null
@@ -4603,13 +4070,6 @@ export type Database = {
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "system_devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "system_update_ingest_logs_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
             referencedColumns: ["id"]
           },
           {
@@ -4631,7 +4091,6 @@ export type Database = {
           id: string
           is_superseded: boolean | null
           kb_number: string | null
-          organisation_id: string | null
           release_date: string | null
           severity: string | null
           size_bytes: number | null
@@ -4648,7 +4107,6 @@ export type Database = {
           id?: string
           is_superseded?: boolean | null
           kb_number?: string | null
-          organisation_id?: string | null
           release_date?: string | null
           severity?: string | null
           size_bytes?: number | null
@@ -4665,7 +4123,6 @@ export type Database = {
           id?: string
           is_superseded?: boolean | null
           kb_number?: string | null
-          organisation_id?: string | null
           release_date?: string | null
           severity?: string | null
           size_bytes?: number | null
@@ -4674,13 +4131,6 @@ export type Database = {
           title?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "system_updates_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "system_updates_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -4749,41 +4199,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
-      }
-      user_org_map: {
-        Row: {
-          created_at: string | null
-          id: string
-          organisation_id: string
-          role: string
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          organisation_id: string
-          role: string
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          organisation_id?: string
-          role?: string
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_org_map_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       user_permissions: {
         Row: {
@@ -4944,7 +4359,6 @@ export type Database = {
           is_superadmin: boolean | null
           last_login: string | null
           name: string | null
-          organisation_id: string
           phone: string | null
           role: string | null
           status: string | null
@@ -4960,7 +4374,6 @@ export type Database = {
           is_superadmin?: boolean | null
           last_login?: string | null
           name?: string | null
-          organisation_id: string
           phone?: string | null
           role?: string | null
           status?: string | null
@@ -4976,29 +4389,20 @@ export type Database = {
           is_superadmin?: boolean | null
           last_login?: string | null
           name?: string | null
-          organisation_id?: string
           phone?: string | null
           role?: string | null
           status?: string | null
           updated_at?: string | null
           user_type?: Database["public"]["Enums"]["user_type"] | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "users_organisation_id_fkey"
-            columns: ["organisation_id"]
-            isOneToOne: false
-            referencedRelation: "organisations"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      auth_organisation_id: { Args: never; Returns: string }
+      bootstrap_session: { Args: never; Returns: Json }
       bulk_soft_delete_problems: {
         Args: { problem_ids: number[] }
         Returns: undefined
@@ -5033,36 +4437,51 @@ export type Database = {
       }
       clean_expired_recovery_codes: { Args: never; Returns: undefined }
       cleanup_old_backups: { Args: { _org_id: string }; Returns: undefined }
-      create_notification: {
-        Args: {
-          p_message: string
-          p_organisation_id?: string
-          p_tenant_id?: number
-          p_title: string
-          p_type: Database["public"]["Enums"]["notification_type"]
-          p_user_id: string
-        }
+      create_notification:
+        | {
+            Args: {
+              p_message: string
+              p_organisation_id?: string
+              p_tenant_id?: number
+              p_title: string
+              p_type: Database["public"]["Enums"]["notification_type"]
+              p_user_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_message: string
+              p_organisation_id?: string
+              p_tenant_id?: number
+              p_title: string
+              p_type?: string
+              p_user_id: string
+            }
+            Returns: string
+          }
+      generate_asset_tag: {
+        Args: { tenant_id_param?: number }
         Returns: string
       }
-      generate_asset_tag: { Args: { tenant_id_param: number }; Returns: string }
       generate_change_number: {
-        Args: { p_org_id: string; p_tenant_id: number }
+        Args: { p_org_id?: string; p_tenant_id?: number }
         Returns: string
       }
       generate_change_request_number: {
-        Args: { p_tenant_id: number }
+        Args: { p_tenant_id?: number }
         Returns: string
       }
       generate_helpdesk_ticket_number: {
-        Args: { p_org_id: string; p_tenant_id: number }
+        Args: { p_org_id?: string; p_tenant_id?: number }
         Returns: string
       }
       generate_problem_number: {
-        Args: { p_org_id: string; p_tenant_id: number }
+        Args: { p_org_id?: string; p_tenant_id?: number }
         Returns: string
       }
       generate_srm_request_number: {
-        Args: { p_org_id: string; p_tenant_id: number }
+        Args: { p_org_id?: string; p_tenant_id?: number }
         Returns: string
       }
       generate_unified_request_number: {
@@ -5091,6 +4510,7 @@ export type Database = {
         }[]
       }
       get_appmaster_role: { Args: { _user_id: string }; Returns: string }
+      get_itam_stats: { Args: never; Returns: Json }
       get_license_usage: {
         Args: { tool_id_param: string }
         Returns: {
@@ -5112,10 +4532,6 @@ export type Database = {
         }[]
       }
       get_user_account_type: { Args: never; Returns: string }
-      get_user_org: { Args: never; Returns: string }
-      get_user_org_fallback: { Args: never; Returns: string }
-      get_user_org_if_admin: { Args: never; Returns: string }
-      get_user_org_role: { Args: { _org_id: string }; Returns: string }
       get_user_role: { Args: { _user_id: string }; Returns: string }
       get_user_tenant:
         | { Args: never; Returns: number }
@@ -5131,7 +4547,6 @@ export type Database = {
         Args: { feature_key: string; org_id: string }
         Returns: boolean
       }
-      has_org_access: { Args: { _org_id: string }; Returns: boolean }
       has_permission: {
         Args: { permission_key: string; user_id_param: string }
         Returns: boolean
@@ -5148,7 +4563,6 @@ export type Database = {
         Returns: boolean
       }
       is_appmaster_admin: { Args: { _user_id: string }; Returns: boolean }
-      is_org_admin_user: { Args: never; Returns: boolean }
       retry_failed_backup: {
         Args: { _backup_id: string; _org_id: string }
         Returns: Json
@@ -5168,10 +4582,6 @@ export type Database = {
       update_user_status: {
         Args: { new_status: string; target_user_id: string }
         Returns: undefined
-      }
-      user_belongs_to_org_or_tenant: {
-        Args: { _organisation_id: string; _tenant_id: number }
-        Returns: boolean
       }
     }
     Enums: {

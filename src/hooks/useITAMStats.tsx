@@ -1,38 +1,50 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+const CACHE_KEY = "itam-stats-cache";
+
+function getCachedStats() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return undefined;
+}
+
+/**
+ * Optimized ITAM stats hook - single RPC call instead of 3 sequential queries.
+ * Uses localStorage cache for instant repeat loads.
+ */
 export const useITAMStats = () => {
   return useQuery({
     queryKey: ["itam-stats"],
-    staleTime: 5 * 60 * 1000,  // 5 minutes - asset counts don't change frequently
-    gcTime: 10 * 60 * 1000,    // 10 minutes cache retention
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    initialData: getCachedStats,
+    initialDataUpdatedAt: () => {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY + "-ts");
+        return raw ? Number(raw) : 0;
+      } catch { return 0; }
+    },
     queryFn: async () => {
-      // Get total assets count from itam_assets table
-      // @ts-ignore - Bypass deep type inference issue
-      const { count: totalAssets } = await supabase
-        .from("itam_assets")
-        .select("*", { count: "exact", head: true });
+      const { data, error } = await supabase.rpc("get_itam_stats");
+      if (error) throw error;
 
-      // Get assigned assets count from itam_asset_assignments
-      // @ts-ignore - Bypass deep type inference issue
-      const { count: assignedCount } = await supabase
-        .from("itam_asset_assignments")
-        .select("*", { count: "exact", head: true })
-        .is("returned_at", null);
-
-      // Get active licenses count from itam_licenses
-      // @ts-ignore - Bypass deep type inference issue
-      const { count: licensesCount } = await supabase
-        .from("itam_licenses")
-        .select("*", { count: "exact", head: true })
-        .eq("is_active", true);
-
-      return {
-        totalAssets: totalAssets || 0,
-        assigned: assignedCount || 0,
-        licenses: licensesCount || 0,
-        laptops: 0, // Will be implemented when category filtering is needed
+      const result = {
+        totalAssets: (data as any)?.totalAssets || 0,
+        assigned: (data as any)?.assigned || 0,
+        licenses: (data as any)?.licenses || 0,
+        laptops: 0,
       };
+
+      // Cache for instant repeat loads
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+        localStorage.setItem(CACHE_KEY + "-ts", String(Date.now()));
+      } catch { /* ignore */ }
+
+      return result;
     },
   });
 };

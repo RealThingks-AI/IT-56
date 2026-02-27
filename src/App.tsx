@@ -3,54 +3,68 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
-import { OrganisationProvider } from "./contexts/OrganisationContext";
 import { SystemSettingsProvider } from "./contexts/SystemSettingsContext";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-import { RoleProtectedRoute } from "./components/RoleProtectedRoute";
-import { PageProtectedRoute } from "./components/PageProtectedRoute";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 
-// Eagerly loaded (small, critical components)
+// Eagerly loaded (small, critical)
 import NotFound from "./pages/NotFound";
 import AccessDenied from "./pages/AccessDenied";
 import Login from "./pages/Login";
 
-// Loading fallback component
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
     <div className="animate-pulse text-muted-foreground">Loading...</div>
   </div>
 );
 
-// Lazy loaded components - Main Layout
-const HelpdeskLayout = lazy(() => import("./pages/helpdesk/layout"));
-const HelpdeskDashboard = lazy(() => import("./pages/helpdesk/dashboard"));
+// Redirect component that preserves query params
+const FieldsSetupRedirect = () => {
+  const [searchParams] = useSearchParams();
+  const section = searchParams.get("section") || "sites";
+  return <Navigate to={`/assets/advanced?tab=setup&section=${section}`} replace />;
+};
 
-// Lazy loaded - Tickets
-const HelpdeskTickets = lazy(() => import("./pages/helpdesk/tickets/index"));
+// Module Launcher (new "/" page)
+import ModuleLauncher from "./pages/ModuleLauncher";
+
+// Module Layouts
+import TicketsLayout from "./layouts/TicketsLayout";
+import AssetsLayout from "./layouts/AssetsLayout";
+import SubscriptionLayout from "./layouts/SubscriptionLayout";
+import SystemUpdatesLayout from "./layouts/SystemUpdatesLayout";
+import AdminLayout from "./layouts/AdminLayout";
+
+// Legacy layout kept for standalone routes
+import HelpdeskLayout from "./pages/helpdesk/layout";
+
+// Tickets pages
+const TicketsDashboard = lazy(() => import("./pages/helpdesk/tickets/dashboard"));
+const TicketsList = lazy(() => import("./pages/helpdesk/tickets/list"));
+const ProblemsPage = lazy(() => import("./pages/helpdesk/tickets/problems"));
+const TicketSettings = lazy(() => import("./pages/helpdesk/tickets/settings"));
+const TicketReports = lazy(() => import("./pages/helpdesk/tickets/reports"));
+const ClosedArchive = lazy(() => import("./pages/helpdesk/tickets/closed-archive"));
 const CreateTicket = lazy(() => import("./pages/helpdesk/tickets/create"));
 const TicketDetail = lazy(() => import("./pages/helpdesk/tickets/[id]"));
 const HelpdeskProblemDetail = lazy(() => import("./pages/helpdesk/problems/[id]"));
 const AssignmentRules = lazy(() => import("./pages/helpdesk/tickets/assignment-rules"));
+const LinkedProblems = lazy(() => import("./pages/helpdesk/tickets/linked-problems"));
 
-// Lazy loaded - Assets
-const HelpdeskAssets = lazy(() => import("./pages/helpdesk/assets"));
+// Assets pages (eagerly loaded for perf)
+import AllAssets from "./pages/helpdesk/assets/allassets";
+import AssetDashboard from "./pages/helpdesk/assets/dashboard";
+import AssetAdvancedPage from "./pages/helpdesk/assets/advanced/index";
+
 const AssetDetail = lazy(() => import("./pages/helpdesk/assets/detail/[assetId]"));
 const AssetReports = lazy(() => import("./pages/helpdesk/assets/reports"));
-const AllAssets = lazy(() => import("./pages/helpdesk/assets/allassets"));
-// AssetSetup removed - consolidated into Advanced page
-const AssetDashboard = lazy(() => import("./pages/helpdesk/assets/dashboard"));
 const AssetAlerts = lazy(() => import("./pages/helpdesk/assets/alerts/index"));
 const AssetCheckout = lazy(() => import("./pages/helpdesk/assets/checkout"));
 const AssetCheckin = lazy(() => import("./pages/helpdesk/assets/checkin"));
 const AssetDispose = lazy(() => import("./pages/helpdesk/assets/dispose"));
 const AssetReserve = lazy(() => import("./pages/helpdesk/assets/reserve"));
 const AddAsset = lazy(() => import("./pages/helpdesk/assets/add"));
-const MaintenancesList = lazy(() => import("./pages/helpdesk/assets/lists/maintenances"));
-const WarrantiesList = lazy(() => import("./pages/helpdesk/assets/lists/warranties"));
-const ContractsList = lazy(() => import("./pages/helpdesk/assets/lists/contracts"));
-const AssetAdvancedPage = lazy(() => import("./pages/helpdesk/assets/advanced/index"));
 const DepreciationDashboard = lazy(() => import("./pages/helpdesk/assets/depreciation/index"));
 const VendorsList = lazy(() => import("./pages/helpdesk/assets/vendors/index"));
 const AddVendor = lazy(() => import("./pages/helpdesk/assets/vendors/add-vendor"));
@@ -62,23 +76,22 @@ const AllocateLicense = lazy(() => import("./pages/helpdesk/assets/licenses/allo
 const RepairsList = lazy(() => import("./pages/helpdesk/assets/repairs/index"));
 const CreateRepair = lazy(() => import("./pages/helpdesk/assets/repairs/create"));
 const RepairDetail = lazy(() => import("./pages/helpdesk/assets/repairs/detail/[repairId]"));
-const AssetAudit = lazy(() => import("./pages/helpdesk/assets/audit/index"));
+
+const AssetLogs = lazy(() => import("./pages/helpdesk/assets/AssetLogsPage"));
 const AssetsBulkActions = lazy(() => import("./pages/helpdesk/assets/explore/bulk-actions"));
-const AssetsReports = lazy(() => import("./pages/helpdesk/assets/explore/reports"));
 const AssetsImportExport = lazy(() => import("./pages/helpdesk/assets/import-export"));
 const PurchaseOrdersList = lazy(() => import("./pages/helpdesk/assets/purchase-orders/index"));
 const CreatePO = lazy(() => import("./pages/helpdesk/assets/purchase-orders/create-po"));
 const PODetail = lazy(() => import("./pages/helpdesk/assets/purchase-orders/po-detail/[poId]"));
 
-// Lazy loaded - Subscription
-const HelpdeskSubscriptionLayout = lazy(() => import("./pages/helpdesk/subscription/index"));
+// Subscription pages
 const HelpdeskSubscriptionDashboard = lazy(() => import("./pages/helpdesk/subscription/dashboard"));
 const HelpdeskSubscriptionTools = lazy(() => import("./pages/helpdesk/subscription/tools"));
 const HelpdeskSubscriptionVendors = lazy(() => import("./pages/helpdesk/subscription/vendors"));
 const HelpdeskSubscriptionLicenses = lazy(() => import("./pages/helpdesk/subscription/licenses"));
 const HelpdeskSubscriptionPayments = lazy(() => import("./pages/helpdesk/subscription/payments"));
 
-// Lazy loaded - System Updates
+// System Updates pages
 const HelpdeskSystemUpdates = lazy(() => import("./pages/helpdesk/system-updates"));
 const SystemUpdatesSettings = lazy(() => import("./pages/helpdesk/system-updates/settings"));
 const SystemUpdatesDevices = lazy(() => import("./pages/helpdesk/system-updates/devices"));
@@ -86,19 +99,21 @@ const SystemUpdatesUpdates = lazy(() => import("./pages/helpdesk/system-updates/
 
 // Lazy loaded - Other Modules
 const HelpdeskChanges = lazy(() => import("./pages/helpdesk/changes"));
-const HelpdeskAdmin = lazy(() => import("./pages/helpdesk/admin"));
-const HelpdeskSettings = lazy(() => import("./pages/helpdesk/settings"));
-const AccountSettings = lazy(() => import("./pages/helpdesk/account"));
-const HelpdeskReports = lazy(() => import("./pages/helpdesk/reports"));
 const HelpdeskMonitoring = lazy(() => import("./pages/helpdesk/monitoring"));
-const HelpdeskAudit = lazy(() => import("./pages/helpdesk/audit"));
+const AccountSettings = lazy(() => import("./pages/helpdesk/account"));
 const HelpdeskSLA = lazy(() => import("./pages/helpdesk/sla"));
 const HelpdeskQueues = lazy(() => import("./pages/helpdesk/queues"));
 const HelpdeskAutomation = lazy(() => import("./pages/helpdesk/automation"));
 
-// Lazy loaded - Auth & Profile
+// Admin pages
+const AdminUsersPage = lazy(() => import("./pages/admin/users"));
+const AdminLogsPage = lazy(() => import("./pages/admin/logs"));
+const AdminSystemPage = lazy(() => import("./pages/admin/system"));
+const AdminBackupPage = lazy(() => import("./pages/admin/backup"));
+const AdminReportsPage = lazy(() => import("./pages/admin/reports"));
+
+// Auth
 const AuthConfirm = lazy(() => import("./pages/AuthConfirm"));
-const Profile = lazy(() => import("./pages/Profile"));
 const PasswordReset = lazy(() => import("./pages/PasswordReset"));
 const ResetPasswordConfirm = lazy(() => import("./pages/ResetPasswordConfirm"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -107,10 +122,9 @@ const Status = lazy(() => import("./pages/Status"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 2 * 60 * 1000,       // 2 minutes default
-      gcTime: 10 * 60 * 1000,         // 10 minutes cache retention
-      refetchOnWindowFocus: false,    // Don't refetch on tab switch
-      refetchOnMount: false,          // Use cache on mount
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
       retry: 1,
     },
   },
@@ -124,115 +138,134 @@ const App = () => {
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AuthProvider>
-            <OrganisationProvider>
-              <SystemSettingsProvider>
-                <Suspense fallback={<PageLoader />}>
-                  <Routes>
-                    {/* Auth routes */}
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/auth" element={<Navigate to="/login" replace />} />
-                    <Route path="/auth/confirm" element={<AuthConfirm />} />
-                    <Route path="/password-reset" element={<PasswordReset />} />
-                    <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
-                    <Route path="/access-denied" element={<AccessDenied />} />
-                    <Route path="/status" element={<Status />} />
+            <SystemSettingsProvider>
+              <AppErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  {/* Auth routes */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/auth" element={<Navigate to="/login" replace />} />
+                  <Route path="/auth/confirm" element={<AuthConfirm />} />
+                  <Route path="/password-reset" element={<PasswordReset />} />
+                  <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
+                  <Route path="/access-denied" element={<AccessDenied />} />
+                  <Route path="/status" element={<Status />} />
+                  <Route path="/profile" element={<Navigate to="/account" replace />} />
+                  <Route path="/notifications" element={<Notifications />} />
 
-                    {/* Profile */}
-                    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                    <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+                  {/* Module Launcher — new home */}
+                  <Route path="/" element={<ModuleLauncher />} />
 
-                    {/* Main App Routes - All under root */}
-                    <Route path="/" element={<ProtectedRoute><HelpdeskLayout /></ProtectedRoute>}>
-                      <Route index element={<HelpdeskDashboard />} />
-                      
-                      {/* Tickets - All roles */}
-                      <Route path="tickets" element={<HelpdeskTickets />} />
-                      <Route path="tickets/create" element={<CreateTicket />} />
-                      <Route path="tickets/my" element={<HelpdeskTickets />} />
-                      <Route path="tickets/unassigned" element={<HelpdeskTickets />} />
-                      <Route path="tickets/all" element={<HelpdeskTickets />} />
-                      <Route path="tickets/:id" element={<TicketDetail />} />
-                      <Route path="problems" element={<HelpdeskTickets />} />
-                      <Route path="problems/:id" element={<HelpdeskProblemDetail />} />
-                      
-                      {/* Assets - All roles for basic, admin/manager for advanced */}
-                      <Route path="assets" element={<HelpdeskAssets />} />
-                      <Route path="assets/dashboard" element={<AssetDashboard />} />
-                      <Route path="assets/alerts" element={<AssetAlerts />} />
-                      <Route path="assets/allassets" element={<AllAssets />} />
-                      <Route path="assets/add" element={<AddAsset />} />
-                      <Route path="assets/checkout" element={<AssetCheckout />} />
-                      <Route path="assets/checkin" element={<AssetCheckin />} />
-                      <Route path="assets/dispose" element={<AssetDispose />} />
-                      <Route path="assets/reserve" element={<AssetReserve />} />
-                      <Route path="assets/lists" element={<Navigate to="/assets/advanced?tab=maintenances" replace />} />
-                      <Route path="assets/lists/maintenances" element={<Navigate to="/assets/advanced?tab=maintenances" replace />} />
-                      <Route path="assets/lists/warranties" element={<Navigate to="/assets/advanced?tab=warranties" replace />} />
-                      <Route path="assets/lists/contracts" element={<Navigate to="/assets/advanced?tab=contracts" replace />} />
-                      <Route path="assets/advanced" element={<AssetAdvancedPage />} />
-                      <Route path="assets/detail/:assetId" element={<AssetDetail />} />
-                      <Route path="assets/reports" element={<RoleProtectedRoute allowedRoles={["admin", "manager"]}><AssetReports /></RoleProtectedRoute>} />
-                      <Route path="assets/tools" element={<Navigate to="/assets/advanced?tab=tools" replace />} />
-                      <Route path="assets/import-export" element={<AssetsImportExport />} />
-                      <Route path="assets/setup" element={<Navigate to="/assets/advanced?tab=setup" replace />} />
-                      <Route path="assets/depreciation" element={<RoleProtectedRoute allowedRoles={["admin", "manager"]}><DepreciationDashboard /></RoleProtectedRoute>} />
-                      <Route path="assets/vendors" element={<VendorsList />} />
-                      <Route path="assets/vendors/add-vendor" element={<AddVendor />} />
-                      <Route path="assets/vendors/detail/:vendorId" element={<VendorDetail />} />
-                      <Route path="assets/licenses" element={<LicensesList />} />
-                      <Route path="assets/licenses/:licenseId" element={<LicenseDetail />} />
-                      <Route path="assets/licenses/add-license" element={<AddLicense />} />
-                      <Route path="assets/licenses/allocate" element={<AllocateLicense />} />
-                      <Route path="assets/repairs" element={<RepairsList />} />
-                      <Route path="assets/repairs/create" element={<CreateRepair />} />
-                      <Route path="assets/repairs/detail/:repairId" element={<RepairDetail />} />
-                      <Route path="assets/purchase-orders" element={<PurchaseOrdersList />} />
-                      <Route path="assets/purchase-orders/create-po" element={<CreatePO />} />
-                      <Route path="assets/purchase-orders/po-detail/:poId" element={<PODetail />} />
-                      <Route path="assets/audit" element={<AssetAudit />} />
-                      <Route path="assets/setup/fields-setup" element={<Navigate to="/assets/advanced?tab=setup" replace />} />
-                      <Route path="assets/explore/bulk-actions" element={<AssetsBulkActions />} />
-                      <Route path="assets/explore/reports" element={<RoleProtectedRoute allowedRoles={["admin", "manager"]}><AssetsReports /></RoleProtectedRoute>} />
-                      
-                      {/* Subscription - Database-driven access control */}
-                      <Route path="subscription" element={<PageProtectedRoute route="/subscription"><HelpdeskSubscriptionLayout /></PageProtectedRoute>}>
-                        <Route index element={<HelpdeskSubscriptionDashboard />} />
-                        <Route path="tools" element={<HelpdeskSubscriptionTools />} />
-                        <Route path="vendors" element={<HelpdeskSubscriptionVendors />} />
-                        <Route path="licenses" element={<HelpdeskSubscriptionLicenses />} />
-                        <Route path="payments" element={<HelpdeskSubscriptionPayments />} />
-                      </Route>
-                      
-                      {/* System Updates - Database-driven access control */}
-                      <Route path="system-updates" element={<PageProtectedRoute route="/system-updates"><HelpdeskSystemUpdates /></PageProtectedRoute>} />
-                      <Route path="system-updates/settings" element={<RoleProtectedRoute allowedRoles={["admin"]}><SystemUpdatesSettings /></RoleProtectedRoute>} />
-                      <Route path="system-updates/devices" element={<PageProtectedRoute route="/system-updates"><SystemUpdatesDevices /></PageProtectedRoute>} />
-                      <Route path="system-updates/updates" element={<PageProtectedRoute route="/system-updates"><SystemUpdatesUpdates /></PageProtectedRoute>} />
-                      
-                      {/* Other Modules - Database-driven access control */}
-                      <Route path="monitoring" element={<PageProtectedRoute route="/monitoring"><HelpdeskMonitoring /></PageProtectedRoute>} />
-                      <Route path="reports" element={<PageProtectedRoute route="/reports"><HelpdeskReports /></PageProtectedRoute>} />
-                      <Route path="audit" element={<PageProtectedRoute route="/audit"><HelpdeskAudit /></PageProtectedRoute>} />
-                      <Route path="changes" element={<HelpdeskChanges />} />
-                      
-                      {/* Admin-only routes (keep hardcoded for security) */}
-                      <Route path="sla" element={<RoleProtectedRoute allowedRoles={["admin"]}><HelpdeskSLA /></RoleProtectedRoute>} />
-                      <Route path="queues" element={<RoleProtectedRoute allowedRoles={["admin"]}><HelpdeskQueues /></RoleProtectedRoute>} />
-                      <Route path="automation" element={<RoleProtectedRoute allowedRoles={["admin"]}><HelpdeskAutomation /></RoleProtectedRoute>} />
-                      <Route path="tickets/assignment-rules" element={<RoleProtectedRoute allowedRoles={["admin"]}><AssignmentRules /></RoleProtectedRoute>} />
-                      <Route path="admin" element={<RoleProtectedRoute allowedRoles={["admin"]}><HelpdeskAdmin /></RoleProtectedRoute>} />
-                      <Route path="settings" element={<PageProtectedRoute route="/settings"><HelpdeskSettings /></PageProtectedRoute>} />
-                      
-                      {/* Account - All authenticated users */}
-                      <Route path="account" element={<AccountSettings />} />
-                    </Route>
+                  {/* ===== TICKETS MODULE ===== */}
+                  <Route element={<TicketsLayout />}>
+                    <Route path="/tickets" element={<TicketsDashboard />} />
+                    <Route path="/tickets/list" element={<TicketsList />} />
+                    <Route path="/tickets/problems" element={<ProblemsPage />} />
+                    <Route path="/tickets/settings" element={<TicketSettings />} />
+                    <Route path="/tickets/reports" element={<TicketReports />} />
+                    <Route path="/tickets/archive" element={<Navigate to="/tickets/closed-archive" replace />} />
+                    <Route path="/tickets/closed-archive" element={<ClosedArchive />} />
+                    <Route path="/tickets/create" element={<CreateTicket />} />
+                    <Route path="/tickets/assignment-rules" element={<AssignmentRules />} />
+                    <Route path="/tickets/linked-problems" element={<LinkedProblems />} />
+                    <Route path="/tickets/:id" element={<TicketDetail />} />
+                    
+                    <Route path="/sla" element={<HelpdeskSLA />} />
+                    <Route path="/queues" element={<HelpdeskQueues />} />
+                    <Route path="/automation" element={<HelpdeskAutomation />} />
+                    <Route path="/changes" element={<HelpdeskChanges />} />
+                    <Route path="/problems/:id" element={<HelpdeskProblemDetail />} />
+                  </Route>
 
-                    {/* Catch-all */}
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </Suspense>
-              </SystemSettingsProvider>
-            </OrganisationProvider>
+                  {/* Monitoring (standalone module) */}
+                  <Route path="/monitoring" element={<HelpdeskLayout />}>
+                    <Route index element={<HelpdeskMonitoring />} />
+                  </Route>
+
+                  {/* ===== ASSETS MODULE ===== */}
+                  <Route element={<AssetsLayout />}>
+                    <Route path="/assets" element={<Navigate to="/assets/dashboard" replace />} />
+                    <Route path="/assets/dashboard" element={<AssetDashboard />} />
+                    <Route path="/assets/allassets" element={<AllAssets />} />
+                    <Route path="/assets/add" element={<AddAsset />} />
+                    <Route path="/assets/checkout" element={<AssetCheckout />} />
+                    <Route path="/assets/checkin" element={<AssetCheckin />} />
+                    <Route path="/assets/dispose" element={<AssetDispose />} />
+                    <Route path="/assets/reserve" element={<AssetReserve />} />
+                    <Route path="/assets/alerts" element={<AssetAlerts />} />
+                    <Route path="/assets/advanced" element={<AssetAdvancedPage />} />
+                    <Route path="/assets/detail/:assetId" element={<AssetDetail />} />
+                    <Route path="/assets/reports" element={<AssetReports />} />
+                    <Route path="/assets/import-export" element={<AssetsImportExport />} />
+                    <Route path="/assets/depreciation" element={<DepreciationDashboard />} />
+                    <Route path="/assets/vendors" element={<VendorsList />} />
+                    <Route path="/assets/vendors/add-vendor" element={<AddVendor />} />
+                    <Route path="/assets/vendors/detail/:vendorId" element={<VendorDetail />} />
+                    <Route path="/assets/licenses" element={<LicensesList />} />
+                    <Route path="/assets/licenses/add-license" element={<AddLicense />} />
+                    <Route path="/assets/licenses/allocate" element={<AllocateLicense />} />
+                    <Route path="/assets/licenses/:licenseId" element={<LicenseDetail />} />
+                    <Route path="/assets/repairs" element={<RepairsList />} />
+                    <Route path="/assets/repairs/create" element={<CreateRepair />} />
+                    <Route path="/assets/repairs/detail/:repairId" element={<RepairDetail />} />
+                    <Route path="/assets/purchase-orders" element={<PurchaseOrdersList />} />
+                    <Route path="/assets/purchase-orders/create-po" element={<CreatePO />} />
+                    <Route path="/assets/purchase-orders/po-detail/:poId" element={<PODetail />} />
+                    
+                    <Route path="/assets/logs" element={<AssetLogs />} />
+                    <Route path="/assets/explore/bulk-actions" element={<AssetsBulkActions />} />
+                    
+                    {/* Legacy redirects */}
+                    <Route path="/assets/lists" element={<Navigate to="/assets/advanced?tab=maintenances" replace />} />
+                    <Route path="/assets/lists/maintenances" element={<Navigate to="/assets/advanced?tab=maintenances" replace />} />
+                    <Route path="/assets/lists/warranties" element={<Navigate to="/assets/advanced?tab=warranties" replace />} />
+                    <Route path="/assets/tools" element={<Navigate to="/assets/advanced?tab=tools" replace />} />
+                    <Route path="/assets/setup" element={<Navigate to="/assets/advanced?tab=setup" replace />} />
+                    <Route path="/assets/setup/fields-setup" element={<FieldsSetupRedirect />} />
+                  </Route>
+
+                  {/* ===== SUBSCRIPTION MODULE ===== */}
+                  <Route element={<SubscriptionLayout />}>
+                    <Route path="/subscription" element={<HelpdeskSubscriptionDashboard />} />
+                    <Route path="/subscription/tools" element={<HelpdeskSubscriptionTools />} />
+                    <Route path="/subscription/vendors" element={<HelpdeskSubscriptionVendors />} />
+                    <Route path="/subscription/licenses" element={<HelpdeskSubscriptionLicenses />} />
+                    <Route path="/subscription/payments" element={<HelpdeskSubscriptionPayments />} />
+                    
+                  </Route>
+
+                  {/* ===== SYSTEM UPDATES MODULE ===== */}
+                  <Route element={<SystemUpdatesLayout />}>
+                    <Route path="/system-updates" element={<HelpdeskSystemUpdates />} />
+                    <Route path="/system-updates/settings" element={<SystemUpdatesSettings />} />
+                    <Route path="/system-updates/devices" element={<SystemUpdatesDevices />} />
+                    <Route path="/system-updates/updates" element={<SystemUpdatesUpdates />} />
+                    
+                  </Route>
+
+                  {/* ===== ADMIN MODULE ===== */}
+                  <Route element={<AdminLayout />}>
+                    <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+                    <Route path="/admin/users" element={<AdminUsersPage />} />
+                    <Route path="/admin/logs" element={<AdminLogsPage />} />
+                    <Route path="/admin/system" element={<AdminSystemPage />} />
+                    <Route path="/admin/backup" element={<AdminBackupPage />} />
+                    <Route path="/admin/reports" element={<AdminReportsPage />} />
+                    
+                  </Route>
+
+                  {/* Legacy settings redirect to admin */}
+                  <Route path="/settings" element={<Navigate to="/admin/users" replace />} />
+
+                  {/* Account (standalone fallback) */}
+                  <Route path="/account" element={<AccountSettings />} />
+
+                  {/* Catch-all */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+              </AppErrorBoundary>
+            </SystemSettingsProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

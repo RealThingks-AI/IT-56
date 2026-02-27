@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useSessionStore } from "@/stores/useSessionStore";
 
 interface AuthContextType {
   user: User | null;
@@ -13,7 +14,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Reduced timeout - session check is fast when valid
+// Reduced timeout for faster perceived performance
 const AUTH_INIT_TIMEOUT_MS = 2000;
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -97,11 +98,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
+      // Clear session store on sign-out
+      useSessionStore.getState().clear();
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     } catch (error) {
       console.error("Error signing out:", error);
-      // Only clear auth-related keys, not all localStorage
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('sb-') || key.includes('supabase')) {
           localStorage.removeItem(key);

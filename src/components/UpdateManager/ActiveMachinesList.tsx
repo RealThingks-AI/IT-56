@@ -69,23 +69,10 @@ const ComplianceStatusBadge = ({ status, pendingCount }: {
 
 async function fetchActiveMachines(): Promise<SystemDevice[]> {
   try {
-    const authResponse = await supabase.auth.getUser();
-    if (!authResponse.data.user) return [];
-
-    const userResponse = await supabase
-      .from('users')
-      .select('organisation_id')
-      .eq('auth_user_id', authResponse.data.user.id)
-      .maybeSingle();
-
-    const orgId = userResponse.data?.organisation_id;
-    if (!orgId) return [];
-
-    // @ts-ignore - Bypass deep type inference issue
+    // In single-company mode, just fetch all active devices - RLS handles access
     const result = await supabase
       .from("system_devices")
       .select("id, hostname, device_type, os_name, os_version, last_seen, last_update_check, update_compliance_status, pending_updates_count, is_active, created_at")
-      .eq("organisation_id", orgId)
       .eq("is_active", true);
 
     if (result.error) throw result.error;

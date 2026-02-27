@@ -56,10 +56,10 @@ export default function HelpdeskQueues() {
       if (!user) return null;
       const { data } = await supabase
         .from("users")
-        .select("id, organisation_id, role")
+        .select("id, role")
         .eq("auth_user_id", user.id)
         .single();
-      return data;
+      return data ? { ...data, authUserId: user.id } : null;
     },
   });
 
@@ -103,19 +103,16 @@ export default function HelpdeskQueues() {
   });
 
   const { data: orgUsers } = useQuery({
-    queryKey: ["org-users", currentUser?.organisation_id],
+    queryKey: ["org-users-active"],
     queryFn: async () => {
-      if (!currentUser?.organisation_id) return [];
       const { data, error } = await supabase
         .from("users")
         .select("id, name, email")
-        .eq("organisation_id", currentUser.organisation_id)
         .eq("status", "active")
         .order("name");
       if (error) throw error;
       return data || [];
     },
-    enabled: !!currentUser?.organisation_id,
   });
 
   const activeQueues = queues?.filter(q => q.is_active).length || 0;
@@ -125,12 +122,6 @@ export default function HelpdeskQueues() {
     mutationFn: async () => {
       if (!currentUser) throw new Error("Not authenticated");
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
       const payload = {
         name,
         description: description || null,
@@ -138,8 +129,6 @@ export default function HelpdeskQueues() {
         assignment_method: assignmentMethod,
         auto_assign: autoAssign,
         sla_policy_id: slaPolicyId ? parseInt(slaPolicyId) : null,
-        organisation_id: currentUser.organisation_id,
-        tenant_id: profileData?.tenant_id || 1,
         is_active: true,
       };
 
@@ -506,8 +495,11 @@ export default function HelpdeskQueues() {
           ) : (
             <div className="text-center py-12">
               <ListFilter className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No queues configured</p>
-              <Button variant="outline" className="mt-4" onClick={() => setDialogOpen(true)}>
+              <p className="text-muted-foreground mb-2">No queues configured</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Create queues to organize tickets and assign agents
+              </p>
+              <Button variant="outline" onClick={() => setDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Queue
               </Button>

@@ -37,18 +37,18 @@ export const TicketConfiguration = () => {
 
   const configCards: ConfigCard[] = [
     {
+      id: "categories",
+      title: "Categories",
+      description: "Manage ticket categories and subcategories for organization",
+      icon: FolderTree,
+      onClick: () => setActiveManager("categories"),
+    },
+    {
       id: "sla",
       title: "SLA Policies",
       description: "Define response and resolution time targets for tickets based on priority",
       icon: Clock,
       path: "/sla",
-    },
-    {
-      id: "queues",
-      title: "Queues",
-      description: "Manage ticket queues, assignment methods, and team workflows",
-      icon: ListChecks,
-      path: "/queues",
     },
     {
       id: "assignment-rules",
@@ -58,18 +58,18 @@ export const TicketConfiguration = () => {
       path: "/tickets/assignment-rules",
     },
     {
-      id: "categories",
-      title: "Categories",
-      description: "Manage ticket categories and subcategories for organization",
-      icon: FolderTree,
-      onClick: () => setActiveManager("categories"),
+      id: "automation",
+      title: "Automation Rules",
+      description: "Set up automated actions, notifications, and escalations",
+      icon: Zap,
+      path: "/automation",
     },
     {
-      id: "canned-responses",
-      title: "Canned Responses",
-      description: "Create reusable response templates with shortcuts for quick replies",
-      icon: MessageSquare,
-      onClick: () => setActiveManager("canned-responses"),
+      id: "queues",
+      title: "Queues",
+      description: "Manage ticket queues, assignment methods, and team workflows",
+      icon: ListChecks,
+      path: "/queues",
     },
     {
       id: "templates",
@@ -79,11 +79,11 @@ export const TicketConfiguration = () => {
       onClick: () => setActiveManager("templates"),
     },
     {
-      id: "automation",
-      title: "Automation Rules",
-      description: "Set up automated actions, notifications, and escalations",
-      icon: Zap,
-      path: "/automation",
+      id: "canned-responses",
+      title: "Canned Responses",
+      description: "Create reusable response templates with shortcuts for quick replies",
+      icon: MessageSquare,
+      onClick: () => setActiveManager("canned-responses"),
     },
     {
       id: "column-settings",
@@ -124,13 +124,6 @@ export const TicketConfiguration = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Settings className="h-5 w-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">Ticket Configuration</h2>
-      </div>
-      <p className="text-sm text-muted-foreground mb-4">
-        Manage all settings related to ticket management, SLA policies, routing, and automation.
-      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {configCards.map((card) => (

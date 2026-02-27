@@ -24,10 +24,9 @@ import { getUserDisplayName, getUserInitials } from "@/lib/userUtils";
 
 interface TicketWatchersPanelProps {
   ticketId: number;
-  organisationId?: string;
 }
 
-export const TicketWatchersPanel = ({ ticketId, organisationId }: TicketWatchersPanelProps) => {
+export const TicketWatchersPanel = ({ ticketId }: TicketWatchersPanelProps) => {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -49,7 +48,6 @@ export const TicketWatchersPanel = ({ ticketId, organisationId }: TicketWatchers
   const { data: watchers, isLoading } = useQuery({
     queryKey: ["ticket-watchers", ticketId],
     queryFn: async () => {
-      // @ts-ignore - table exists after migration
       const { data, error } = await supabase
         .from("helpdesk_ticket_watchers")
         .select("*, user:users(id, name, email)")
@@ -61,19 +59,16 @@ export const TicketWatchersPanel = ({ ticketId, organisationId }: TicketWatchers
   });
 
   const { data: orgUsers } = useQuery({
-    queryKey: ["org-users", organisationId],
+    queryKey: ["org-users-all"],
     queryFn: async () => {
-      if (!organisationId) return [];
       const { data, error } = await supabase
         .from("users")
         .select("id, name, email")
-        .eq("organisation_id", organisationId)
         .eq("status", "active")
         .order("name");
       if (error) throw error;
       return data || [];
     },
-    enabled: !!organisationId,
   });
 
   const isWatching = watchers?.some((w: any) => w.user_id === currentUser?.id);
@@ -82,7 +77,6 @@ export const TicketWatchersPanel = ({ ticketId, organisationId }: TicketWatchers
     mutationFn: async (userId: string) => {
       if (!currentUser) throw new Error("Not logged in");
 
-      // @ts-ignore - table exists after migration
       const { error } = await supabase
         .from("helpdesk_ticket_watchers")
         .insert({
@@ -106,7 +100,6 @@ export const TicketWatchersPanel = ({ ticketId, organisationId }: TicketWatchers
 
   const removeWatcher = useMutation({
     mutationFn: async (watcherId: number) => {
-      // @ts-ignore - table exists after migration
       const { error } = await supabase
         .from("helpdesk_ticket_watchers")
         .delete()
@@ -133,10 +126,6 @@ export const TicketWatchersPanel = ({ ticketId, organisationId }: TicketWatchers
     } else {
       addWatcher.mutate(currentUser.id);
     }
-  };
-
-  const getInitials = (name?: string, email?: string) => {
-    return getUserInitials({ name, email });
   };
 
   const availableUsers = orgUsers?.filter(

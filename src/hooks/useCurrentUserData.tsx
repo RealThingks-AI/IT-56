@@ -1,46 +1,34 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSessionStore } from "@/stores/useSessionStore";
 
 export interface CurrentUserData {
   authUserId: string;
   email: string | undefined;
-  organisationId: string | null;
-  tenantId: number;
   role: string | null;
   name: string | null;
 }
 
+/**
+ * Simplified user data hook — reads from auth context + session store.
+ * Zero database calls.
+ */
 export const useCurrentUserData = () => {
-  return useQuery({
-    queryKey: ["current-user-data"],
-    staleTime: 10 * 60 * 1000,  // 10 minutes - user data rarely changes
-    gcTime: 30 * 60 * 1000,     // 30 minutes cache retention
-    queryFn: async (): Promise<CurrentUserData | null> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
+  const { user } = useAuth();
+  const storeName = useSessionStore((s) => s.name);
+  const storeEmail = useSessionStore((s) => s.email);
+  const storeRole = useSessionStore((s) => s.role);
+  const status = useSessionStore((s) => s.status);
 
-      // Get user data from users table
-      const { data: userData } = await supabase
-        .from("users")
-        .select("id, organisation_id, email, name, role")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
+  const data: CurrentUserData | null = user ? {
+    authUserId: user.id,
+    email: storeEmail || user.email,
+    role: storeRole,
+    name: storeName || user.user_metadata?.name || null,
+  } : null;
 
-      // Get profile data (for tenant_id)
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      return {
-        authUserId: user.id,
-        email: user.email,
-        organisationId: userData?.organisation_id || null,
-        tenantId: profileData?.tenant_id || 1,
-        role: userData?.role || null,
-        name: userData?.name || null,
-      };
-    },
-  });
+  return {
+    data,
+    isLoading: status !== "ready",
+    error: null,
+  };
 };

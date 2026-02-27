@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { BackButton } from "@/components/BackButton";
 import { Eye, EyeOff, Check, X, Loader2 } from "lucide-react";
+import appLogo from "@/assets/app-logo.png";
 
 const ResetPasswordConfirm = () => {
   const [password, setPassword] = useState("");
@@ -66,9 +66,8 @@ const ResetPasswordConfirm = () => {
 
     // Also check for existing session (in case page was refreshed or token already exchanged)
     const checkSession = async () => {
-      // Give more time for the hash fragment to be processed by Supabase
-      // Increased timeout for slower connections
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait for hash fragment to be processed by Supabase
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       const { data: { session }, error } = await supabase.auth.getSession();
       console.log("Session check - hasSession:", !!session, "error:", error?.message);
@@ -167,106 +166,102 @@ const ResetPasswordConfirm = () => {
   }
 
   return (
-    <>
-      <BackButton />
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/20 to-background p-4">
-        <div className="w-full max-w-md animate-fade-in">
-          <Card className="p-6">
-            <div className="text-center mb-6">
-              <div className="flex items-center justify-center mb-3">
-                <span className="text-2xl font-bold text-primary">RT-IT-Hub</span>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/20 to-background p-4">
+      <div className="w-full max-w-md animate-fade-in">
+        <Card className="p-8">
+          <div className="text-center mb-6">
+            <div className="flex items-center justify-center mb-4">
+              <img src={appLogo} alt="RT-IT-Hub" className="w-14 h-14 object-contain" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">Set New Password</h1>
+            <p className="text-sm text-muted-foreground">
+              Enter your new password below
+            </p>
+          </div>
+
+          <form onSubmit={handleUpdatePassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="password">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="Enter new password"
+                  minLength={6}
+                  autoFocus
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
               </div>
-              <h1 className="text-2xl font-bold mb-2">Set New Password</h1>
-              <p className="text-sm text-muted-foreground">
-                Enter your new password below
-              </p>
             </div>
 
-            <form onSubmit={handleUpdatePassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    placeholder="Enter new password"
-                    minLength={6}
-                    autoFocus
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm Password</Label>
+              <div className="relative">
+                <Input
+                  id="confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  placeholder="Confirm new password"
+                  minLength={6}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              {passwordRequirements.map((req, index) => (
+                <div key={index} className="flex items-center gap-2 text-xs">
+                  {req.met ? (
+                    <Check className="h-3 w-3 text-primary" />
+                  ) : (
+                    <X className="h-3 w-3 text-muted-foreground" />
+                  )}
+                  <span className={req.met ? "text-primary" : "text-muted-foreground"}>
+                    {req.label}
+                  </span>
                 </div>
-              </div>
+              ))}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
-                <div className="relative">
-                  <Input
-                    id="confirm-password"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    placeholder="Confirm new password"
-                    minLength={6}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Password requirements */}
-              <div className="space-y-1">
-                {passwordRequirements.map((req, index) => (
-                  <div key={index} className="flex items-center gap-2 text-xs">
-                    {req.met ? (
-                      <Check className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <X className="h-3 w-3 text-muted-foreground" />
-                    )}
-                    <span className={req.met ? "text-green-600" : "text-muted-foreground"}>
-                      {req.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <Button 
-                type="submit" 
-                className="w-full" 
-                disabled={loading || !passwordRequirements.every(r => r.met)}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  "Update Password"
-                )}
-              </Button>
-            </form>
-          </Card>
-        </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || !passwordRequirements.every(r => r.met)}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Password"
+              )}
+            </Button>
+          </form>
+        </Card>
       </div>
-    </>
+    </div>
   );
 };
 

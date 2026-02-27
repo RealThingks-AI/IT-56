@@ -55,10 +55,10 @@ export default function HelpdeskSLA() {
       if (!user) return null;
       const { data } = await supabase
         .from("users")
-        .select("id, organisation_id, role")
+        .select("id, role")
         .eq("auth_user_id", user.id)
         .single();
-      return data;
+      return data ? { ...data, authUserId: user.id } : null;
     },
   });
 
@@ -107,12 +107,6 @@ export default function HelpdeskSLA() {
     mutationFn: async () => {
       if (!currentUser) throw new Error("Not authenticated");
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
       const payload = {
         name,
         priority,
@@ -121,8 +115,6 @@ export default function HelpdeskSLA() {
         resolution_time_hours: parseInt(resolutionHours) || 0,
         resolution_time_minutes: parseInt(resolutionMinutes) || 0,
         is_active: isActive,
-        organisation_id: currentUser.organisation_id,
-        tenant_id: profileData?.tenant_id || 1,
       };
 
       if (editingPolicy) {

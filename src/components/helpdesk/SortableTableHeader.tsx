@@ -29,7 +29,7 @@ export const SortableTableHeader = ({
 
   return (
     <TableHead
-      className={cn("cursor-pointer select-none py-2", className)}
+      className={cn("cursor-pointer select-none py-2 font-medium text-xs uppercase text-muted-foreground", className)}
       onClick={() => onSort(column)}
     >
       <div className="flex items-center gap-1">

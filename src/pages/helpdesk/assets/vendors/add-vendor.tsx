@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useOrganisation } from "@/contexts/OrganisationContext";
 import { BackButton } from "@/components/BackButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +12,6 @@ import { toast } from "sonner";
 
 const AddVendor = () => {
   const navigate = useNavigate();
-  const { organisation } = useOrganisation();
   const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
@@ -31,19 +29,7 @@ const AddVendor = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const tenantId = profileData?.tenant_id || 1;
-
-      const { error } = await supabase.from("itam_vendors").insert({
-        ...data,
-        tenant_id: tenantId,
-        organisation_id: organisation?.id,
-      });
+      const { error } = await supabase.from("itam_vendors").insert(data);
 
       if (error) throw error;
     },
@@ -78,7 +64,7 @@ const AddVendor = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="p-6 max-w-3xl mx-auto space-y-6">
+      <div className="p-6 space-y-6">
         <div className="flex items-center gap-4">
           <BackButton />
           <div>
@@ -91,12 +77,6 @@ const AddVendor = () => {
 
         <form onSubmit={handleSubmit}>
           <Card>
-            <CardHeader>
-              <CardTitle>Vendor Information</CardTitle>
-              <CardDescription>
-                Enter vendor details and contact information
-              </CardDescription>
-            </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Vendor Name *</Label>

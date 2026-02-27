@@ -130,19 +130,18 @@ export default function TicketDetail() {
   });
 
   const { data: availableProblems = [] } = useQuery({
-    queryKey: ["helpdesk-problems-for-link", ticket?.organisation_id],
+    queryKey: ["helpdesk-problems-for-link"],
     queryFn: async () => {
-      if (!ticket?.organisation_id) return [];
+      // @ts-ignore - Bypass complex type inference
       const { data, error } = await supabase
         .from("helpdesk_problems")
         .select("id, problem_number, title, status")
-        .eq("organisation_id", ticket.organisation_id)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    enabled: !!ticket?.organisation_id,
+    enabled: !!ticket,
   });
 
   const { data: currentUser } = useQuery({
@@ -153,11 +152,11 @@ export default function TicketDetail() {
 
       const { data } = await supabase
         .from("users")
-        .select("id, organisation_id")
+        .select("id")
         .eq("auth_user_id", user.id)
         .single();
 
-      return data;
+      return data ? { ...data, authUserId: user.id } : null;
     },
   });
 
@@ -165,17 +164,10 @@ export default function TicketDetail() {
     mutationFn: async (commentText: string) => {
       if (!currentUser || !ticket) return;
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
       const { error } = await supabase.from("helpdesk_ticket_comments").insert({
         ticket_id: parseInt(ticketId!),
         user_id: currentUser.id,
         comment: commentText,
-        tenant_id: profileData?.tenant_id || ticket.tenant_id,
         is_internal: isInternalNote,
       });
 
@@ -253,11 +245,9 @@ export default function TicketDetail() {
 
       if (!currentUser) throw new Error("User not found");
 
-      const { data: problemNumber } = await supabase.rpc("generate_problem_number", {
-        p_tenant_id: ticket.tenant_id,
-        p_org_id: ticket.organisation_id,
-      });
+      const { data: problemNumber } = await supabase.rpc("generate_problem_number", {});
 
+      // @ts-ignore - Bypass complex type inference
       const { data: newProblem, error: problemError } = await supabase
         .from("helpdesk_problems")
         .insert({
@@ -266,8 +256,6 @@ export default function TicketDetail() {
           description: `Root cause analysis for ticket ${ticket.ticket_number}:\n\n${ticket.description}`,
           priority: ticket.priority,
           status: "investigating",
-          tenant_id: ticket.tenant_id,
-          organisation_id: ticket.organisation_id,
           created_by: currentUser.id,
           category_id: ticket.category_id,
         })
@@ -816,10 +804,7 @@ export default function TicketDetail() {
           {/* Right Sidebar */}
           <div className="w-72 shrink-0 space-y-3 hidden lg:block">
             <TimeTrackingPanel ticketId={parseInt(ticketId!)} />
-            <TicketWatchersPanel 
-              ticketId={parseInt(ticketId!)} 
-              organisationId={ticket.organisation_id} 
-            />
+            <TicketWatchersPanel ticketId={parseInt(ticketId!)} />
           </div>
         </div>
       </div>

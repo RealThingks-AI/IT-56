@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Link as LinkIcon, Trash2, Loader2 } from "lucide-react";
@@ -19,18 +19,31 @@ interface EditProblemDialogProps {
 }
 
 export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDialogProps) {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState("");
   const [formData, setFormData] = useState({
-    title: problem?.title || "",
-    description: problem?.description || "",
-    priority: problem?.priority || "medium",
-    status: problem?.status || "open",
-    root_cause: problem?.root_cause || "",
-    workaround: problem?.workaround || "",
+    title: "",
+    description: "",
+    priority: "medium",
+    status: "open",
+    root_cause: "",
+    workaround: "",
   });
+
+  // Reset form when problem prop changes
+  useEffect(() => {
+    if (problem) {
+      setFormData({
+        title: problem.title || "",
+        description: problem.description || "",
+        priority: problem.priority || "medium",
+        status: problem.status || "open",
+        root_cause: problem.root_cause || "",
+        workaround: problem.workaround || "",
+      });
+    }
+  }, [problem]);
 
   const { data: linkedTickets } = useQuery({
     queryKey: ["helpdesk-problem-tickets", problem?.id],
@@ -46,19 +59,17 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
   });
 
   const { data: availableTickets = [] } = useQuery({
-    queryKey: ["helpdesk-tickets-for-link", problem?.organisation_id],
+    queryKey: ["helpdesk-tickets-for-link"],
     queryFn: async () => {
-      if (!problem?.organisation_id) return [];
       const { data, error } = await supabase
         .from("helpdesk_tickets")
         .select("id, ticket_number, title, status, priority")
-        .eq("organisation_id", problem.organisation_id)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    enabled: !!problem?.organisation_id && open,
+    enabled: !!problem?.id && open,
   });
 
   const linkTicket = useMutation({
@@ -72,19 +83,12 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Ticket linked to problem",
-      });
+      toast.success("Ticket linked to problem");
       setSelectedTicketId("");
       queryClient.invalidateQueries({ queryKey: ["helpdesk-problem-tickets", problem.id] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: "Failed to link ticket: " + error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to link ticket: " + error.message);
     },
   });
 
@@ -97,23 +101,33 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Ticket unlinked",
-      });
+      toast.success("Ticket unlinked");
       queryClient.invalidateQueries({ queryKey: ["helpdesk-problem-tickets", problem.id] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: "Failed to unlink ticket: " + error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to unlink ticket: " + error.message);
     },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate: Problem cannot be resolved without root cause
+    if (formData.status === 'resolved' && !formData.root_cause?.trim()) {
+      toast.error("Root cause is required to resolve a problem", {
+        description: "Please document the root cause before marking as resolved."
+      });
+      return;
+    }
+    
+    // Validate: Problem cannot be resolved without workaround or permanent fix
+    if (formData.status === 'resolved' && !formData.workaround?.trim()) {
+      toast.error("Workaround or solution is required to resolve a problem", {
+        description: "Please document the workaround or solution before marking as resolved."
+      });
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
@@ -132,19 +146,11 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
 
       if (error) throw error;
 
-      toast({
-        title: "Success",
-        description: "Problem updated successfully",
-      });
-
+      toast.success("Problem updated successfully");
       queryClient.invalidateQueries({ queryKey: ["helpdesk-problems"] });
       onOpenChange(false);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast.error("Failed to update problem: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -152,7 +158,7 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Problem - {problem?.problem_number}</DialogTitle>
         </DialogHeader>
@@ -203,35 +209,49 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="investigating">Investigating</SelectItem>
+                  <SelectItem value="known_error">Known Error</SelectItem>
                   <SelectItem value="resolved">Resolved</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
-                  <SelectItem value="known_error">Known Error</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="root_cause">Root Cause</Label>
+            <Label htmlFor="root_cause">
+              Root Cause
+              {formData.status === 'resolved' && <span className="text-red-500 ml-1">*</span>}
+            </Label>
             <Textarea
               id="root_cause"
               value={formData.root_cause}
               onChange={(e) => setFormData({ ...formData, root_cause: e.target.value })}
               rows={3}
               placeholder="Describe the root cause of the problem..."
+              className={formData.status === 'resolved' && !formData.root_cause?.trim() ? 'border-red-300' : ''}
             />
+            {formData.status === 'resolved' && !formData.root_cause?.trim() && (
+              <p className="text-xs text-red-500">Required for resolution</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="workaround">Workaround</Label>
+            <Label htmlFor="workaround">
+              Workaround / Solution
+              {formData.status === 'resolved' && <span className="text-red-500 ml-1">*</span>}
+            </Label>
             <Textarea
               id="workaround"
               value={formData.workaround}
               onChange={(e) => setFormData({ ...formData, workaround: e.target.value })}
               rows={3}
-              placeholder="Describe any temporary workarounds..."
+              placeholder="Describe the workaround or permanent solution..."
+              className={formData.status === 'resolved' && !formData.workaround?.trim() ? 'border-red-300' : ''}
             />
+            {formData.status === 'resolved' && !formData.workaround?.trim() && (
+              <p className="text-xs text-red-500">Required for resolution</p>
+            )}
           </div>
 
           <Separator className="my-4" />
@@ -260,6 +280,7 @@ export function EditProblemDialog({ open, onOpenChange, problem }: EditProblemDi
                       variant="ghost"
                       size="sm"
                       onClick={() => unlinkTicket.mutate(link.id)}
+                      aria-label="Unlink ticket"
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>

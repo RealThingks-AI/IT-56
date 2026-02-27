@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AssetTopBar } from "@/components/helpdesk/assets/AssetTopBar";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,14 +16,15 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { format, addDays } from "date-fns";
 import { CalendarIcon, Search, CalendarCheck, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeSearchInput } from "@/lib/utils";
+import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
 
 const ReservePage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
-  const [reserveFor, setReserveFor] = useState("");
+  const [reserveFor, setReserveFor] = useState<string | undefined>(undefined);
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 7));
   const [notes, setNotes] = useState("");
@@ -36,11 +37,12 @@ const ReservePage = () => {
         .from("itam_assets")
         .select("*, category:itam_categories(name)")
         .eq("is_active", true)
-        .in("status", ["available", "assigned"])
+        .eq("status", "available")
         .order("name");
 
       if (search) {
-        query = query.or(`name.ilike.%${search}%,asset_tag.ilike.%${search}%,asset_id.ilike.%${search}%`);
+        const s = sanitizeSearchInput(search);
+        query = query.or(`name.ilike.%${s}%,asset_tag.ilike.%${s}%,asset_id.ilike.%${s}%`);
       }
 
       const { data } = await query.limit(50);
@@ -66,22 +68,27 @@ const ReservePage = () => {
     mutationFn: async () => {
       if (!selectedAsset) throw new Error("Please select an asset");
       if (!reserveFor) throw new Error("Please select a person to reserve for");
+      if (endDate <= startDate) throw new Error("End date must be after start date");
+
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
 
       const { error } = await supabase
-        .from("itam_asset_assignments")
+        .from("itam_asset_reservations")
         .insert({
           asset_id: selectedAsset,
-          assigned_to: reserveFor,
-          assigned_at: startDate.toISOString(),
-          expected_return_date: endDate.toISOString(),
-          notes: notes ? `[RESERVATION] ${notes}` : '[RESERVATION]',
+          reserved_for: reserveFor,
+          reserved_by: currentUser?.id,
+          start_date: format(startDate, "yyyy-MM-dd"),
+          end_date: format(endDate, "yyyy-MM-dd"),
+          purpose: notes || null,
+          status: "pending",
         });
 
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Asset reserved successfully");
-      queryClient.invalidateQueries({ queryKey: ["itam-assets"] });
+      invalidateAllAssetQueries(queryClient);
       navigate("/assets/allassets");
     },
     onError: (error: any) => {
@@ -96,9 +103,6 @@ const ReservePage = () => {
   const selectedAssetData = assets.find(a => a.id === selectedAsset);
 
   return (
-    <div className="min-h-screen bg-background">
-      <AssetTopBar />
-      
       <div className="p-4 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Asset Selection */}
@@ -190,7 +194,7 @@ const ReservePage = () => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Reserve For *</Label>
-                <Select value={reserveFor} onValueChange={setReserveFor}>
+                <Select value={reserveFor || undefined} onValueChange={setReserveFor}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select person" />
                   </SelectTrigger>
@@ -283,7 +287,6 @@ const ReservePage = () => {
           </Card>
         </div>
       </div>
-    </div>
   );
 };
 

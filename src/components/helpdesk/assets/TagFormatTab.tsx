@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -31,23 +31,13 @@ export function TagFormatTab() {
   const [prefix, setPrefix] = useState("");
   const [padding, setPadding] = useState(4);
 
-  // Fetch categories
+  // Fetch categories - no org filter needed in single-company mode
   const { data: categories = [] } = useQuery({
     queryKey: ["itam-categories"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
-      
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-      
       const { data, error } = await supabase
         .from("itam_categories")
         .select("id, name")
-        .eq("organisation_id", userData?.organisation_id)
         .order("name");
       
       if (error) throw error;
@@ -67,6 +57,33 @@ export function TagFormatTab() {
       return (data || []) as TagFormat[];
     },
   });
+
+  // Fetch all asset tags to compute actual next available numbers
+  const { data: allAssetTags = [] } = useQuery({
+    queryKey: ["all-asset-tags-for-preview"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("itam_assets")
+        .select("asset_tag")
+        .not("asset_tag", "is", null);
+      if (error) throw error;
+      return (data || []).map((a) => a.asset_tag).filter(Boolean) as string[];
+    },
+  });
+
+  const getNextNumberForPrefix = (prefix: string): number => {
+    let maxNumber = 0;
+    for (const tag of allAssetTags) {
+      if (tag.startsWith(prefix)) {
+        const numPart = tag.substring(prefix.length);
+        const num = parseInt(numPart, 10);
+        if (!isNaN(num) && num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    }
+    return maxNumber + 1;
+  };
 
   const getTagFormatForCategory = (categoryId: string) => {
     return tagFormats.find((tf) => tf.category_id === categoryId);
@@ -91,15 +108,6 @@ export function TagFormatTab() {
     mutationFn: async () => {
       if (!selectedCategory) throw new Error("No category selected");
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-      
       const existing = getTagFormatForCategory(selectedCategory.id);
       
       if (existing) {
@@ -114,7 +122,7 @@ export function TagFormatTab() {
         
         if (error) throw error;
       } else {
-        // Insert new
+        // Insert new - no org filter needed
         const { error } = await supabase
           .from("category_tag_formats")
           .insert({
@@ -122,7 +130,6 @@ export function TagFormatTab() {
             prefix: prefix.trim(),
             zero_padding: padding,
             current_number: 1,
-            organisation_id: userData?.organisation_id,
           });
         
         if (error) throw error;
@@ -196,7 +203,7 @@ export function TagFormatTab() {
                     <TableCell>
                       {tagFormat ? (
                         <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {tagFormat.prefix}{tagFormat.current_number.toString().padStart(tagFormat.zero_padding, "0")}
+                          {tagFormat.prefix}{getNextNumberForPrefix(tagFormat.prefix).toString().padStart(tagFormat.zero_padding, "0")}
                         </code>
                       ) : (
                         "—"

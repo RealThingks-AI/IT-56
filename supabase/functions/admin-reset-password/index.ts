@@ -90,6 +90,30 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Get target user email for audit log
+    const targetEmail = data?.user?.email || 'unknown'
+    const adminEmail = user.email || 'unknown'
+
+    // Insert audit log entry
+    const { error: auditError } = await supabaseAdmin.from('audit_logs').insert({
+      action_type: 'password_reset',
+      entity_type: 'users',
+      entity_id: userId,
+      user_id: user.id,
+      metadata: {
+        target_email: targetEmail,
+        reset_by: adminEmail,
+        action_description: `Password reset for ${targetEmail} by ${adminEmail}`,
+      },
+      ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null,
+      user_agent: req.headers.get('user-agent') || null,
+    })
+
+    if (auditError) {
+      console.error('Error inserting audit log:', auditError)
+      // Don't fail the request if audit log fails
+    }
+
     console.log(`Password successfully reset for user: ${userId}`)
 
     return new Response(

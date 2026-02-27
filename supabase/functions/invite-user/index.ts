@@ -123,28 +123,12 @@ serve(async (req) => {
       );
     }
 
-    // Get the caller's organisation_id
-    const { data: callerData, error: callerDataError } = await supabaseAdmin
-      .from("users")
-      .select("organisation_id")
-      .eq("auth_user_id", callerUser.id)
-      .single();
-
-    if (callerDataError || !callerData?.organisation_id) {
-      console.error("Error getting caller organisation:", callerDataError);
-      return new Response(
-        JSON.stringify({ error: "Failed to get organization information" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Invite the user
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       emailLower,
       {
         data: {
           name: name || null,
-          organisation_id: callerData.organisation_id,
           invited_by: callerUser.id,
           initial_role: role,
         },

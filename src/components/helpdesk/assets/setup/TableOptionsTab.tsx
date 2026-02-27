@@ -30,22 +30,13 @@ export function TableOptionsTab() {
     DEFAULT_COLUMNS.filter(c => c.default).map(c => c.key)
   );
 
+  // Simplified query - no org_id filtering, fetch the single settings record
   const { data: settings, isLoading } = useQuery({
     queryKey: ["itam-settings", "asset_table_columns"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
       const { data } = await supabase
         .from("itam_settings")
         .select("value")
-        .eq("organisation_id", userData?.organisation_id)
         .eq("key", "asset_table_columns")
         .maybeSingle();
 
@@ -61,19 +52,9 @@ export function TableOptionsTab() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
       const { data: existing } = await supabase
         .from("itam_settings")
         .select("id")
-        .eq("organisation_id", userData?.organisation_id)
         .eq("key", "asset_table_columns")
         .maybeSingle();
 
@@ -84,13 +65,13 @@ export function TableOptionsTab() {
           .eq("id", existing.id);
         if (error) throw error;
       } else {
+        // Insert without org_id - use tenant_id if needed
         const { error } = await supabase
           .from("itam_settings")
           .insert({
-            organisation_id: userData?.organisation_id,
             key: "asset_table_columns",
             value: { visible_columns: visibleColumns },
-          });
+          } as any);
         if (error) throw error;
       }
     },

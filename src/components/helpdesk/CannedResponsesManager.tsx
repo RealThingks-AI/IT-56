@@ -87,17 +87,11 @@ export const CannedResponsesManager = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("users")
-        .select("id, organisation_id")
+        .select("id")
         .eq("auth_user_id", user.id)
         .single();
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      return { ...data, tenant_id: profileData?.tenant_id || 1 };
+      return { id: data?.id };
     },
   });
 
@@ -111,8 +105,6 @@ export const CannedResponsesManager = () => {
         shortcut: formData.shortcut || null,
         category_id: formData.category_id ? parseInt(formData.category_id) : null,
         is_public: formData.is_public,
-        organisation_id: currentUser.organisation_id,
-        tenant_id: currentUser.tenant_id,
       };
 
       if (editingResponse) {

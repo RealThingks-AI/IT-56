@@ -5,53 +5,12 @@ import type { Database } from './types';
 const SUPABASE_URL = "https://iarndwlbrmjbsjvugqvr.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlhcm5kd2xicm1qYnNqdnVncXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyODg4MzUsImV4cCI6MjA4Mzg2NDgzNX0.qh7Z-e-r7haKZM1gKppdhZu5RA3xMnhznBomE1mi7SQ";
 
-// Safe storage adapter that falls back to in-memory if localStorage is blocked
-const createSafeStorage = () => {
-  const memoryStorage: Record<string, string> = {};
-  
-  const isLocalStorageAvailable = () => {
-    try {
-      const testKey = "__supabase_storage_test__";
-      localStorage.setItem(testKey, testKey);
-      localStorage.removeItem(testKey);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const useLocalStorage = isLocalStorageAvailable();
-
-  return {
-    getItem: (key: string): string | null => {
-      if (useLocalStorage) {
-        return localStorage.getItem(key);
-      }
-      return memoryStorage[key] ?? null;
-    },
-    setItem: (key: string, value: string): void => {
-      if (useLocalStorage) {
-        localStorage.setItem(key, value);
-      } else {
-        memoryStorage[key] = value;
-      }
-    },
-    removeItem: (key: string): void => {
-      if (useLocalStorage) {
-        localStorage.removeItem(key);
-      } else {
-        delete memoryStorage[key];
-      }
-    },
-  };
-};
-
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: createSafeStorage(),
+    storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
   }

@@ -78,7 +78,7 @@ export default function AssignmentRules() {
           <div>
             <Button
               variant="ghost"
-              onClick={() => navigate("/helpdesk/tickets")}
+              onClick={() => navigate("/tickets")}
               className="mb-2"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />

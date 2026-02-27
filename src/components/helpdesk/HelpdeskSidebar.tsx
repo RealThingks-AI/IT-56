@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { LayoutDashboard, Ticket, Package, CreditCard, Activity, BarChart3, Settings, ChevronLeft, ChevronRight, RefreshCw, Download, Monitor, LucideIcon, ClipboardCheck, Key, Building2, ListChecks, Receipt, List } from "lucide-react";
+import { LayoutDashboard, Ticket, Package, CreditCard, Activity, BarChart3, Settings, ChevronLeft, ChevronRight, RefreshCw, Download, Monitor, LucideIcon, ClipboardCheck, Key, Building2, ListChecks, Receipt, List, AlertTriangle, ScrollText } from "lucide-react";
 import appLogo from "@/assets/app-logo.png";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { SidebarUserSection } from "./SidebarUserSection";
-import { useMultiplePageAccess } from "@/hooks/usePageAccess";
 import { useUserRole } from "@/hooks/useUserRole";
 
 interface SidebarChild {
@@ -36,12 +35,31 @@ const assetChildren: SidebarChild[] = [{
   url: "/assets/allassets",
   icon: List
 }, {
-  title: "Reports",
-  url: "/assets/reports",
-  icon: BarChart3
+  title: "Logs",
+  url: "/assets/logs",
+  icon: ScrollText
 }, {
   title: "Advanced",
   url: "/assets/advanced",
+  icon: Settings
+}];
+
+// Ticket module sub-sections
+const ticketChildren: SidebarChild[] = [{
+  title: "Dashboard",
+  url: "/tickets",
+  icon: LayoutDashboard
+}, {
+  title: "All Tickets",
+  url: "/tickets/list",
+  icon: List
+}, {
+  title: "Problems",
+  url: "/tickets/problems",
+  icon: AlertTriangle
+}, {
+  title: "Advanced",
+  url: "/tickets/settings",
   icon: Settings
 }];
 
@@ -52,9 +70,9 @@ const sidebarSections: SidebarSection[] = [{
   parentRoute: "/"
 }, {
   title: "Tickets",
-  url: "/tickets",
   icon: Ticket,
-  parentRoute: "/tickets"
+  parentRoute: "/tickets",
+  children: ticketChildren
 }, {
   title: "Assets",
   icon: Package,
@@ -111,52 +129,23 @@ const sidebarSections: SidebarSection[] = [{
   url: "/monitoring",
   icon: Activity,
   parentRoute: "/monitoring"
-}, {
-  title: "Reports",
-  url: "/reports",
-  icon: BarChart3,
-  parentRoute: "/reports"
-}, {
-  title: "Audit",
-  url: "/audit",
-  icon: ClipboardCheck,
-  parentRoute: "/audit"
-}, {
-  title: "Settings",
-  url: "/settings",
-  icon: Settings,
-  parentRoute: "/settings"
 }];
 
 export function HelpdeskSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const { role } = useUserRole();
 
-  // Get all parent routes to check access
-  const parentRoutes = useMemo(() => sidebarSections.map(s => s.parentRoute), []);
-  const { accessMap, isLoading: accessLoading } = useMultiplePageAccess(parentRoutes);
-
-  // OPTIMISTIC: Show all sections immediately, filter only when permissions confirm denial
-  // This prevents the skeleton flash on navigation
+  // Role-based filtering — instant, no DB query
+  const OPEN_ROUTES = ["/", "/tickets", "/assets"];
   const filteredSections = useMemo(() => {
-    // Admins always see everything
     if (role === "admin") return sidebarSections;
-    
-    // If still loading and no cached data, show all sections (optimistic)
-    if (accessLoading && Object.keys(accessMap).length === 0) {
-      return sidebarSections;
-    }
-
-    // Filter based on confirmed permissions
-    return sidebarSections.filter(section => {
-      // If permission not yet loaded, show optimistically
-      if (!(section.parentRoute in accessMap)) return true;
-      // Otherwise use the actual permission
-      return accessMap[section.parentRoute] === true;
-    });
-  }, [role, accessMap, accessLoading]);
+    if (role === "manager") return sidebarSections; // managers see all except settings (handled separately)
+    // user/viewer: only open routes
+    return sidebarSections.filter(s => OPEN_ROUTES.includes(s.parentRoute));
+  }, [role]);
 
   // Auto-expand section when child route is active
   useEffect(() => {
@@ -188,7 +177,7 @@ export function HelpdeskSidebar() {
 
   const toggleSection = (title: string) => {
     setExpandedSections(prev => 
-      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
+      prev.includes(title) ? [] : [title]
     );
   };
 
@@ -216,7 +205,7 @@ export function HelpdeskSidebar() {
         {Icon && <Icon className="h-3 w-3 mr-2 flex-shrink-0" />}
         <span className="truncate">{subChild.title}</span>
         {subChild.badge !== undefined && subChild.badge > 0 && (
-          <span className="ml-auto bg-destructive text-destructive-foreground text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+          <span className="ml-auto bg-destructive text-destructive-foreground text-[10px] rounded-md px-1.5 min-w-[18px] text-center">
             {subChild.badge}
           </span>
         )}
@@ -246,7 +235,7 @@ export function HelpdeskSidebar() {
               {Icon && <Icon className="h-3 w-3 mr-2 flex-shrink-0" />}
               <span className="flex-1 text-left truncate">{child.title}</span>
               {child.badge !== undefined && child.badge > 0 && (
-                <span className="mr-1 bg-destructive text-destructive-foreground text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+                <span className="mr-1 bg-destructive text-destructive-foreground text-[10px] rounded-md px-1.5 min-w-[18px] text-center">
                   {child.badge}
                 </span>
               )}
@@ -278,7 +267,7 @@ export function HelpdeskSidebar() {
         {Icon && <Icon className="h-3 w-3 mr-2 flex-shrink-0" />}
         <span className="truncate">{child.title}</span>
         {child.badge !== undefined && child.badge > 0 && (
-          <span className="ml-auto bg-destructive text-destructive-foreground text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+          <span className="ml-auto bg-destructive text-destructive-foreground text-[10px] rounded-md px-1.5 min-w-[18px] text-center">
             {child.badge}
           </span>
         )}
@@ -288,88 +277,84 @@ export function HelpdeskSidebar() {
 
   const renderSection = (section: SidebarSection) => {
     const hasChildren = section.children && section.children.length > 0;
-    const isExpanded = expandedSections.includes(section.title);
+    const isExpanded = !collapsed && expandedSections.includes(section.title);
     const sectionActive = isActiveSection(section);
 
     const baseStyles = cn(
-      "flex items-center h-8 rounded-lg transition-all duration-200 text-sm w-full",
+      "flex items-center h-8 rounded-lg transition-all duration-200 text-sm w-full overflow-hidden whitespace-nowrap",
       sectionActive ? "text-primary bg-accent" : "text-foreground hover:text-primary hover:bg-accent/40"
     );
 
+    // Unified structure for sections WITHOUT children
     if (!hasChildren && section.url) {
       const menuButton = (
         <NavLink to={section.url} end={section.url === "/"} className={baseStyles}>
           <div className="w-12 flex items-center justify-center flex-shrink-0">
             <section.icon className="h-4 w-4" />
           </div>
-          {!collapsed && <span className="truncate">{section.title}</span>}
+          <span className="truncate">{section.title}</span>
         </NavLink>
       );
-      
-      if (collapsed) {
-        return (
-          <TooltipProvider key={section.title} delayDuration={0}>
-            <Tooltip>
-              <TooltipTrigger asChild>{menuButton}</TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8} className="z-50">
-                <p className="text-xs">{section.title}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      }
-      return <div key={section.title}>{menuButton}</div>;
-    }
 
-    if (collapsed && hasChildren) {
-      const firstChildUrl = section.children?.[0]?.url || "/";
       return (
         <TooltipProvider key={section.title} delayDuration={0}>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <NavLink 
-                to={firstChildUrl} 
-                className={cn(
-                  "flex items-center h-8 rounded-lg transition-all duration-200",
-                  sectionActive ? "text-primary bg-accent" : "text-foreground hover:text-primary hover:bg-accent/40"
-                )}
-              >
-                <div className="w-12 flex items-center justify-center flex-shrink-0">
-                  <section.icon className="h-4 w-4" />
-                </div>
-              </NavLink>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8} className="z-50">
-              <p className="text-xs">{section.title}</p>
-            </TooltipContent>
+            <TooltipTrigger asChild>{menuButton}</TooltipTrigger>
+            {collapsed && (
+              <TooltipContent side="right" sideOffset={8} className="z-50">
+                <p className="text-xs">{section.title}</p>
+              </TooltipContent>
+            )}
           </Tooltip>
         </TooltipProvider>
       );
     }
 
+    // Unified structure for sections WITH children — always render Collapsible
+    const sectionUrl = section.children?.[0]?.url || "/";
+
     return (
-      <Collapsible key={section.title} open={isExpanded} onOpenChange={() => toggleSection(section.title)}>
-        <CollapsibleTrigger asChild>
-          <button className={baseStyles}>
-            <div className="w-12 flex items-center justify-center flex-shrink-0">
-              <section.icon className="h-4 w-4" />
-            </div>
-            <span className="flex-1 text-left truncate">{section.title}</span>
-            {section.badge !== undefined && section.badge > 0 && (
-              <span className="mr-1 bg-destructive text-destructive-foreground text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
-                {section.badge}
-              </span>
+      <TooltipProvider key={section.title} delayDuration={0}>
+        <Tooltip>
+          <Collapsible open={isExpanded} onOpenChange={() => !collapsed && toggleSection(section.title)}>
+            <TooltipTrigger asChild>
+              <CollapsibleTrigger asChild>
+                <button
+                  className={baseStyles}
+                  onClick={(e) => {
+                    if (collapsed) {
+                      e.preventDefault();
+                      navigate(sectionUrl);
+                    }
+                  }}
+                >
+                  <div className="w-12 flex items-center justify-center flex-shrink-0">
+                    <section.icon className="h-4 w-4" />
+                  </div>
+                  <span className="flex-1 text-left truncate">{section.title}</span>
+                  {section.badge !== undefined && section.badge > 0 && (
+                    <span className="mr-1 bg-destructive text-destructive-foreground text-[10px] rounded-md px-1.5 min-w-[18px] text-center">
+                      {section.badge}
+                    </span>
+                  )}
+                  <ChevronRight className={cn(
+                    "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 flex-shrink-0 mr-2",
+                    isExpanded && "rotate-90"
+                  )} />
+                </button>
+              </CollapsibleTrigger>
+            </TooltipTrigger>
+            {collapsed && (
+              <TooltipContent side="right" sideOffset={8} className="z-50">
+                <p className="text-xs">{section.title}</p>
+              </TooltipContent>
             )}
-            <ChevronRight className={cn(
-              "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 flex-shrink-0 mr-2",
-              isExpanded && "rotate-90"
-            )} />
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-0.5 space-y-0.5 overflow-hidden">
-          {section.children?.map(child => renderChildItem(child))}
-        </CollapsibleContent>
-      </Collapsible>
+            <CollapsibleContent className="mt-0.5 space-y-0.5 overflow-hidden">
+              {section.children?.map(child => renderChildItem(child))}
+            </CollapsibleContent>
+          </Collapsible>
+        </Tooltip>
+      </TooltipProvider>
     );
   };
 
@@ -384,34 +369,32 @@ export function HelpdeskSidebar() {
       }}
     >
       {/* Header */}
-      <div className="flex items-center border-b border-border h-11 overflow-hidden">
+      <div className="flex items-center border-b border-border h-11 overflow-hidden whitespace-nowrap">
         <div className="w-12 h-11 flex items-center justify-center flex-shrink-0">
           <img src={appLogo} alt="RT-IT-Hub" className="w-7 h-7" />
         </div>
-        {!collapsed && (
-          <span className="text-sm font-semibold text-primary whitespace-nowrap">
-            RT-IT-Hub
-          </span>
-        )}
+        <span className="text-sm font-semibold text-primary whitespace-nowrap">
+          RT-IT-Hub
+        </span>
       </div>
 
       {/* Main Navigation - No skeleton, render optimistically */}
-      <nav className="flex-1 py-2 overflow-y-auto space-y-0.5">
+      <nav className={cn("flex-1 py-2 space-y-0.5", collapsed ? "overflow-hidden" : "overflow-y-auto")}>
         {filteredSections.map(section => renderSection(section))}
       </nav>
 
       {/* Collapse Button */}
-      <div className="border-t border-border p-1.5">
+      <div className="border-t border-border py-1.5">
         {(() => {
           const collapseButton = (
             <button 
               onClick={() => setCollapsed(!collapsed)} 
-              className="flex items-center h-8 w-full rounded-lg transition-all duration-200 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/40"
+              className="flex items-center h-8 w-full rounded-lg transition-all duration-200 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/40 overflow-hidden whitespace-nowrap"
             >
               <div className="w-12 flex items-center justify-center flex-shrink-0">
                 <ChevronLeft className={cn("w-4 h-4 transition-transform duration-300", collapsed && "rotate-180")} />
               </div>
-              {!collapsed && <span>Collapse</span>}
+              <span>Collapse</span>
             </button>
           );
           if (collapsed) {

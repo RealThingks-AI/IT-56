@@ -1,0 +1,1 @@
+UPDATE category_tag_formats SET current_number = 111 WHERE category_id = '06084f73-e9c9-4313-bb7d-a40adab08600';

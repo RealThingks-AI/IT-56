@@ -7,14 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { useOrganisationUsers } from "@/hooks/useOrganisationUsers";
+import { useUsers } from "@/hooks/useUsers";
 import { getUserDisplayName } from "@/lib/userUtils";
 
 const AllocateLicense = () => {
@@ -22,7 +18,8 @@ const AllocateLicense = () => {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const [licenseId, setLicenseId] = useState(searchParams.get("licenseId") || "");
+  // Bug 2 fix: read "license" param instead of "licenseId"
+  const [licenseId, setLicenseId] = useState(searchParams.get("license") || "");
   const [userId, setUserId] = useState("");
   const [assetId, setAssetId] = useState("");
 
@@ -38,10 +35,8 @@ const AllocateLicense = () => {
     },
   });
 
-  // Use centralized organisation users hook
-  const { data: users = [] } = useOrganisationUsers();
+  const { data: users = [] } = useUsers();
 
-  // Get assets assigned to selected user
   const { data: assets = [] } = useQuery({
     queryKey: ["itam-assets-assigned", userId],
     queryFn: async () => {
@@ -58,7 +53,6 @@ const AllocateLicense = () => {
 
   const allocateLicense = useMutation({
     mutationFn: async () => {
-      // Check current allocation
       const selectedLicense = licenses.find(l => l.id === licenseId);
       if (!selectedLicense) throw new Error("License not found");
 
@@ -66,25 +60,23 @@ const AllocateLicense = () => {
         throw new Error("No seats available for this license");
       }
 
-      // Create allocation
       const { error: allocError } = await supabase.from("itam_license_allocations").insert({
         license_id: licenseId,
         asset_id: assetId || null,
         user_id: userId,
       });
-
       if (allocError) throw allocError;
 
-      // Update seats allocated
       const { error: updateError } = await supabase
         .from("itam_licenses")
         .update({ seats_allocated: (selectedLicense.seats_allocated || 0) + 1 })
         .eq("id", licenseId);
-
       if (updateError) throw updateError;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["itam-licenses"] });
+      // Bug 8 fix: invalidate correct query keys
+      queryClient.invalidateQueries({ queryKey: ["itam-licenses-list"] });
+      queryClient.invalidateQueries({ queryKey: ["itam-license-detail"] });
       queryClient.invalidateQueries({ queryKey: ["itam-license-allocations"] });
       toast.success("License allocated successfully");
       navigate("/assets/licenses");
@@ -96,12 +88,10 @@ const AllocateLicense = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!licenseId || !userId) {
       toast.error("Please select a license and user");
       return;
     }
-
     allocateLicense.mutate();
   };
 
@@ -112,12 +102,12 @@ const AllocateLicense = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="p-6 max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
+      <div className="p-4 max-w-2xl mx-auto space-y-4">
+        <div className="flex items-center gap-3">
           <BackButton />
           <div>
-            <h1 className="text-2xl font-bold">Allocate License</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl font-bold">Allocate License</h1>
+            <p className="text-xs text-muted-foreground">
               Assign a license seat to a user
             </p>
           </div>
@@ -125,15 +115,15 @@ const AllocateLicense = () => {
 
         <form onSubmit={handleSubmit}>
           <Card>
-            <CardHeader>
-              <CardTitle>Allocation Details</CardTitle>
-              <CardDescription>Select license, user, and optionally an asset</CardDescription>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Allocation Details</CardTitle>
+              <CardDescription className="text-xs">Select license, user, and optionally an asset</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="license">License *</Label>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="license" className="text-xs">License *</Label>
                 <Select value={licenseId} onValueChange={setLicenseId} required>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select license" />
                   </SelectTrigger>
                   <SelectContent>
@@ -145,18 +135,16 @@ const AllocateLicense = () => {
                   </SelectContent>
                 </Select>
                 {selectedLicense && (
-                  <p className="text-sm text-muted-foreground">
-                    {availableSeats > 0
-                      ? `${availableSeats} seats available`
-                      : "No seats available"}
+                  <p className="text-xs text-muted-foreground">
+                    {availableSeats > 0 ? `${availableSeats} seats available` : "No seats available"}
                   </p>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="user">User *</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="user" className="text-xs">User *</Label>
                 <Select value={userId} onValueChange={setUserId} required>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select user" />
                   </SelectTrigger>
                   <SelectContent>
@@ -170,10 +158,10 @@ const AllocateLicense = () => {
               </div>
 
               {userId && assets.length > 0 && (
-                <div className="space-y-2">
-                  <Label htmlFor="asset">Asset (Optional)</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="asset" className="text-xs">Asset (Optional)</Label>
                   <Select value={assetId} onValueChange={setAssetId}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9">
                       <SelectValue placeholder="Select asset" />
                     </SelectTrigger>
                     <SelectContent>
@@ -187,10 +175,11 @@ const AllocateLicense = () => {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-3">
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => navigate("/assets/licenses")}
                   disabled={allocateLicense.isPending}
                 >
@@ -198,6 +187,7 @@ const AllocateLicense = () => {
                 </Button>
                 <Button
                   type="submit"
+                  size="sm"
                   disabled={allocateLicense.isPending || availableSeats === 0}
                 >
                   {allocateLicense.isPending ? "Allocating..." : "Allocate License"}

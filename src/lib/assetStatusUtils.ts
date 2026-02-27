@@ -13,7 +13,7 @@ export type AssetStatus = typeof ASSET_STATUS[keyof typeof ASSET_STATUS];
 // User-friendly labels for display
 export const ASSET_STATUS_LABELS: Record<AssetStatus, string> = {
   [ASSET_STATUS.AVAILABLE]: 'Available',
-  [ASSET_STATUS.IN_USE]: 'Checked Out',
+  [ASSET_STATUS.IN_USE]: 'In Use',
   [ASSET_STATUS.MAINTENANCE]: 'Under Maintenance',
   [ASSET_STATUS.RETIRED]: 'Retired',
   [ASSET_STATUS.DISPOSED]: 'Disposed',

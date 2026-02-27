@@ -64,18 +64,8 @@ export function QuickAddFieldDialog({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
       const insertData: Record<string, unknown> = {
         name: name.trim(),
-        organisation_id: userData?.organisation_id,
       };
 
       // Add site_id for locations

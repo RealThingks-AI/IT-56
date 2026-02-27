@@ -1,5 +1,6 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useUISettings, SystemSettingsSetting } from '@/hooks/useUISettings';
+import { useSessionStore } from '@/stores/useSessionStore';
 
 interface SystemSettings {
   timezone: string;
@@ -26,12 +27,23 @@ const defaultSettings: SystemSettings = {
 const SystemSettingsContext = createContext<SystemSettingsContextType | undefined>(undefined);
 
 export const SystemSettingsProvider = ({ children }: { children: ReactNode }) => {
-  const { systemSettings, isLoading, isAuthenticated, updateSystemSettings } = useUISettings();
+  // Read from session store first (populated by bootstrap_session)
+  const storeUiSettings = useSessionStore((s) => s.uiSettings);
+  const storeStatus = useSessionStore((s) => s.status);
+
+  const { systemSettings, isLoading: hookLoading, isAuthenticated, updateSystemSettings } = useUISettings();
+
+  // Use store settings if available (instant), fall back to hook query
+  const resolvedSettings = storeStatus === 'ready' && storeUiSettings?.systemSettings
+    ? storeUiSettings.systemSettings as SystemSettings
+    : systemSettings;
+
+  const isLoading = storeStatus === 'ready' ? false : hookLoading;
 
   // Merge database settings with defaults
   const settings: SystemSettings = {
     ...defaultSettings,
-    ...(systemSettings || {}),
+    ...(resolvedSettings || {}),
   };
 
   const updateSettings = async (newSettings: Partial<SystemSettings>) => {

@@ -22,7 +22,7 @@ class AppErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("App Error Boundary caught an error:", error, errorInfo);
-    this.state = { ...this.state, errorInfo };
+    this.setState({ errorInfo });
   }
 
   handleReload = () => {

@@ -78,19 +78,17 @@ export const EditTicketDialog = ({ open, onOpenChange, ticket }: EditTicketDialo
   });
 
   const { data: availableProblems = [] } = useQuery({
-    queryKey: ["helpdesk-problems-for-link", ticket?.organisation_id],
+    queryKey: ["helpdesk-problems-for-link"],
     queryFn: async () => {
-      if (!ticket?.organisation_id) return [];
       const { data, error } = await supabase
         .from("helpdesk_problems")
         .select("id, problem_number, title, status")
-        .eq("organisation_id", ticket.organisation_id)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    enabled: !!ticket?.organisation_id && open,
+    enabled: open,
   });
 
   const form = useForm<z.infer<typeof ticketSchema>>({

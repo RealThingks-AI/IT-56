@@ -3,30 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type RequestType = 'ticket' | 'service_request' | 'all';
 
+/**
+ * Simplified unified requests hook for single-company internal use.
+ * Fetches all request data without organisation/tenant filtering.
+ */
 export const useUnifiedRequests = (requestType: RequestType = 'all') => {
   return useQuery({
     queryKey: ["unified-requests", requestType],
-    staleTime: 60 * 1000,      // 1 minute - tickets change more often
+    staleTime: 60 * 1000,      // 1 minute
     gcTime: 5 * 60 * 1000,     // 5 minutes cache retention
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id, id")
-        .eq("auth_user_id", user.id)
-        .single();
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const tenantId = profileData?.tenant_id || 1;
-      const orgId = userData?.organisation_id;
-
       let query = supabase
         .from("helpdesk_tickets")
         .select(`
@@ -38,12 +24,6 @@ export const useUnifiedRequests = (requestType: RequestType = 'all') => {
         `)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false });
-
-      if (orgId) {
-        query = query.eq("organisation_id", orgId);
-      } else {
-        query = query.eq("tenant_id", tenantId);
-      }
 
       // Filter by request type
       if (requestType !== 'all') {
@@ -64,51 +44,36 @@ export const useUnifiedRequestsStats = () => {
     staleTime: 2 * 60 * 1000,  // 2 minutes
     gcTime: 5 * 60 * 1000,     // 5 minutes cache retention
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organisation_id")
-        .eq("auth_user_id", user.id)
-        .single();
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const tenantId = profileData?.tenant_id || 1;
-      const orgId = userData?.organisation_id;
-
-      let query = supabase
+      const { data: requests, count: total } = await supabase
         .from("helpdesk_tickets")
-        .select("status, priority, sla_breached, created_at, request_type", { count: "exact", head: false })
+        .select("status, priority, sla_breached, sla_due_date, created_at, request_type, assignee_id", { count: "exact", head: false })
         .eq("is_deleted", false);
-
-      if (orgId) {
-        query = query.eq("organisation_id", orgId);
-      } else {
-        query = query.eq("tenant_id", tenantId);
-      }
-
-      const { data: requests, count: total } = await query;
 
       // Ticket stats
       const tickets = requests?.filter(r => r.request_type === 'ticket') || [];
       const ticketOpen = tickets.filter(t => t.status === "open").length;
       const ticketInProgress = tickets.filter(t => t.status === "in_progress").length;
+      const ticketOnHold = tickets.filter(t => t.status === "on_hold").length;
       const ticketResolved = tickets.filter(t => t.status === "resolved").length;
       const ticketUrgent = tickets.filter(t => t.priority === "urgent").length;
-      const ticketSlaBreached = tickets.filter(t => t.sla_breached).length;
+      const ticketSlaBreached = tickets.filter(t => t.sla_breached || 
+        (t.sla_due_date && new Date(t.sla_due_date) < new Date() && !['resolved', 'closed'].includes(t.status))
+      ).length;
+      
+      // Unassigned tickets (active only)
+      const ticketUnassigned = tickets.filter(t => 
+        !t.assignee_id && !['resolved', 'closed'].includes(t.status)
+      ).length;
 
       // Service Request stats
       const serviceRequests = requests?.filter(r => r.request_type === 'service_request') || [];
-      const srPending = serviceRequests.filter(r => r.status === "pending").length;
+      const srPending = serviceRequests.filter(r => r.status === "pending" || r.status === "open").length;
       const srApproved = serviceRequests.filter(r => r.status === "approved").length;
       const srInProgress = serviceRequests.filter(r => r.status === "in_progress").length;
       const srFulfilled = serviceRequests.filter(r => r.status === "fulfilled").length;
+      const srUnassigned = serviceRequests.filter(r => 
+        !r.assignee_id && !['fulfilled', 'closed', 'rejected'].includes(r.status)
+      ).length;
 
       // Recent (last 7 days)
       const sevenDaysAgo = new Date();
@@ -117,15 +82,30 @@ export const useUnifiedRequestsStats = () => {
         r => new Date(r.created_at) >= sevenDaysAgo
       ).length || 0;
 
+      // All unassigned (tickets + service requests)
+      const allUnassigned = (requests || []).filter(r => 
+        !r.assignee_id && !['resolved', 'closed', 'fulfilled', 'rejected'].includes(r.status)
+      ).length;
+
+      // All SLA breached
+      const allSlaBreached = (requests || []).filter(r => 
+        r.sla_breached || 
+        (r.sla_due_date && new Date(r.sla_due_date) < new Date() && !['resolved', 'closed', 'fulfilled'].includes(r.status))
+      ).length;
+
       return {
         total: total || 0,
+        unassigned: allUnassigned,
+        slaBreached: allSlaBreached,
         tickets: {
           total: tickets.length,
           open: ticketOpen,
           inProgress: ticketInProgress,
+          onHold: ticketOnHold,
           resolved: ticketResolved,
           urgent: ticketUrgent,
           slaBreached: ticketSlaBreached,
+          unassigned: ticketUnassigned,
         },
         serviceRequests: {
           total: serviceRequests.length,
@@ -133,6 +113,7 @@ export const useUnifiedRequestsStats = () => {
           approved: srApproved,
           inProgress: srInProgress,
           fulfilled: srFulfilled,
+          unassigned: srUnassigned,
         },
         recentTickets,
       };

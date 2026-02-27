@@ -35,7 +35,7 @@ import { Loader2 } from "lucide-react";
 const problemSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
-  priority: z.enum(["low", "medium", "high", "critical"]),
+  priority: z.enum(["low", "medium", "high", "urgent"]),
   category_id: z.string().optional(),
   linked_ticket_id: z.string().optional(),
   root_cause: z.string().optional(),
@@ -65,30 +65,13 @@ export const CreateProblemDialog = ({
 
       const { data: userRecord } = await supabase
         .from("users")
-        .select("id, organisation_id")
+        .select("id")
         .eq("auth_user_id", user.id)
         .maybeSingle();
-
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      let organisationId = userRecord?.organisation_id || null;
-
-      if (!organisationId) {
-        const { data: orgId } = await supabase.rpc("get_user_org");
-        if (orgId) {
-          organisationId = orgId as string;
-        }
-      }
 
       return {
         authUserId: user.id,
         userId: userRecord?.id,
-        organisationId,
-        tenantId: profileData?.tenant_id || 1,
       };
     },
   });
@@ -108,19 +91,17 @@ export const CreateProblemDialog = ({
   });
 
   const { data: availableTickets = [] } = useQuery({
-    queryKey: ["helpdesk-tickets-for-link", userData?.organisationId],
+    queryKey: ["helpdesk-tickets-for-link"],
     queryFn: async () => {
-      if (!userData?.organisationId) return [];
       const { data, error } = await supabase
         .from("helpdesk_tickets")
         .select("id, ticket_number, title, status, priority")
-        .eq("organisation_id", userData.organisationId)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    enabled: !!userData?.organisationId && open,
+    enabled: open,
   });
 
   const form = useForm<ProblemFormData>({
@@ -137,18 +118,13 @@ export const CreateProblemDialog = ({
 
   const createProblem = useMutation({
     mutationFn: async (data: ProblemFormData) => {
-      if (!userData?.organisationId) {
-        throw new Error("User organisation not configured");
+      if (!userData) {
+        throw new Error("User data not available");
       }
-
-      const tenantId = userData.tenantId || 1;
 
       const { data: problemNumber, error: numberError } = await supabase.rpc(
         "generate_problem_number",
-        {
-          p_tenant_id: tenantId,
-          p_org_id: userData.organisationId,
-        }
+        {}
       );
 
       if (numberError) throw numberError;
@@ -165,8 +141,6 @@ export const CreateProblemDialog = ({
           workaround: data.workaround || null,
           status: "open",
           created_by: userData.authUserId,
-          organisation_id: userData.organisationId,
-          tenant_id: tenantId,
         })
         .select("id")
         .single();
@@ -209,13 +183,13 @@ export const CreateProblemDialog = ({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
+                  <FormLabel>Title *</FormLabel>
                   <FormControl>
                     <Input placeholder="Brief problem title" {...field} />
                   </FormControl>
@@ -229,7 +203,7 @@ export const CreateProblemDialog = ({
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>Description *</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Detailed description of the problem"
@@ -259,7 +233,7 @@ export const CreateProblemDialog = ({
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
                         <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="critical">Critical</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

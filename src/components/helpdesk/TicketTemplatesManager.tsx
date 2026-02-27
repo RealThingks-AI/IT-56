@@ -61,9 +61,10 @@ export const TicketTemplatesManager = () => {
       if (!user) return null;
       const { data } = await supabase
         .from("users")
-        .select("id, organisation_id, role")
+        .select("id, role")
         .eq("auth_user_id", user.id)
         .single();
+      
       return data;
     },
   });
@@ -97,12 +98,6 @@ export const TicketTemplatesManager = () => {
     mutationFn: async () => {
       if (!currentUser) throw new Error("Not authenticated");
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
       const payload = {
         name,
         title: title || null,
@@ -110,8 +105,6 @@ export const TicketTemplatesManager = () => {
         priority: priority || null,
         category_id: categoryId ? parseInt(categoryId) : null,
         is_active: isActive,
-        organisation_id: currentUser.organisation_id,
-        tenant_id: profileData?.tenant_id || 1,
         created_by: currentUser.id,
       };
 
@@ -160,12 +153,6 @@ export const TicketTemplatesManager = () => {
     mutationFn: async (template: TicketTemplate) => {
       if (!currentUser) throw new Error("Not authenticated");
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
       const { error } = await supabase
         .from("helpdesk_ticket_templates")
         .insert({
@@ -175,8 +162,6 @@ export const TicketTemplatesManager = () => {
           priority: template.priority,
           category_id: template.category_id,
           is_active: false,
-          organisation_id: currentUser.organisation_id,
-          tenant_id: profileData?.tenant_id || 1,
           created_by: currentUser.id,
         });
       if (error) throw error;

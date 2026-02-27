@@ -4,31 +4,31 @@ export const HELPDESK_TOOLS = [
     key: "helpdesk",
     name: "Helpdesk",
     description: "Ticket management and support",
-    path: "/helpdesk",
+    path: "/",
   },
   {
     key: "assets",
     name: "Assets",
     description: "IT Asset Management",
-    path: "/helpdesk/assets",
+    path: "/assets",
   },
   {
     key: "subscriptions",
     name: "Subscriptions",
     description: "Subscription and license management",
-    path: "/helpdesk/subscription",
+    path: "/subscription",
   },
   {
     key: "system-updates",
     name: "System Updates",
     description: "Windows update management",
-    path: "/helpdesk/system-updates",
+    path: "/system-updates",
   },
   {
     key: "monitoring",
     name: "Monitoring",
     description: "System health monitoring",
-    path: "/helpdesk/monitoring",
+    path: "/monitoring",
   },
 ];
 

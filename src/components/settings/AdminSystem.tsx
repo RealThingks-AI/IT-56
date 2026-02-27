@@ -2,11 +2,9 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { SettingsCard } from "./SettingsCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -16,6 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import {
   Building2,
@@ -29,9 +35,9 @@ import {
   CheckCircle2,
   XCircle,
   Zap,
-  TrendingUp,
   AlertTriangle,
   Wifi,
+  Server,
 } from "lucide-react";
 import { SettingsLoadingSkeleton } from "./SettingsLoadingSkeleton";
 import { format, formatDistanceToNow } from "date-fns";
@@ -58,16 +64,16 @@ interface SystemMetrics {
 }
 
 const TIMEZONES = [
-  { value: "UTC", label: "UTC (Coordinated Universal Time)" },
-  { value: "America/New_York", label: "Eastern Time (ET)" },
-  { value: "America/Chicago", label: "Central Time (CT)" },
-  { value: "America/Denver", label: "Mountain Time (MT)" },
-  { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
+  { value: "UTC", label: "UTC" },
+  { value: "America/New_York", label: "Eastern (ET)" },
+  { value: "America/Chicago", label: "Central (CT)" },
+  { value: "America/Denver", label: "Mountain (MT)" },
+  { value: "America/Los_Angeles", label: "Pacific (PT)" },
   { value: "Europe/London", label: "London (GMT)" },
-  { value: "Europe/Paris", label: "Central European Time (CET)" },
-  { value: "Asia/Tokyo", label: "Japan Standard Time (JST)" },
-  { value: "Asia/Kolkata", label: "India Standard Time (IST)" },
-  { value: "Australia/Sydney", label: "Australian Eastern Time (AET)" },
+  { value: "Europe/Paris", label: "CET" },
+  { value: "Asia/Tokyo", label: "JST" },
+  { value: "Asia/Kolkata", label: "IST" },
+  { value: "Australia/Sydney", label: "AET" },
 ];
 
 const TABLE_DISPLAY_NAMES: Record<string, string> = {
@@ -80,12 +86,12 @@ const TABLE_DISPLAY_NAMES: Record<string, string> = {
   helpdesk_changes: "Changes",
   audit_logs: "Audit Logs",
   user_roles: "User Roles",
-  organisations: "Organizations",
+  tenants: "Tenants",
 };
 
 export function AdminSystem() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
-  const organisation = currentUser?.organisation;
+  const companyName = "RT-IT-Hub";
   const queryClient = useQueryClient();
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -98,40 +104,20 @@ export function AdminSystem() {
   });
 
   useEffect(() => {
-    if (organisation) {
-      setSettings((prev) => ({
-        ...prev,
-        name: organisation.name || "",
-      }));
-    }
-  }, [organisation]);
+    setSettings((prev) => ({ ...prev, name: companyName }));
+  }, []);
 
-  // Fetch table statistics
   const { data: tableStats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
     queryKey: ["system-table-stats"],
     queryFn: async () => {
-      const tables = [
-        "helpdesk_tickets",
-        "itam_assets",
-        "users",
-        "subscriptions_tools",
-        "helpdesk_categories",
-        "helpdesk_problems",
-        "helpdesk_changes",
-        "audit_logs",
-        "user_roles",
-        "organisations",
-      ];
-
+      const tables = Object.keys(TABLE_DISPLAY_NAMES);
       const stats: TableStats[] = [];
       for (const table of tables) {
         try {
           const { count, error } = await supabase
-            .from(table as "users")
+            .from(table as any)
             .select("*", { count: "exact", head: true });
-          if (!error) {
-            stats.push({ table_name: table, row_count: count || 0 });
-          }
+          if (!error) stats.push({ table_name: table, row_count: count || 0 });
         } catch {
           stats.push({ table_name: table, row_count: 0 });
         }
@@ -141,29 +127,24 @@ export function AdminSystem() {
     staleTime: 30 * 1000,
   });
 
-  // Fetch system metrics
   const { data: systemMetrics } = useQuery({
     queryKey: ["system-metrics"],
     queryFn: async (): Promise<SystemMetrics> => {
-      // Measure database latency
       const latencyStart = performance.now();
       await supabase.from("users").select("id").limit(1);
       const dbLatency = Math.round(performance.now() - latencyStart);
 
-      // Get active users in last 24 hours from audit logs
       const twentyFourHoursAgo = new Date();
       twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-      
+
       const { data: activeUsersData } = await supabase
         .from("audit_logs")
         .select("user_id")
         .gte("created_at", twentyFourHoursAgo.toISOString())
         .not("user_id", "is", null);
-      
-      const uniqueActiveUsers = new Set(activeUsersData?.map(log => log.user_id) || []);
-      const activeUsers24h = uniqueActiveUsers.size;
 
-      // Get last backup from backup_schedules
+      const uniqueActiveUsers = new Set(activeUsersData?.map((log) => log.user_id) || []);
+
       const { data: backupData } = await supabase
         .from("backup_schedules")
         .select("last_backup_at")
@@ -171,12 +152,9 @@ export function AdminSystem() {
         .limit(1)
         .single();
 
-      const lastBackupAt = backupData?.last_backup_at || null;
-
-      // Calculate error rate from recent audit logs (count errors vs total)
       const oneHourAgo = new Date();
       oneHourAgo.setHours(oneHourAgo.getHours() - 1);
-      
+
       const { count: totalLogs } = await supabase
         .from("audit_logs")
         .select("*", { count: "exact", head: true })
@@ -192,10 +170,10 @@ export function AdminSystem() {
 
       return {
         dbLatency,
-        activeUsers24h,
-        lastBackupAt,
+        activeUsers24h: uniqueActiveUsers.size,
+        lastBackupAt: backupData?.last_backup_at || null,
         errorRate: Math.round(errorRate * 100) / 100,
-        uptime: 99.9, // This would come from an external monitoring service in production
+        uptime: 99.9,
       };
     },
     staleTime: 60 * 1000,
@@ -203,36 +181,37 @@ export function AdminSystem() {
   });
 
   const totalRecords = tableStats?.reduce((acc, t) => acc + t.row_count, 0) || 0;
-  const userCount = tableStats?.find(t => t.table_name === "users")?.row_count || 0;
-
-  // Calculate estimated storage (rough estimate based on records)
-  const estimatedStorageMB = Math.round(totalRecords * 0.002 * 100) / 100; // ~2KB per record average
-  const maxStorageMB = 500; // Supabase free tier limit
+  const userCount = tableStats?.find((t) => t.table_name === "users")?.row_count || 0;
+  const estimatedStorageMB = Math.round(totalRecords * 0.002 * 100) / 100;
+  const maxStorageMB = 500;
   const storagePercentage = Math.min(Math.round((estimatedStorageMB / maxStorageMB) * 100), 100);
 
   const updateSettings = useMutation({
     mutationFn: async (data: OrgSettings) => {
-      if (!organisation?.id) throw new Error("Organisation not found");
-      const { error } = await supabase
-        .from("organisations")
-        .update({
-          name: data.name,
-          settings: {
-            timezone: data.timezone,
-            workingHoursStart: data.workingHoursStart,
-            workingHoursEnd: data.workingHoursEnd,
-            workingDays: data.workingDays,
-          },
-        })
-        .eq("id", organisation.id);
-      if (error) throw error;
+      const { data: existing } = await supabase
+        .from("itam_company_info")
+        .select("id")
+        .maybeSingle();
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from("itam_company_info")
+          .update({ company_name: data.name })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("itam_company_info")
+          .insert({ company_name: data.name });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["organisation"] });
-      toast.success("System settings updated");
+      queryClient.invalidateQueries({ queryKey: ["itam-company-info"] });
+      toast.success("Settings saved");
     },
     onError: (error: Error) => {
-      toast.error("Failed to update settings: " + error.message);
+      toast.error("Failed: " + error.message);
     },
   });
 
@@ -240,294 +219,226 @@ export function AdminSystem() {
     refetchStats();
     queryClient.invalidateQueries({ queryKey: ["system-metrics"] });
     setLastRefresh(new Date());
-    toast.success("System status refreshed");
   };
 
   if (userLoading) {
-    return <SettingsLoadingSkeleton cards={3} rows={4} />;
+    return <SettingsLoadingSkeleton cards={2} rows={4} />;
   }
 
-  // Determine health status based on metrics
-  const getHealthStatus = (): { status: "healthy" | "warning" | "critical"; label: string } => {
-    if (!systemMetrics) return { status: "healthy", label: "Checking..." };
-    
-    if (systemMetrics.dbLatency && systemMetrics.dbLatency > 500) {
-      return { status: "warning", label: "Slow" };
-    }
-    if (systemMetrics.errorRate > 5) {
-      return { status: "critical", label: "Issues Detected" };
-    }
-    if (storagePercentage > 90) {
-      return { status: "warning", label: "Storage High" };
-    }
-    return { status: "healthy", label: "Healthy" };
+  const getHealthStatus = () => {
+    if (!systemMetrics) return { status: "healthy" as const, label: "Checking..." };
+    if (systemMetrics.dbLatency && systemMetrics.dbLatency > 500) return { status: "warning" as const, label: "Slow" };
+    if (systemMetrics.errorRate > 5) return { status: "critical" as const, label: "Issues" };
+    if (storagePercentage > 90) return { status: "warning" as const, label: "Storage High" };
+    return { status: "healthy" as const, label: "Healthy" };
   };
 
-  const healthInfo = getHealthStatus();
+  const health = getHealthStatus();
 
-  const getHealthIcon = () => {
-    switch (healthInfo.status) {
-      case "healthy":
-        return <CheckCircle2 className="h-5 w-5" />;
-      case "warning":
-        return <AlertTriangle className="h-5 w-5" />;
-      case "critical":
-        return <XCircle className="h-5 w-5" />;
-    }
+  const healthColors = {
+    healthy: "text-emerald-600 dark:text-emerald-400",
+    warning: "text-amber-600 dark:text-amber-400",
+    critical: "text-red-600 dark:text-red-400",
   };
 
-  const getHealthColors = () => {
-    switch (healthInfo.status) {
-      case "healthy":
-        return "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400";
-      case "warning":
-        return "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400";
-      case "critical":
-        return "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400";
-    }
-  };
+  const HealthIcon = health.status === "healthy" ? CheckCircle2 : health.status === "warning" ? AlertTriangle : XCircle;
+
+  // Metric items for the top row
+  const metrics = [
+    {
+      icon: HealthIcon,
+      label: "Health",
+      value: health.label,
+      colorClass: healthColors[health.status],
+    },
+    {
+      icon: Zap,
+      label: "Latency",
+      value: systemMetrics?.dbLatency ? `${systemMetrics.dbLatency}ms` : "—",
+      colorClass: "text-blue-600 dark:text-blue-400",
+    },
+    {
+      icon: Users,
+      label: "Active (24h)",
+      value: String(systemMetrics?.activeUsers24h || 0),
+      colorClass: "text-violet-600 dark:text-violet-400",
+    },
+    {
+      icon: Database,
+      label: "Records",
+      value: totalRecords.toLocaleString(),
+      colorClass: "text-foreground",
+    },
+    {
+      icon: Users,
+      label: "Users",
+      value: String(userCount),
+      colorClass: "text-foreground",
+    },
+    {
+      icon: Wifi,
+      label: "Error Rate",
+      value: `${systemMetrics?.errorRate || 0}%`,
+      colorClass: systemMetrics?.errorRate && systemMetrics.errorRate > 0 ? "text-red-600 dark:text-red-400" : "text-foreground",
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* System Status */}
-      <SettingsCard
-        title="System Status"
-        description="Monitor database health, records, and storage usage"
-        icon={Activity}
-        headerAction={
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={statsLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${statsLoading ? "animate-spin" : ""}`} />
+    <div className="space-y-4">
+      {/* Section 1: System Health */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">System Health</h3>
+            <span className="text-[10px] text-muted-foreground">
+              Last: {format(lastRefresh, "HH:mm:ss")}
+            </span>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleRefresh} disabled={statsLoading}>
+            <RefreshCw className={`h-3 w-3 mr-1 ${statsLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-        }
-      >
-        <div className="space-y-6">
-          {/* Status Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Health Status */}
-            <div className={`border rounded-lg p-4 ${getHealthColors()}`}>
-              <div className="flex items-center gap-2 mb-2">
-                {getHealthIcon()}
-                <span className="text-sm font-medium">Health</span>
-              </div>
-              <p className="text-2xl font-bold capitalize">
-                {healthInfo.label}
-              </p>
-            </div>
+        </div>
 
-            {/* Database Latency */}
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
-                <Zap className="h-5 w-5" />
-                <span className="text-sm font-medium">DB Latency</span>
+        {/* Metrics row */}
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {metrics.map((m) => (
+            <div key={m.label} className="rounded-lg border bg-card p-2.5 text-center">
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <m.icon className={`h-3 w-3 ${m.colorClass}`} />
+                <span className="text-[10px] text-muted-foreground">{m.label}</span>
               </div>
-              <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
-                {systemMetrics?.dbLatency ? `${systemMetrics.dbLatency}ms` : "—"}
-              </p>
+              <p className={`text-sm font-bold ${m.colorClass}`}>{m.value}</p>
             </div>
+          ))}
+        </div>
 
-            {/* Active Users */}
-            <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-2">
-                <Users className="h-5 w-5" />
-                <span className="text-sm font-medium">Active (24h)</span>
-              </div>
-              <p className="text-2xl font-bold text-violet-700 dark:text-violet-400">
-                {systemMetrics?.activeUsers24h || 0}
-              </p>
+        {/* Storage bar */}
+        <div className="mt-2 rounded-lg border bg-card p-2.5 flex items-center gap-3">
+          <HardDrive className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground">Storage</span>
+              <span className="text-[10px] text-muted-foreground">~{estimatedStorageMB}MB / {maxStorageMB}MB</span>
             </div>
-
-            {/* Storage */}
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-2">
-                <HardDrive className="h-5 w-5" />
-                <span className="text-sm font-medium">Storage</span>
-              </div>
-              <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">
-                {storagePercentage}%
-              </p>
-              <Progress value={storagePercentage} className="h-1 mt-2" />
-              <p className="text-xs mt-1 opacity-80">
-                ~{estimatedStorageMB}MB / {maxStorageMB}MB
-              </p>
-            </div>
+            <Progress value={storagePercentage} className="h-1.5" />
           </div>
+          <span className="text-xs font-semibold w-8 text-right">{storagePercentage}%</span>
+        </div>
 
-          {/* Secondary Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                <Database className="h-4 w-4" />
-                <span className="text-sm">Total Records</span>
-              </div>
-              <p className="text-xl font-bold text-foreground">
-                {totalRecords.toLocaleString()}
-              </p>
-            </div>
+        {/* Info badges */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          {systemMetrics?.lastBackupAt && (
+            <Badge variant="outline" className="text-[10px] font-normal">
+              Backup: {formatDistanceToNow(new Date(systemMetrics.lastBackupAt), { addSuffix: true })}
+            </Badge>
+          )}
+          <Badge variant="outline" className="text-[10px] font-normal bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800">
+            Keep-Alive: Active
+          </Badge>
+        </div>
+      </div>
 
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                <Users className="h-4 w-4" />
-                <span className="text-sm">Total Users</span>
-              </div>
-              <p className="text-xl font-bold text-foreground">
-                {userCount}
-              </p>
-            </div>
-
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                <TrendingUp className="h-4 w-4" />
-                <span className="text-sm">Uptime</span>
-              </div>
-              <p className="text-xl font-bold text-foreground">
-                {systemMetrics?.uptime || 99.9}%
-              </p>
-            </div>
-
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                <Wifi className="h-4 w-4" />
-                <span className="text-sm">Error Rate</span>
-              </div>
-              <p className="text-xl font-bold text-foreground">
-                {systemMetrics?.errorRate || 0}%
-              </p>
-            </div>
-          </div>
-
-          {/* Database Tables */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-semibold text-muted-foreground">Database Tables</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Section 2: Database Tables */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Server className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Database Tables</h3>
+          <Badge variant="outline" className="text-[10px] font-normal">{tableStats?.length || 0} tables</Badge>
+        </div>
+        <div className="rounded-lg border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Table</TableHead>
+                <TableHead className="text-xs text-right w-[100px]">Records</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {tableStats?.map((table) => (
-                <div
-                  key={table.table_name}
-                  className="bg-muted/50 rounded-lg p-3 text-center"
-                >
-                  <p className="text-sm font-medium text-foreground">
+                <TableRow key={table.table_name} className="h-8">
+                  <TableCell className="text-xs py-1 font-medium">
                     {TABLE_DISPLAY_NAMES[table.table_name] || table.table_name}
-                  </p>
-                  <p className="text-xl font-bold text-primary">
+                  </TableCell>
+                  <TableCell className="text-xs py-1 text-right tabular-nums font-semibold text-primary">
                     {table.row_count.toLocaleString()}
-                  </p>
-                </div>
+                  </TableCell>
+                </TableRow>
               ))}
-            </div>
-          </div>
-
-          {/* System Info */}
-          <div className="flex flex-wrap gap-4 pt-2 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                Last Backup: {systemMetrics?.lastBackupAt 
-                  ? formatDistanceToNow(new Date(systemMetrics.lastBackupAt), { addSuffix: true })
-                  : "Not configured"}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                Keep-Alive: Active
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                Last Refresh: {format(lastRefresh, "HH:mm:ss")}
-              </Badge>
-            </div>
-          </div>
+            </TableBody>
+          </Table>
         </div>
-      </SettingsCard>
+      </div>
 
-      {/* Organization Settings */}
-      <SettingsCard
-        title="Organization Settings"
-        description="Configure your organization's basic information"
-        icon={Building2}
-      >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="org-name">Organization Name</Label>
-            <Input
-              id="org-name"
-              value={settings.name}
-              onChange={(e) =>
-                setSettings((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder="Enter organization name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Default Timezone</Label>
-            <Select
-              value={settings.timezone}
-              onValueChange={(value) =>
-                setSettings((prev) => ({ ...prev, timezone: value }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select timezone" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIMEZONES.map((tz) => (
-                  <SelectItem key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      {/* Section 3: Company & Working Hours */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Company & Working Hours</h3>
         </div>
-      </SettingsCard>
-
-      {/* Working Hours */}
-      <SettingsCard
-        title="Working Hours"
-        description="Define your organization's standard working hours for SLA calculations"
-        icon={Clock}
-      >
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="hours-start">Start Time</Label>
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          {/* Company Name + Timezone row */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Company Name</Label>
               <Input
-                id="hours-start"
+                value={settings.name}
+                onChange={(e) => setSettings((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Company name"
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Timezone</Label>
+              <Select
+                value={settings.timezone}
+                onValueChange={(value) => setSettings((prev) => ({ ...prev, timezone: value }))}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Working Hours row */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Start Time</Label>
+              <Input
                 type="time"
                 value={settings.workingHoursStart}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    workingHoursStart: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSettings((prev) => ({ ...prev, workingHoursStart: e.target.value }))}
+                className="h-8 text-xs"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="hours-end">End Time</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">End Time</Label>
               <Input
-                id="hours-end"
                 type="time"
                 value={settings.workingHoursEnd}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    workingHoursEnd: e.target.value,
-                  }))
-                }
+                onChange={(e) => setSettings((prev) => ({ ...prev, workingHoursEnd: e.target.value }))}
+                className="h-8 text-xs"
               />
             </div>
           </div>
 
-          <Separator />
-
-          <div className="space-y-2">
-            <Label>Working Days</Label>
-            <div className="flex flex-wrap gap-2">
+          {/* Working Days */}
+          <div className="space-y-1">
+            <Label className="text-xs">Working Days</Label>
+            <div className="flex flex-wrap gap-1.5">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                 <Button
                   key={day}
                   variant={settings.workingDays.includes(day) ? "default" : "outline"}
                   size="sm"
+                  className="h-7 text-xs px-3"
                   onClick={() =>
                     setSettings((prev) => ({
                       ...prev,
@@ -543,17 +454,20 @@ export function AdminSystem() {
             </div>
           </div>
 
-          <Button
-            onClick={() => updateSettings.mutate(settings)}
-            disabled={updateSettings.isPending}
-          >
-            {updateSettings.isPending && (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            )}
-            Save Settings
-          </Button>
+          {/* Save */}
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => updateSettings.mutate(settings)}
+              disabled={updateSettings.isPending}
+            >
+              {updateSettings.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+              Save Settings
+            </Button>
+          </div>
         </div>
-      </SettingsCard>
+      </div>
     </div>
   );
 }

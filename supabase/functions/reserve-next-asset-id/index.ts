@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,7 +22,6 @@ serve(async (req) => {
       }
     );
 
-    // Get the authenticated user
     const {
       data: { user },
       error: userError,
@@ -36,7 +34,6 @@ serve(async (req) => {
       );
     }
 
-    // Get category_id from request body
     const { category_id } = await req.json();
 
     if (!category_id) {
@@ -46,54 +43,18 @@ serve(async (req) => {
       );
     }
 
-    // Get user's organization
-    const { data: userData, error: userDataError } = await supabaseClient
-      .from('users')
-      .select('organisation_id')
-      .eq('auth_user_id', user.id)
-      .single();
-
-    if (userDataError || !userData?.organisation_id) {
-      return new Response(
-        JSON.stringify({ error: 'Organization not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const organisationId = userData.organisation_id;
-
-    // Increment the current_number atomically
-    const { data: tagFormat, error: updateError } = await supabaseClient
+    // Increment the current_number for the category tag format
+    const { data: currentFormat } = await supabaseClient
       .from('category_tag_formats')
-      .update({ 
-        current_number: supabaseClient.rpc('increment_category_tag_number', { 
-          cat_id: category_id, 
-          org_id: organisationId 
-        }) 
-      })
+      .select('current_number')
       .eq('category_id', category_id)
-      .eq('organisation_id', organisationId)
-      .select()
       .single();
 
-    if (updateError) {
-      console.error('Error reserving asset ID:', updateError);
-      
-      // Fallback: manual increment
-      const { data: currentFormat } = await supabaseClient
+    if (currentFormat) {
+      await supabaseClient
         .from('category_tag_formats')
-        .select('current_number')
-        .eq('category_id', category_id)
-        .eq('organisation_id', organisationId)
-        .single();
-
-      if (currentFormat) {
-        await supabaseClient
-          .from('category_tag_formats')
-          .update({ current_number: currentFormat.current_number + 1 })
-          .eq('category_id', category_id)
-          .eq('organisation_id', organisationId);
-      }
+        .update({ current_number: currentFormat.current_number + 1 })
+        .eq('category_id', category_id);
     }
 
     return new Response(

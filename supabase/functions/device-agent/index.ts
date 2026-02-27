@@ -9,7 +9,6 @@ interface DeviceAgentPayload {
   type: 'heartbeat' | 'update_data' | 'get_tasks' | 'task_result';
   device_id?: string;
   agent_version?: string;
-  organisation_id?: string;
   device_info?: any;
   hostname?: string;
   serial_number?: string;
@@ -59,20 +58,15 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Handle different request types
     switch (payload.type) {
       case 'heartbeat':
         return await handleHeartbeat(supabase, payload);
-      
       case 'update_data':
         return await handleUpdateData(supabase, payload);
-      
       case 'get_tasks':
         return await handleGetTasks(supabase, payload);
-      
       case 'task_result':
         return await handleTaskResult(supabase, payload);
-      
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid request type' }),
@@ -95,17 +89,7 @@ async function handleHeartbeat(supabase: any, payload: DeviceAgentPayload) {
   console.log('Processing heartbeat...');
   
   let deviceId = payload.device_id;
-  const organisationId = payload.organisation_id;
   const deviceInfo = payload.device_info;
-  
-  // Get tenant_id from organisation
-  const { data: orgData } = await supabase
-    .from('organisations')
-    .select('id')
-    .eq('id', organisationId)
-    .single();
-  
-  const tenantId = 1; // Default tenant
 
   // Find or create device
   if (!deviceId) {
@@ -113,7 +97,6 @@ async function handleHeartbeat(supabase: any, payload: DeviceAgentPayload) {
       .from('system_devices')
       .select('id')
       .eq('device_name', deviceInfo.hostname)
-      .eq('organisation_id', organisationId)
       .single();
     
     if (existingDevice) {
@@ -128,8 +111,6 @@ async function handleHeartbeat(supabase: any, payload: DeviceAgentPayload) {
           os_version: deviceInfo.os_version,
           os_build: deviceInfo.os_build,
           last_seen: new Date().toISOString(),
-          organisation_id: organisationId,
-          tenant_id: tenantId,
         })
         .select()
         .single();
@@ -154,8 +135,6 @@ async function handleHeartbeat(supabase: any, payload: DeviceAgentPayload) {
     .from('device_heartbeats')
     .insert({
       device_id: deviceId,
-      tenant_id: tenantId,
-      organisation_id: organisationId,
       heartbeat_at: new Date().toISOString(),
       status: 'online',
       agent_version: payload.agent_version,
@@ -177,17 +156,13 @@ async function handleUpdateData(supabase: any, payload: DeviceAgentPayload) {
   console.log('Processing update data...');
   
   const deviceId = payload.device_id;
-  const organisationId = payload.organisation_id;
-  const tenantId = 1;
 
-  // Calculate compliance status
   const hasCriticalPending = payload.pending_updates?.some(
     u => u.severity?.toLowerCase() === 'critical'
   );
   const hasFailedUpdates = (payload.failed_updates?.length || 0) > 0;
   const complianceStatus = hasCriticalPending || hasFailedUpdates ? 'non-compliant' : 'compliant';
 
-  // Update device with compliance info
   await supabase
     .from('system_devices')
     .update({
@@ -207,7 +182,6 @@ async function handleUpdateData(supabase: any, payload: DeviceAgentPayload) {
     .eq('device_id', deviceId)
     .in('status', ['pending', 'failed']);
 
-  // Insert pending updates
   const updateEntries = [];
   for (const update of payload.pending_updates || []) {
     updateEntries.push({
@@ -217,12 +191,9 @@ async function handleUpdateData(supabase: any, payload: DeviceAgentPayload) {
       severity: update.severity || 'Unknown',
       status: 'pending',
       detected_date: new Date().toISOString(),
-      tenant_id: tenantId,
-      organisation_id: organisationId,
     });
   }
 
-  // Insert failed updates
   for (const update of payload.failed_updates || []) {
     updateEntries.push({
       device_id: deviceId,
@@ -230,12 +201,9 @@ async function handleUpdateData(supabase: any, payload: DeviceAgentPayload) {
       title: update.title,
       status: 'failed',
       detected_date: new Date().toISOString(),
-      tenant_id: tenantId,
-      organisation_id: organisationId,
     });
   }
 
-  // Insert installed updates (recent only)
   for (const update of (payload.installed_updates || []).slice(0, 10)) {
     updateEntries.push({
       device_id: deviceId,
@@ -244,8 +212,6 @@ async function handleUpdateData(supabase: any, payload: DeviceAgentPayload) {
       status: 'installed',
       installed_date: update.installed_date,
       detected_date: new Date().toISOString(),
-      tenant_id: tenantId,
-      organisation_id: organisationId,
     });
   }
 
@@ -284,7 +250,6 @@ async function handleGetTasks(supabase: any, payload: DeviceAgentPayload) {
 
   if (error) throw error;
 
-  // Mark tasks as in_progress
   if (tasks && tasks.length > 0) {
     const taskIds = tasks.map((t: any) => t.id);
     await supabase

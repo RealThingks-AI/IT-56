@@ -1,538 +1,685 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { AssetModuleTopBar } from "@/components/helpdesk/assets/AssetModuleTopBar";
+import { GlobalAssetSearch } from "@/components/helpdesk/assets/GlobalAssetSearch";
 import { AssetStatCard } from "@/components/helpdesk/assets/AssetStatCard";
 import { DashboardCalendar, CalendarEvent } from "@/components/helpdesk/assets/DashboardCalendar";
 import { FeedSettingsDropdown, FeedFilters, DEFAULT_FILTERS } from "@/components/helpdesk/assets/FeedSettingsDropdown";
-import { ManageDashboardDialog, DashboardPreferences, loadDashboardPreferences } from "@/components/helpdesk/assets/ManageDashboardDialog";
-import { Package, DollarSign, CheckCircle2, ShoppingCart, AlertTriangle, Wrench, FileText, Calendar, ChevronRight, Settings2, Bell, ExternalLink } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
-import { format, addDays } from "date-fns";
+import { ManageDashboardDialog, DashboardPreferences, DEFAULT_PREFERENCES, dbSettingsToPreferences } from "@/components/helpdesk/assets/ManageDashboardDialog";
+import { useUISettings } from "@/hooks/useUISettings";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Package, DollarSign, CheckCircle2, ShoppingCart, AlertTriangle, Wrench,
+  Calendar, ChevronRight, Clock, KeyRound, Trash2, Inbox, RefreshCw,
+  Plus, ArrowDownToLine, ArrowUpFromLine, FileBarChart, Search, Settings2 } from
+"lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
+
+const FeedEmptyState = ({ message }: {message: string;}) =>
+<div className="flex flex-col items-center justify-center py-4 text-muted-foreground gap-1">
+    <Inbox className="h-4 w-4 opacity-40" />
+    <p className="text-xs">{message}</p>
+  </div>;
+
+
 const AssetDashboard = () => {
   const navigate = useNavigate();
   const [feedFilters, setFeedFilters] = useState<FeedFilters>(DEFAULT_FILTERS);
-  const [preferences, setPreferences] = useState<DashboardPreferences>(loadDashboardPreferences);
+  const [preferences, setPreferences] = useState<DashboardPreferences>(DEFAULT_PREFERENCES);
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { dashboardPreferences: dbDashPrefs, updateDashboardPreferences, isAuthenticated } = useUISettings();
+  const [feedFiltersLoaded, setFeedFiltersLoaded] = useState(false);
 
-  // Fetch all assets
-  const {
-    data: assets = [],
-    isLoading: assetsLoading
-  } = useQuery({
+  useEffect(() => {
+    if (dbDashPrefs) {
+      const prefs = dbSettingsToPreferences(dbDashPrefs);
+      setPreferences(prefs);
+      if (!feedFiltersLoaded && dbDashPrefs.feedFilters) {
+        const savedFilters = dbDashPrefs.feedFilters;
+        // Ensure new filter keys have defaults
+        setFeedFilters({ ...DEFAULT_FILTERS, ...savedFilters });
+        setFeedFiltersLoaded(true);
+      }
+    }
+  }, [dbDashPrefs, feedFiltersLoaded]);
+
+  const handleFeedFiltersChange = (newFilters: FeedFilters) => {
+    setFeedFilters(newFilters);
+    if (isAuthenticated && dbDashPrefs) {
+      updateDashboardPreferences({ ...dbDashPrefs, feedFilters: newFilters });
+    }
+  };
+
+  // ── Data queries ──
+  const { data: assets = [], isLoading: assetsLoading, refetch: refetchAssets } = useQuery({
     queryKey: ["itam-assets-dashboard-full"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_assets").select("*, category:itam_categories(id, name)").eq("is_active", true);
+      const { data } = await supabase.from("itam_assets").select("*, category:itam_categories(id, name)").eq("is_active", true);
       return data || [];
     }
   });
 
-  // Fetch categories
-  const {
-    data: categories = []
-  } = useQuery({
-    queryKey: ["itam-categories"],
+  const { data: overdueAssignments = [], refetch: refetchOverdue } = useQuery({
+    queryKey: ["itam-overdue-assignments"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_categories").select("*").eq("is_active", true);
-      return data || [];
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from("itam_assets")
+        .select("id, asset_tag, asset_id, name, expected_return_date")
+        .eq("is_active", true)
+        .eq("status", "in_use")
+        .lt("expected_return_date", today)
+        .not("expected_return_date", "is", null);
+
+      return (data || []).map((asset) => ({
+        id: asset.id,
+        asset_id: asset.id,
+        expected_return_date: asset.expected_return_date,
+        asset: {
+          id: asset.id,
+          name: asset.name,
+          asset_tag: asset.asset_tag,
+          asset_id: asset.asset_id,
+        },
+      }));
     }
   });
 
-  // Fetch recent check-ins from assignments
-  const {
-    data: recentCheckins = []
-  } = useQuery({
+  const { data: recentCheckins = [], isLoading: checkinsLoading, refetch: refetchCheckins } = useQuery({
     queryKey: ["itam-recent-checkins"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_asset_assignments").select("*, asset:itam_assets(id, name, asset_tag, asset_id)").not("returned_at", "is", null).order("returned_at", {
-        ascending: false
-      }).limit(10);
-      return data || [];
+      const { data } = await supabase.from("itam_asset_assignments").select("*, asset:itam_assets(id, name, asset_tag, asset_id, category:itam_categories(name))").not("returned_at", "is", null).order("returned_at", { ascending: false }).limit(15);
+      // Fetch user names for assigned_to
+      if (data && data.length > 0) {
+        const userIds = [...new Set(data.map((d) => d.assigned_to).filter(Boolean))];
+        if (userIds.length > 0) {
+          const { data: users } = await supabase.from("users").select("auth_user_id, name").in("auth_user_id", userIds);
+          const userMap = new Map((users || []).map((u) => [u.auth_user_id, u.name]));
+          return data.map((d) => ({ ...d, assigned_to_name: userMap.get(d.assigned_to) || null }));
+        }
+      }
+      return (data || []).map((d) => ({ ...d, assigned_to_name: null }));
     }
   });
 
-  // Fetch recent check-outs
-  const {
-    data: recentCheckouts = []
-  } = useQuery({
+  const { data: recentCheckouts = [], refetch: refetchCheckouts } = useQuery({
     queryKey: ["itam-recent-checkouts"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_asset_assignments").select("*, asset:itam_assets(id, name, asset_tag, asset_id)").is("returned_at", null).order("assigned_at", {
-        ascending: false
-      }).limit(10);
-      return data || [];
+      const { data } = await supabase.from("itam_asset_assignments").select("*, asset:itam_assets(id, name, asset_tag, asset_id, category:itam_categories(name))").is("returned_at", null).order("assigned_at", { ascending: false }).limit(15);
+      if (data && data.length > 0) {
+        const userIds = [...new Set(data.map((d) => d.assigned_to).filter(Boolean))];
+        if (userIds.length > 0) {
+          const { data: users } = await supabase.from("users").select("auth_user_id, name").in("auth_user_id", userIds);
+          const userMap = new Map((users || []).map((u) => [u.auth_user_id, u.name]));
+          return data.map((d) => ({ ...d, assigned_to_name: userMap.get(d.assigned_to) || null }));
+        }
+      }
+      return (data || []).map((d) => ({ ...d, assigned_to_name: null }));
     }
   });
 
-  // Fetch repairs in progress
-  const {
-    data: activeRepairs = []
-  } = useQuery({
+  const { data: activeRepairs = [], refetch: refetchRepairs } = useQuery({
     queryKey: ["itam-active-repairs"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_repairs").select("*, asset:itam_assets(id, name, asset_tag, asset_id)").in("status", ["pending", "in_progress"]).order("created_at", {
-        ascending: false
-      }).limit(10);
+      const { data } = await supabase.from("itam_repairs").select("*, asset:itam_assets(id, name, asset_tag, asset_id, category:itam_categories(name))").in("status", ["pending", "in_progress"]).order("created_at", { ascending: false }).limit(15);
       return data || [];
     }
   });
 
-  // Fetch new assets (last 7 days)
-  const {
-    data: newAssets = []
-  } = useQuery({
+  const { data: newAssets = [], refetch: refetchNew } = useQuery({
     queryKey: ["itam-new-assets"],
     queryFn: async () => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const {
-        data
-      } = await supabase.from("itam_assets").select("*").eq("is_active", true).gte("created_at", sevenDaysAgo.toISOString()).order("created_at", {
-        ascending: false
-      }).limit(10);
+      const { data } = await supabase.from("itam_assets").select("*, category:itam_categories(name)").eq("is_active", true).gte("created_at", sevenDaysAgo.toISOString()).order("created_at", { ascending: false }).limit(15);
       return data || [];
     }
   });
 
-  // Fetch disposed assets
-  const {
-    data: disposedAssets = []
-  } = useQuery({
+  const { data: disposedAssets = [], refetch: refetchDisposed } = useQuery({
     queryKey: ["itam-disposed-assets"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_assets").select("*").eq("status", "disposed").order("updated_at", {
-        ascending: false
-      }).limit(10);
+      const { data } = await supabase.from("itam_assets").select("*, category:itam_categories(name)").eq("status", "disposed").order("updated_at", { ascending: false }).limit(15);
       return data || [];
     }
   });
 
-  // Fetch expiring warranties (next 30 days)
-  const {
-    data: expiringWarranties = []
-  } = useQuery({
+  const { data: lostAssets = [], refetch: refetchLost } = useQuery({
+    queryKey: ["itam-lost-assets"],
+    queryFn: async () => {
+      const { data } = await supabase.from("itam_assets").select("*, category:itam_categories(name)").eq("status", "lost").order("updated_at", { ascending: false }).limit(15);
+      return data || [];
+    }
+  });
+
+  const { data: expiringWarranties = [], refetch: refetchWarranties } = useQuery({
     queryKey: ["itam-expiring-warranties"],
     queryFn: async () => {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-      const {
-        data
-      } = await supabase.from("itam_assets").select("*").eq("is_active", true).lte("warranty_expiry", thirtyDaysFromNow.toISOString()).gte("warranty_expiry", new Date().toISOString());
+      const { data } = await supabase.from("itam_assets").select("*").eq("is_active", true).lte("warranty_expiry", thirtyDaysFromNow.toISOString()).gte("warranty_expiry", new Date().toISOString());
       return data || [];
     }
   });
 
-  // Fetch maintenance due
-  const {
-    data: maintenanceDue = []
-  } = useQuery({
+  const { data: allWarrantyAssets = [] } = useQuery({
+    queryKey: ["itam-all-warranty-assets-calendar"],
+    queryFn: async () => {
+      const { data } = await supabase.from("itam_assets").select("id, name, asset_tag, warranty_expiry").eq("is_active", true).not("warranty_expiry", "is", null);
+      return data || [];
+    }
+  });
+
+  const expiringLeases = useMemo(() => {
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const today = new Date();
+    return assets.filter((asset) => {
+      const customFields = asset.custom_fields as Record<string, any> | null;
+      const leaseExpiry = customFields?.lease_expiry;
+      if (!leaseExpiry) return false;
+      const expiryDate = new Date(leaseExpiry);
+      return expiryDate <= thirtyDaysFromNow && expiryDate >= today;
+    });
+  }, [assets]);
+
+  const { data: maintenanceDue = [], refetch: refetchMaintenance } = useQuery({
     queryKey: ["itam-maintenance-due"],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.from("itam_repairs").select("*, asset:itam_assets(id, name, asset_tag)").eq("status", "pending").order("scheduled_date", {
-        ascending: true
-      }).limit(10);
+      const { data } = await supabase.from("itam_repairs").select("*, asset:itam_assets(id, name, asset_tag)").eq("status", "pending").order("started_at", { ascending: true }).limit(15);
       return data || [];
     }
   });
 
-  // Calculate stats
-  const totalAssets = assets.length;
-  const activeAssets = assets.filter(a => a.status !== "disposed" && a.status !== "lost").length;
-  const availableAssets = assets.filter(a => a.status === "available").length;
-  const totalValue = assets.reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0);
-  const checkedOutCount = assets.filter(a => a.status === "in_use").length;
-  const underRepairCount = assets.filter(a => a.status === "maintenance").length;
-  const disposedCount = assets.filter(a => a.status === "disposed").length;
+  const { data: expiringLicenses = [], refetch: refetchLicenses } = useQuery({
+    queryKey: ["itam-expiring-licenses-dashboard"],
+    queryFn: async () => {
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+      const { data } = await supabase.from("itam_licenses").select("*").eq("is_active", true).not("expiry_date", "is", null).lte("expiry_date", thirtyDaysFromNow.toISOString()).gte("expiry_date", new Date().toISOString());
+      return data || [];
+    }
+  });
 
-  // Get fiscal year purchases (assuming fiscal year starts in April)
+  const { data: activeLicenses = [] } = useQuery({
+    queryKey: ["itam-active-licenses-count"],
+    queryFn: async () => {
+      const { data } = await supabase.from("itam_licenses").select("id, name, expiry_date").eq("is_active", true);
+      return data || [];
+    }
+  });
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([
+    refetchAssets(), refetchCheckins(), refetchCheckouts(), refetchRepairs(),
+    refetchNew(), refetchDisposed(), refetchWarranties(), refetchMaintenance(),
+    refetchOverdue(), refetchLicenses(), refetchLost()]
+    );
+    setLastRefreshed(new Date());
+    setIsRefreshing(false);
+  };
+
+  // ── Stats ──
+  const totalAssets = assets.length;
+  const activeAssets = assets.filter((a) => a.status !== "disposed" && a.status !== "lost").length;
+  const availableAssets = assets.filter((a) => a.status === "available").length;
+  const totalValue = assets.reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0);
+  const currenciesUsed = new Set(assets.map((a) => {
+    const cf = a.custom_fields as Record<string, any> | null;
+    return cf?.currency || "INR";
+  }));
+  const hasMixedCurrencies = currenciesUsed.size > 1;
+  const checkedOutCount = assets.filter((a) => a.status === "in_use").length;
+  const underRepairCount = assets.filter((a) => a.status === "maintenance").length;
+  const disposedCount = assets.filter((a) => a.status === "disposed").length;
+
   const fiscalYearStart = new Date();
-  if (fiscalYearStart.getMonth() < 3) {
-    fiscalYearStart.setFullYear(fiscalYearStart.getFullYear() - 1);
-  }
+  if (fiscalYearStart.getMonth() < 3) fiscalYearStart.setFullYear(fiscalYearStart.getFullYear() - 1);
   fiscalYearStart.setMonth(3, 1);
   fiscalYearStart.setHours(0, 0, 0, 0);
-  const fiscalYearPurchases = assets.filter(a => {
-    if (!a.purchase_date) return false;
-    return new Date(a.purchase_date) >= fiscalYearStart;
-  });
+  const fiscalYearPurchases = assets.filter((a) => a.purchase_date && new Date(a.purchase_date) >= fiscalYearStart);
   const fiscalYearValue = fiscalYearPurchases.reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0);
 
-  // Calculate category distribution for pie chart
-  const categoryData = categories.map(cat => {
-    const categoryAssets = assets.filter(a => a.category_id === cat.id);
-    const value = categoryAssets.reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0);
-    return {
-      name: cat.name,
-      value: value,
-      count: categoryAssets.length
-    };
-  }).filter(c => c.value > 0);
+  // ── Category distribution ──
+  const categoryDistribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+    assets.forEach((a) => {
+      const catName = (a.category as any)?.name || "Uncategorized";
+      counts[catName] = (counts[catName] || 0) + 1;
+    });
+    return Object.entries(counts).
+    sort((a, b) => b[1] - a[1]).
+    slice(0, 6).
+    map(([name, count]) => ({ name, count, percent: totalAssets > 0 ? Math.round(count / totalAssets * 100) : 0 }));
+  }, [assets, totalAssets]);
 
-  // Build calendar events
+  // ── Calendar events ──
   const calendarEvents: CalendarEvent[] = useMemo(() => {
     const events: CalendarEvent[] = [];
-
-    // Add warranty expiring events
-    expiringWarranties.forEach(asset => {
+    allWarrantyAssets.forEach((asset) => {
       if (asset.warranty_expiry) {
-        events.push({
-          id: `warranty-${asset.id}`,
-          date: new Date(asset.warranty_expiry),
-          title: asset.asset_tag || asset.name || "Asset",
-          type: "warranty",
-          assetId: Number(asset.id)
-        });
+        events.push({ id: `warranty-${asset.id}`, date: new Date(asset.warranty_expiry), title: asset.asset_tag || asset.name || "Asset", type: "warranty", assetId: Number(asset.id), assetTag: asset.asset_tag || undefined });
       }
     });
-
-    // Add maintenance due events
-    maintenanceDue.forEach(repair => {
-      // Use created_at as fallback since scheduled_date may not exist
+    overdueAssignments.forEach((assignment) => {
+      if ((assignment as any).expected_return_date) {
+        events.push({ id: `overdue-${assignment.id}`, date: new Date((assignment as any).expected_return_date), title: assignment.asset?.asset_tag || assignment.asset?.name || "Asset", type: "asset_due", assetId: Number(assignment.asset_id), assetTag: assignment.asset?.asset_tag || undefined });
+      }
+    });
+    maintenanceDue.forEach((repair) => {
       const repairDate = (repair as any).scheduled_date || repair.created_at;
       if (repairDate) {
-        events.push({
-          id: `maintenance-${repair.id}`,
-          date: new Date(repairDate),
-          title: repair.asset?.asset_tag || "Maintenance",
-          type: "maintenance",
-          assetId: Number(repair.asset_id)
-        });
+        events.push({ id: `maintenance-${repair.id}`, date: new Date(repairDate), title: repair.asset?.asset_tag || "Maintenance", type: "maintenance", assetId: Number(repair.asset_id), assetTag: repair.asset?.asset_tag || undefined });
+      }
+    });
+    // License expiry events
+    activeLicenses.forEach((lic: any) => {
+      if (lic.expiry_date) {
+        events.push({ id: `license-${lic.id}`, date: new Date(lic.expiry_date), title: lic.name || "License", type: "license" as any });
       }
     });
     return events;
-  }, [expiringWarranties, maintenanceDue]);
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
+  }, [allWarrantyAssets, overdueAssignments, maintenanceDue, activeLicenses]);
+
+  const formatCurrency = (value: number, currencyCode?: string) => {
+    const code = currencyCode || "INR";
+    const locale = code === "INR" ? "en-IN" : "en-US";
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
   };
 
-  // Get enabled widgets
-  const enabledWidgets = preferences.widgets.filter(w => w.enabled);
+  const enabledWidgets = preferences.widgets.filter((w) => w.enabled);
+  const gridColumns = preferences.columns || 5;
 
-  // Determine active feed tabs based on filters
   const getActiveFeedTabs = () => {
-    const tabs: {
-      id: string;
-      label: string;
-    }[] = [];
-    if (feedFilters.checkedIn) tabs.push({
-      id: "checkedin",
-      label: "Checked In"
-    });
-    if (feedFilters.checkedOut) tabs.push({
-      id: "checkedout",
-      label: "Checked Out"
-    });
-    if (feedFilters.underRepair) tabs.push({
-      id: "repair",
-      label: "Under Repair"
-    });
-    if (feedFilters.newAssets) tabs.push({
-      id: "new",
-      label: "New Assets"
-    });
-    if (feedFilters.disposed) tabs.push({
-      id: "disposed",
-      label: "Disposed"
-    });
-    return tabs.length > 0 ? tabs : [{
-      id: "checkedin",
-      label: "Checked In"
-    }];
+    const tabs: {id: string;label: string;}[] = [];
+    if (feedFilters.checkedIn) tabs.push({ id: "checkedin", label: "Checked In" });
+    if (feedFilters.checkedOut) tabs.push({ id: "checkedout", label: "Checked Out" });
+    if (feedFilters.underRepair) tabs.push({ id: "repair", label: "Under Repair" });
+    if (feedFilters.newAssets) tabs.push({ id: "new", label: "New Assets" });
+    if (feedFilters.disposed) tabs.push({ id: "disposed", label: "Disposed" });
+    if (feedFilters.lost) tabs.push({ id: "lost", label: "Lost" });
+    return tabs.length > 0 ? tabs : [{ id: "checkedin", label: "Checked In" }];
   };
   const feedTabs = getActiveFeedTabs();
 
-  // Grid column classes for dynamic columns
-  const getGridCols = (cols: number) => {
-    const gridMap: Record<number, string> = {
-      2: "lg:grid-cols-2",
-      3: "lg:grid-cols-3",
-      4: "lg:grid-cols-4",
-      5: "lg:grid-cols-5",
-      6: "lg:grid-cols-6"
-    };
-    return gridMap[cols] || "lg:grid-cols-4";
-  };
-  const handleGlobalSearch = (query: string) => {
-    navigate(`/assets/allassets?search=${encodeURIComponent(query)}`);
+  const [activeTab, setActiveTab] = useState(feedTabs[0]?.id || "checkedin");
+
+  const getRepairDotColor = (status: string) => {
+    if (status === "in_progress") return "bg-blue-500";
+    if (status === "pending") return "bg-yellow-500";
+    return "bg-muted-foreground";
   };
 
-  return <div className="min-h-screen bg-background">
-      <AssetModuleTopBar 
-        onManageDashboard={() => setManageDialogOpen(true)} 
-        onSearch={handleGlobalSearch}
+  const BAR_COLORS = [
+  "bg-blue-500", "bg-emerald-500", "bg-purple-500", "bg-orange-500", "bg-cyan-500", "bg-rose-500"];
+
+  const PIE_COLORS = ["#3b82f6", "#10b981", "#a855f7", "#f97316", "#06b6d4", "#f43f5e"];
+
+  // ── Dynamic column headers per tab ──
+  const feedColumnHeaders: Record<string, {col1: string;col2: string;col3: string;col4: string;}> = {
+    checkedin: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
+    checkedout: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
+    repair: { col1: "#", col2: "Asset Tag", col3: "Issue", col4: "Date" },
+    new: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
+    disposed: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
+    lost: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" }
+  };
+  const currentHeaders = feedColumnHeaders[activeTab] || feedColumnHeaders.checkedin;
+
+  // ── Multi-column feed row helper ──
+  const FeedRow = ({ tag, col2, col3, date, onClick, index }: {tag: string;col2?: string;col3?: string;date?: string;onClick: () => void;index?: number;}) =>
+  <div className={cn("grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-2 hover:bg-accent/50 cursor-pointer transition-colors duration-100 group", index !== undefined && index % 2 === 1 && "bg-muted/20")} onClick={onClick}>
+      <span className="text-[11px] text-muted-foreground tabular-nums">{index !== undefined ? index + 1 : ""}</span>
+      <span className="text-xs font-semibold text-foreground truncate font-mono">{tag}</span>
+      <span className="text-xs text-muted-foreground truncate">{col2 || "—"}</span>
+      <div className="flex items-center justify-end gap-1">
+        {date && <span className="text-[11px] text-muted-foreground tabular-nums">{date}</span>}
+        <ChevronRight className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors" />
+      </div>
+    </div>;
+
+
+  const gridColsClass = gridColumns === 3 ? "lg:grid-cols-3" : gridColumns === 4 ? "lg:grid-cols-4" : gridColumns === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5";
+
+  return (
+    <>
+      <AssetModuleTopBar
         showColumnSettings={false}
         showExport={false}
-      />
+        hideSearchAndAdd />
 
-      <div className="p-4 md:p-6 space-y-6">
 
-        {/* Stats Cards Row */}
-        {assetsLoading ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-[100px] animate-pulse" />)}
-          </div> : <div className={`grid grid-cols-1 sm:grid-cols-2 ${getGridCols(preferences.columns)} gap-4`}>
-            {enabledWidgets.map((widget, index) => {
-          const animationDelay = index * 50;
-          switch (widget.id) {
-            case "activeAssets":
-              return <AssetStatCard key={widget.id} title="Number of Active Assets" value={activeAssets} subtitle={`Total Assets: ${totalAssets}`} icon={Package} iconBgColor="bg-blue-500" iconColor="text-white" onClick={() => navigate("/assets/allassets")} animationDelay={animationDelay} />;
-            case "availableAssets":
-              return <AssetStatCard key={widget.id} title="Available Assets" value={availableAssets} subtitle={`Value: ${formatCurrency(assets.filter(a => a.status === "available").reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0))}`} icon={CheckCircle2} iconBgColor="bg-green-500" iconColor="text-white" onClick={() => navigate("/assets/allassets?status=available")} animationDelay={animationDelay} />;
-            case "assetValue":
-              return <AssetStatCard key={widget.id} title="Value of Assets" value={formatCurrency(totalValue)} subtitle="Total purchase value" icon={DollarSign} iconBgColor="bg-purple-500" iconColor="text-white" animationDelay={animationDelay} />;
-            case "fiscalPurchases":
-              return <AssetStatCard key={widget.id} title="Purchases in Fiscal Year" value={formatCurrency(fiscalYearValue)} subtitle={`${fiscalYearPurchases.length} assets purchased`} icon={ShoppingCart} iconBgColor="bg-orange-500" iconColor="text-white" animationDelay={animationDelay} />;
-            case "checkedOut":
-              return <AssetStatCard key={widget.id} title="Checked-out Assets" value={checkedOutCount} subtitle="Currently assigned" icon={Package} iconBgColor="bg-cyan-500" iconColor="text-white" onClick={() => navigate("/assets/allassets?status=assigned")} animationDelay={animationDelay} />;
-            case "underRepair":
-              return <AssetStatCard key={widget.id} title="Under Repair" value={underRepairCount} subtitle="In maintenance" icon={Wrench} iconBgColor="bg-yellow-500" iconColor="text-white" onClick={() => navigate("/assets/repairs")} animationDelay={animationDelay} />;
-            case "disposed":
-              return <AssetStatCard key={widget.id} title="Disposed Assets" value={disposedCount} subtitle="Retired assets" icon={Package} iconBgColor="bg-gray-500" iconColor="text-white" onClick={() => navigate("/assets/allassets?status=disposed")} animationDelay={animationDelay} />;
-            case "contracts":
-              return <AssetStatCard key={widget.id} title="Active Contracts" value={0} subtitle="Under contract" icon={FileText} iconBgColor="bg-indigo-500" iconColor="text-white" onClick={() => navigate("/assets/lists/contracts")} animationDelay={animationDelay} />;
-            default:
-              return null;
+      <div className="h-full overflow-y-auto bg-background">
+        <div className="p-3 space-y-3">
+          {/* Search & Add Asset & Manage Dashboard row - below header */}
+           <div className="flex items-center gap-2 animate-fade-in" style={{ animationDuration: "350ms" }}>
+            <GlobalAssetSearch />
+            <Button size="sm" onClick={() => navigate("/assets/add")} className="gap-1.5 h-8 px-3">
+              <Plus className="h-3.5 w-3.5" />
+              <span className="text-xs">Add Asset</span>
+            </Button>
+            <div className="ml-auto">
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setManageDialogOpen(true)}
+                      className="h-8 w-8">
+
+                      <Settings2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Manage Dashboard</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+          {/* ── Stats Cards ── */}
+          {assetsLoading ?
+          <div className={cn("grid grid-cols-2 sm:grid-cols-3 gap-3", gridColsClass)}>
+              {[...Array(10)].map((_, i) => <Skeleton key={i} className="h-[68px] rounded-lg" />)}
+            </div> :
+
+          <div className={cn("grid grid-cols-2 sm:grid-cols-3 gap-3", gridColsClass)}>
+              {enabledWidgets.map((widget, index) => {
+              const d = index * 30;
+              switch (widget.id) {
+                case "activeAssets":
+                  return <AssetStatCard key={widget.id} title="Active Assets" value={activeAssets} subtitle={`Total: ${totalAssets}`} icon={Package} iconBgColor="bg-blue-500" iconColor="text-white" onClick={() => navigate("/assets/allassets")} animationDelay={d} />;
+                case "availableAssets":
+                  return <AssetStatCard key={widget.id} title="Available" value={availableAssets} subtitle={`Value: ${formatCurrency(assets.filter((a) => a.status === "available").reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0))}`} icon={CheckCircle2} iconBgColor="bg-green-500" iconColor="text-white" onClick={() => navigate("/assets/allassets?status=available")} animationDelay={d} />;
+                case "assetValue":
+                  return <AssetStatCard key={widget.id} title="Total Value" value={formatCurrency(totalValue)} subtitle={hasMixedCurrencies ? "Mixed currencies" : "Purchase value"} icon={DollarSign} iconBgColor="bg-purple-500" iconColor="text-white" onClick={() => navigate("/assets/allassets")} animationDelay={d} />;
+                case "fiscalPurchases":
+                  return <AssetStatCard key={widget.id} title="Fiscal Year" value={formatCurrency(fiscalYearValue)} subtitle={`${fiscalYearPurchases.length} purchased`} icon={ShoppingCart} iconBgColor="bg-orange-500" iconColor="text-white" onClick={() => navigate("/assets/allassets")} animationDelay={d} />;
+                case "checkedOut":
+                  return <AssetStatCard key={widget.id} title="Checked Out" value={checkedOutCount} subtitle="Currently assigned" icon={Package} iconBgColor="bg-cyan-500" iconColor="text-white" onClick={() => navigate("/assets/allassets?status=in_use")} animationDelay={d} />;
+                case "underRepair":
+                  return <AssetStatCard key={widget.id} title="Under Repair" value={underRepairCount} subtitle={`${maintenanceDue.length} pending`} icon={Wrench} iconBgColor="bg-yellow-500" iconColor="text-white" onClick={() => navigate("/assets/repairs")} animationDelay={d} />;
+                case "disposed":
+                  return <AssetStatCard key={widget.id} title="Disposed" value={disposedCount} subtitle="Retired assets" icon={Trash2} iconBgColor="bg-gray-500" iconColor="text-white" onClick={() => navigate("/assets/allassets?status=disposed")} animationDelay={d} />;
+                case "overdueAssets":
+                  return <AssetStatCard key={widget.id} title="Overdue" value={overdueAssignments.length} subtitle="Past return date" icon={Clock} iconBgColor="bg-red-500" iconColor="text-white" onClick={() => navigate("/assets/alerts?type=overdue")} animationDelay={d} />;
+                case "licenses":
+                  return <AssetStatCard key={widget.id} title="Licenses" value={activeLicenses.length} subtitle={`${expiringLicenses.length} expiring`} icon={KeyRound} iconBgColor="bg-indigo-500" iconColor="text-white" onClick={() => navigate("/assets/licenses")} animationDelay={d} />;
+                case "warrantyExpiring":
+                  return <AssetStatCard key={widget.id} title="Warranty" value={expiringWarranties.length} subtitle="Expiring in 30d" icon={AlertTriangle} iconBgColor="bg-amber-500" iconColor="text-white" onClick={() => navigate("/assets/alerts?type=warranty")} animationDelay={d} />;
+                case "leaseExpiring":
+                  return <AssetStatCard key={widget.id} title="Lease" value={expiringLeases.length} subtitle="Expiring in 30d" icon={Calendar} iconBgColor="bg-rose-500" iconColor="text-white" onClick={() => navigate("/assets/alerts?type=lease")} animationDelay={d} />;
+                default:
+                  return null;
+              }
+            })}
+            </div>
           }
-        })}
-          </div>}
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Asset Value Chart */}
-          {preferences.showChart && <Card className="lg:col-span-2 animate-fade-in transition-all duration-200 hover:shadow-md" style={{
-          animationDelay: "100ms",
-          animationFillMode: "backwards"
-        }}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Asset Value By Category</CardTitle>
+          {/* ── Row 2: Activity Feed (50%) | Calendar (50%) ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Activity Feed */}
+            {preferences.showFeeds &&
+            <Card className="animate-fade-in flex flex-col h-[420px]" style={{ animationDelay: "80ms", animationDuration: "350ms", animationFillMode: "backwards" }}>
+                <CardHeader className="pb-0 flex flex-row items-center justify-between py-2 px-3 border-b">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Activity Feed</CardTitle>
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {formatDistanceToNow(lastRefreshed, { addSuffix: true })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={isRefreshing}>
+                            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom"><p className="text-xs">Refresh data</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <FeedSettingsDropdown filters={feedFilters} onFiltersChange={handleFeedFiltersChange} />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 flex-1 flex flex-col overflow-hidden">
+                  {checkinsLoading ?
+                <div className="p-3 space-y-1">
+                      {[...Array(10)].map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}
+                    </div> :
+
+                <Tabs defaultValue={feedTabs[0]?.id || "checkedin"} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
+                      <TabsList className="w-full flex rounded-none border-b bg-transparent overflow-x-auto h-8 px-1 shrink-0">
+                        {feedTabs.map((tab) =>
+                    <TabsTrigger key={tab.id} value={tab.id} className="text-xs flex-1 min-w-0 px-3 py-1 data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">{tab.label}</TabsTrigger>
+                    )}
+                      </TabsList>
+
+                      {/* Dynamic column headers */}
+                      <div className="grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-1 border-b bg-muted/30">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col1}</span>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col2}</span>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col3}</span>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider text-center">{currentHeaders.col4}</span>
+                      </div>
+
+                      <ScrollArea className="flex-1">
+                        <TabsContent value="checkedin" className="mt-0">
+                          {recentCheckins.length > 0 ?
+                      <div className="divide-y divide-border/50">
+                              {recentCheckins.map((c: any, i: number) =>
+                        <FeedRow key={c.id} index={i} tag={c.asset?.asset_tag || c.asset?.asset_id || ""} col2={(c.asset?.category as any)?.name || "—"} col3={c.assigned_to_name || "—"} date={c.returned_at ? format(new Date(c.returned_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
+                        )}
+                            </div> :
+                      <FeedEmptyState message="No recent check-ins" />}
+                        </TabsContent>
+
+                        <TabsContent value="checkedout" className="mt-0">
+                          {recentCheckouts.length > 0 ?
+                      <div className="divide-y divide-border/50">
+                              {recentCheckouts.map((c: any, i: number) =>
+                        <FeedRow key={c.id} index={i} tag={c.asset?.asset_tag || c.asset?.asset_id || ""} col2={(c.asset?.category as any)?.name || "—"} col3={c.assigned_to_name || "—"} date={c.assigned_at ? format(new Date(c.assigned_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
+                        )}
+                            </div> :
+                      <FeedEmptyState message="No recent check-outs" />}
+                        </TabsContent>
+
+                        <TabsContent value="repair" className="mt-0">
+                          {activeRepairs.length > 0 ?
+                      <div className="divide-y divide-border/50">
+                              {activeRepairs.map((r: any, i: number) =>
+                        <FeedRow key={r.id} index={i} tag={r.asset?.asset_tag || r.asset?.asset_id || ""} col2={r.issue_description?.slice(0, 30) || "—"} col3={r.status} date={r.created_at ? format(new Date(r.created_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/repairs/detail/${r.id}`)} />
+                        )}
+                            </div> :
+                      <FeedEmptyState message="No assets under repair" />}
+                        </TabsContent>
+
+                        <TabsContent value="new" className="mt-0">
+                          {newAssets.length > 0 ?
+                      <div className="divide-y divide-border/50">
+                              {newAssets.map((a: any, i: number) =>
+                        <FeedRow key={a.id} index={i} tag={a.asset_tag || a.asset_id || ""} col2={(a.category as any)?.name || "—"} col3={a.name || "—"} date={a.created_at ? format(new Date(a.created_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${a.asset_tag || a.asset_id}`)} />
+                        )}
+                            </div> :
+                      <FeedEmptyState message="No new assets in 7 days" />}
+                        </TabsContent>
+
+                        <TabsContent value="disposed" className="mt-0">
+                          {disposedAssets.length > 0 ?
+                      <div className="divide-y divide-border/50">
+                              {disposedAssets.map((a: any, i: number) =>
+                        <FeedRow key={a.id} index={i} tag={a.asset_tag || a.asset_id || ""} col2={(a.category as any)?.name || "—"} col3={a.name || "—"} date={a.updated_at ? format(new Date(a.updated_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${a.asset_tag || a.asset_id}`)} />
+                        )}
+                            </div> :
+                      <FeedEmptyState message="No disposed assets" />}
+                        </TabsContent>
+
+                        <TabsContent value="lost" className="mt-0">
+                          {lostAssets.length > 0 ?
+                      <div className="divide-y divide-border/50">
+                              {lostAssets.map((a: any, i: number) =>
+                        <FeedRow key={a.id} index={i} tag={a.asset_tag || a.asset_id || ""} col2={(a.category as any)?.name || "—"} col3={a.name || "—"} date={a.updated_at ? format(new Date(a.updated_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${a.asset_tag || a.asset_id}`)} />
+                        )}
+                            </div> :
+                      <FeedEmptyState message="No lost assets" />}
+                        </TabsContent>
+                      </ScrollArea>
+                    </Tabs>
+                }
+                  <div className="px-3 py-1 border-t shrink-0">
+                    <Button variant="ghost" size="sm" className="w-full text-xs h-6" onClick={() => navigate("/assets/allassets")}>
+                      View All Assets <ChevronRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            }
+
+            {/* Alert Calendar */}
+            {preferences.showCalendar &&
+            <Card className="animate-fade-in flex flex-col h-[420px]" style={{ animationDelay: "100ms", animationDuration: "350ms", animationFillMode: "backwards" }}>
+                <CardHeader className="pb-0 py-2 px-3 border-b">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alert Calendar</CardTitle>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 pt-1 flex-1 overflow-auto">
+                  <DashboardCalendar events={calendarEvents} />
+                </CardContent>
+              </Card>
+            }
+          </div>
+
+          {/* ── Row 3: Assets by Category Pie (50%) | Quick Actions (50%) ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Assets by Category — Pie Chart */}
+            {!assetsLoading && categoryDistribution.length > 0 &&
+            <Card className="animate-fade-in" style={{ animationDelay: "140ms", animationDuration: "350ms", animationFillMode: "backwards" }}>
+                <CardHeader className="py-2 px-3 border-b">
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assets by Category</CardTitle>
+                </CardHeader>
+                <CardContent className="p-3">
+                  <div className="flex flex-row gap-4 items-center">
+                    {/* Left: Donut chart */}
+                    <div className="w-[180px] h-[180px] shrink-0 relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                          data={categoryDistribution}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={80}
+                          paddingAngle={2}
+                          dataKey="count"
+                          nameKey="name"
+                          stroke="none"
+                          animationDuration={600}>
+
+                            {categoryDistribution.map((cat, i) =>
+                          <Cell
+                            key={i}
+                            fill={PIE_COLORS[i % PIE_COLORS.length]}
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => navigate(`/assets/allassets?category=${encodeURIComponent(cat.name)}`)} />
+
+                          )}
+                          </Pie>
+                          <RechartsTooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0].payload;
+                            return (
+                              <div className="bg-popover border rounded-md px-2.5 py-1.5 text-xs shadow-md">
+                                  <p className="font-medium">{d.name}</p>
+                                  <p className="text-muted-foreground">{d.count} assets ({d.percent}%)</p>
+                                </div>);
+
+                          }} />
+
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Center label */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-foreground leading-none">{totalAssets}</p>
+                          <p className="text-[10px] text-muted-foreground">Total</p>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Right: Legend with progress bars */}
+                    <div className="flex-1 flex flex-col gap-1.5 min-w-0 max-h-[180px] overflow-y-auto pr-1">
+                      {categoryDistribution.map((cat, i) =>
+                    <div
+                      key={cat.name}
+                      className="cursor-pointer hover:bg-accent/30 rounded px-2 py-1 transition-colors"
+                      onClick={() => navigate(`/assets/allassets?category=${encodeURIComponent(cat.name)}`)}>
+
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                            <span className="text-xs truncate flex-1">{cat.name}</span>
+                            <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">{cat.count}</span>
+                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 w-8 text-right">{cat.percent}%</span>
+                          </div>
+                          <div className="ml-[18px] mt-0.5 h-1 rounded-full bg-secondary overflow-hidden">
+                            <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${cat.percent}%`, backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+
+                          </div>
+                        </div>
+                    )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            }
+
+            {/* Quick Actions */}
+            <Card className="animate-fade-in" style={{ animationDelay: "160ms", animationDuration: "350ms", animationFillMode: "backwards" }}>
+              <CardHeader className="py-2 px-3 border-b">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quick Actions</CardTitle>
               </CardHeader>
-              <CardContent>
-                {categoryData.length > 0 ? <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={categoryData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value" label={({
-                    name,
-                    percent
-                  }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
-                          {categoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip formatter={(value: number) => [formatCurrency(value), 'Value']} />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div> : <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    No asset data available
-                  </div>}
-              </CardContent>
-            </Card>}
-
-          {/* Feeds Panel */}
-          {preferences.showFeeds && <Card className={cn("animate-fade-in transition-all duration-200 hover:shadow-md", !preferences.showChart && "lg:col-span-3")} style={{
-          animationDelay: "150ms",
-          animationFillMode: "backwards"
-        }}>
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold">Feeds</CardTitle>
-                <FeedSettingsDropdown filters={feedFilters} onFiltersChange={setFeedFilters} />
-              </CardHeader>
-              <CardContent className="p-0">
-                <Tabs defaultValue={feedTabs[0]?.id || "checkedin"} className="w-full">
-                  <TabsList className={`w-full grid rounded-none border-b`} style={{
-                gridTemplateColumns: `repeat(${Math.min(feedTabs.length, 3)}, 1fr)`
-              }}>
-                    {feedTabs.slice(0, 3).map(tab => <TabsTrigger key={tab.id} value={tab.id} className="text-xs">
-                        {tab.label}
-                      </TabsTrigger>)}
-                  </TabsList>
-
-                  <TabsContent value="checkedin" className="mt-0 max-h-[250px] overflow-y-auto">
-                    {recentCheckins.length > 0 ? <div className="divide-y">
-                        {recentCheckins.map(checkin => <div key={checkin.id} className="p-3 hover:bg-accent cursor-pointer transition-colors duration-150" onClick={() => navigate(`/assets/detail/${checkin.asset_id}`)}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{checkin.asset?.asset_tag || checkin.asset?.asset_id}</p>
-                                <p className="text-xs text-muted-foreground truncate">{checkin.asset?.name}</p>
-                              </div>
-                              <p className="text-xs text-muted-foreground whitespace-nowrap">
-                                {checkin.returned_at ? format(new Date(checkin.returned_at), 'MMM dd') : ''}
-                              </p>
-                            </div>
-                          </div>)}
-                      </div> : <div className="p-8 text-center text-sm text-muted-foreground">
-                        No recent check-ins
-                      </div>}
-                  </TabsContent>
-
-                  <TabsContent value="checkedout" className="mt-0 max-h-[250px] overflow-y-auto">
-                    {recentCheckouts.length > 0 ? <div className="divide-y">
-                        {recentCheckouts.map(checkout => <div key={checkout.id} className="p-3 hover:bg-accent cursor-pointer transition-colors duration-150" onClick={() => navigate(`/assets/detail/${checkout.asset_id}`)}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{checkout.asset?.asset_tag || checkout.asset?.asset_id}</p>
-                                <p className="text-xs text-muted-foreground truncate">{checkout.asset?.name}</p>
-                              </div>
-                              <p className="text-xs text-muted-foreground whitespace-nowrap">
-                                {checkout.assigned_at ? format(new Date(checkout.assigned_at), 'MMM dd') : ''}
-                              </p>
-                            </div>
-                          </div>)}
-                      </div> : <div className="p-8 text-center text-sm text-muted-foreground">
-                        No recent check-outs
-                      </div>}
-                  </TabsContent>
-
-                  <TabsContent value="repair" className="mt-0 max-h-[250px] overflow-y-auto">
-                    {activeRepairs.length > 0 ? <div className="divide-y">
-                        {activeRepairs.map(repair => <div key={repair.id} className="p-3 hover:bg-accent cursor-pointer transition-colors duration-150" onClick={() => navigate(`/assets/repairs/detail/${repair.id}`)}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{repair.asset?.asset_tag || repair.asset?.asset_id}</p>
-                                <p className="text-xs text-muted-foreground line-clamp-1">{repair.issue_description}</p>
-                              </div>
-                              <Badge variant={repair.status === "in_progress" ? "default" : "secondary"} className="text-[10px] shrink-0">
-                                {repair.status}
-                              </Badge>
-                            </div>
-                          </div>)}
-                      </div> : <div className="p-8 text-center text-sm text-muted-foreground">
-                        No assets under repair
-                      </div>}
-                  </TabsContent>
-
-                  <TabsContent value="new" className="mt-0 max-h-[250px] overflow-y-auto">
-                    {newAssets.length > 0 ? <div className="divide-y">
-                        {newAssets.map(asset => <div key={asset.id} className="p-3 hover:bg-accent cursor-pointer transition-colors duration-150" onClick={() => navigate(`/assets/detail/${asset.id}`)}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{asset.asset_tag || asset.asset_id}</p>
-                                <p className="text-xs text-muted-foreground truncate">{asset.name}</p>
-                              </div>
-                              <p className="text-xs text-muted-foreground whitespace-nowrap">
-                                {asset.created_at ? format(new Date(asset.created_at), 'MMM dd') : ''}
-                              </p>
-                            </div>
-                          </div>)}
-                      </div> : <div className="p-8 text-center text-sm text-muted-foreground">
-                        No new assets
-                      </div>}
-                  </TabsContent>
-
-                  <TabsContent value="disposed" className="mt-0 max-h-[250px] overflow-y-auto">
-                    {disposedAssets.length > 0 ? <div className="divide-y">
-                        {disposedAssets.map(asset => <div key={asset.id} className="p-3 hover:bg-accent cursor-pointer transition-colors duration-150" onClick={() => navigate(`/assets/detail/${asset.id}`)}>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">{asset.asset_tag || asset.asset_id}</p>
-                                <p className="text-xs text-muted-foreground truncate">{asset.name}</p>
-                              </div>
-                              <Badge variant="secondary" className="text-[10px] shrink-0">Disposed</Badge>
-                            </div>
-                          </div>)}
-                      </div> : <div className="p-8 text-center text-sm text-muted-foreground">
-                        No disposed assets
-                      </div>}
-                  </TabsContent>
-                </Tabs>
-                <div className="p-2 border-t">
-                  <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => navigate("/assets/allassets")}>
-                    View All <ChevronRight className="h-3 w-3 ml-1" />
+              <CardContent className="p-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  <Button variant="outline" className="h-11 text-xs font-medium justify-start gap-2.5 bg-primary/5 border-primary/20 hover:bg-primary/10 transition-colors" onClick={() => navigate("/assets/add")}>
+                    <Plus className="h-4 w-4 text-primary" /> Add Asset
+                  </Button>
+                  <Button variant="outline" className="h-11 text-xs font-medium justify-start gap-2.5 bg-blue-50/50 border-blue-200/50 hover:bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800/30 dark:hover:bg-blue-950/40 transition-colors" onClick={() => navigate("/assets/checkout")}>
+                    <ArrowUpFromLine className="h-4 w-4 text-blue-500" /> Check Out
+                  </Button>
+                  <Button variant="outline" className="h-11 text-xs font-medium justify-start gap-2.5 bg-green-50/50 border-green-200/50 hover:bg-green-50 dark:bg-green-950/20 dark:border-green-800/30 dark:hover:bg-green-950/40 transition-colors" onClick={() => navigate("/assets/checkin")}>
+                    <ArrowDownToLine className="h-4 w-4 text-green-500" /> Check In
+                  </Button>
+                  <Button variant="outline" className="h-11 text-xs font-medium justify-start gap-2.5 bg-purple-50/50 border-purple-200/50 hover:bg-purple-50 dark:bg-purple-950/20 dark:border-purple-800/30 dark:hover:bg-purple-950/40 transition-colors" onClick={() => navigate("/assets/reports")}>
+                    <FileBarChart className="h-4 w-4 text-purple-500" /> Reports
+                  </Button>
+                  <Button variant="outline" className="h-11 text-xs font-medium justify-start gap-2.5 bg-orange-50/50 border-orange-200/50 hover:bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800/30 dark:hover:bg-orange-950/40 transition-colors" onClick={() => navigate("/assets/repairs")}>
+                    <Wrench className="h-4 w-4 text-orange-500" /> Repairs
+                  </Button>
+                  <Button variant="outline" className="h-11 text-xs font-medium justify-start gap-2.5 bg-indigo-50/50 border-indigo-200/50 hover:bg-indigo-50 dark:bg-indigo-950/20 dark:border-indigo-800/30 dark:hover:bg-indigo-950/40 transition-colors" onClick={() => navigate("/assets/licenses")}>
+                    <KeyRound className="h-4 w-4 text-indigo-500" /> Licenses
                   </Button>
                 </div>
               </CardContent>
-            </Card>}
+            </Card>
+          </div>
         </div>
-
-        {/* Alerts Section */}
-        {preferences.showAlerts && <Card className="animate-fade-in transition-all duration-200 hover:shadow-md" style={{
-        animationDelay: "200ms",
-        animationFillMode: "backwards"
-      }}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Alerts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                {/* Assets Due */}
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900 cursor-pointer hover:border-red-400 hover:shadow-sm transition-all duration-200 hover:-translate-y-0.5" onClick={() => navigate("/assets/alerts?type=overdue")}>
-                  <div className="p-2 rounded-full bg-red-100 dark:bg-red-900/50">
-                    <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums">0</p>
-                    <p className="text-xs text-muted-foreground">Assets Due</p>
-                  </div>
-                </div>
-
-                {/* Maintenance Due */}
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900 cursor-pointer hover:border-green-400 hover:shadow-sm transition-all duration-200 hover:-translate-y-0.5" onClick={() => navigate("/assets/alerts?type=maintenance")}>
-                  <div className="p-2 rounded-full bg-green-100 dark:bg-green-900/50">
-                    <Wrench className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums">{maintenanceDue.length}</p>
-                    <p className="text-xs text-muted-foreground">Maintenance Due</p>
-                  </div>
-                </div>
-
-                {/* Contracts Pending */}
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50/50 dark:bg-orange-950/20 dark:border-orange-900 cursor-pointer hover:border-orange-400 hover:shadow-sm transition-all duration-200 hover:-translate-y-0.5" onClick={() => navigate("/assets/alerts?type=contracts")}>
-                  <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-900/50">
-                    <FileText className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums">0</p>
-                    <p className="text-xs text-muted-foreground">Contracts Expiring</p>
-                  </div>
-                </div>
-
-                {/* Warranty Pending */}
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 dark:border-purple-900 cursor-pointer hover:border-purple-400 hover:shadow-sm transition-all duration-200 hover:-translate-y-0.5" onClick={() => navigate("/assets/alerts?type=warranty")}>
-                  <div className="p-2 rounded-full bg-purple-100 dark:bg-purple-900/50">
-                    <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tabular-nums">{expiringWarranties.length}</p>
-                    <p className="text-xs text-muted-foreground">Warranty Expiring</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Calendar View */}
-              {preferences.showCalendar && <div className="border-t pt-4">
-                  <DashboardCalendar events={calendarEvents} />
-                </div>}
-            </CardContent>
-          </Card>}
       </div>
 
-      {/* Manage Dashboard Dialog */}
       <ManageDashboardDialog open={manageDialogOpen} onOpenChange={setManageDialogOpen} preferences={preferences} onSave={setPreferences} />
-    </div>;
+    </>);
+
 };
+
 export default AssetDashboard;
