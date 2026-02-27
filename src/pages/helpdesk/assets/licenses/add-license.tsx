@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { BackButton } from "@/components/BackButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,7 +34,6 @@ const AddLicense = () => {
     notes: "",
   });
 
-  // Fetch existing license for edit mode
   const { data: existingLicense, isLoading: loadingLicense } = useQuery({
     queryKey: ["itam-license-detail", editId],
     queryFn: async () => {
@@ -50,7 +48,6 @@ const AddLicense = () => {
     enabled: isEditMode,
   });
 
-  // Populate form in edit mode
   useEffect(() => {
     if (existingLicense) {
       setFormData({
@@ -79,6 +76,8 @@ const AddLicense = () => {
       return data || [];
     },
   });
+
+  const goBack = () => navigate("/assets/advanced?tab=licenses");
 
   const saveLicense = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -112,7 +111,7 @@ const AddLicense = () => {
       queryClient.invalidateQueries({ queryKey: ["itam-licenses-list"] });
       queryClient.invalidateQueries({ queryKey: ["itam-license-detail", editId] });
       toast.success(isEditMode ? "License updated" : "License added");
-      navigate("/assets/licenses");
+      goBack();
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to save license");
@@ -134,27 +133,15 @@ const AddLicense = () => {
 
   if (isEditMode && loadingLicense) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="flex items-center justify-center h-full">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full overflow-auto">
       <div className="p-4 max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center gap-3">
-          <BackButton />
-          <div>
-            <h1 className="text-xl font-bold">
-              {isEditMode ? "Edit License" : "Add Software License"}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {isEditMode ? "Update license details" : "Register a new software license"}
-            </p>
-          </div>
-        </div>
-
         <form onSubmit={handleSubmit}>
           <Card>
             <CardHeader className="pb-3">
@@ -309,7 +296,7 @@ const AddLicense = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate("/assets/licenses")}
+                  onClick={goBack}
                   disabled={saveLicense.isPending}
                 >
                   Cancel

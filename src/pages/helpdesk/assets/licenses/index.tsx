@@ -279,7 +279,7 @@ const LicensesList = ({ embedded = false }: { embedded?: boolean }) => {
                       <TableRow
                         key={license.id}
                         className={`cursor-pointer transition-colors duration-150 ${rowBg}`}
-                        onClick={() => navigate(`/assets/licenses/detail/${license.id}`)}
+                    onClick={() => navigate(`/assets/licenses/detail/${license.id}`)}
                       >
                         <TableCell className="font-medium text-sm">{license.name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{license.itam_vendors?.name || "—"}</TableCell>
