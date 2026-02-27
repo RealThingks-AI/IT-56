@@ -69,7 +69,7 @@ const LicenseDetail = () => {
     onSuccess: () => {
       toast.success("License deleted successfully");
       queryClient.invalidateQueries({ queryKey: ["itam-licenses-list"] });
-      navigate("/assets/licenses");
+      navigate("/assets/advanced?tab=licenses");
     },
     onError: () => toast.error("Failed to delete license"),
   });
@@ -100,7 +100,7 @@ const LicenseDetail = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-4 space-y-4">
+      <div className="p-4 space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-48 w-full" />
       </div>
@@ -109,11 +109,11 @@ const LicenseDetail = () => {
 
   if (!license) {
     return (
-      <div className="min-h-screen bg-background p-4">
+      <div className="p-4">
         <div className="text-center py-12">
           <Key className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground">License not found</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate("/assets/licenses")}>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate("/assets/advanced?tab=licenses")}>
             Back to Licenses
           </Button>
         </div>
@@ -127,7 +127,7 @@ const LicenseDetail = () => {
   const expiryStatus = getExpiryStatus(license.expiry_date);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full overflow-auto">
       <div className="p-4 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">

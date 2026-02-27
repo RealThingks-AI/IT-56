@@ -204,7 +204,7 @@ const App = () => {
                     <Route path="/assets/licenses" element={<LicensesList />} />
                     <Route path="/assets/licenses/add-license" element={<AddLicense />} />
                     <Route path="/assets/licenses/allocate" element={<AllocateLicense />} />
-                    <Route path="/assets/licenses/:licenseId" element={<LicenseDetail />} />
+                    <Route path="/assets/licenses/detail/:licenseId" element={<LicenseDetail />} />
                     <Route path="/assets/repairs" element={<RepairsList />} />
                     <Route path="/assets/repairs/create" element={<CreateRepair />} />
                     <Route path="/assets/repairs/detail/:repairId" element={<RepairDetail />} />

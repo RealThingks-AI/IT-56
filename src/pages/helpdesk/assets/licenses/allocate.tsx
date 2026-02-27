@@ -79,7 +79,7 @@ const AllocateLicense = () => {
       queryClient.invalidateQueries({ queryKey: ["itam-license-detail"] });
       queryClient.invalidateQueries({ queryKey: ["itam-license-allocations"] });
       toast.success("License allocated successfully");
-      navigate("/assets/licenses");
+      navigate("/assets/advanced?tab=licenses");
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to allocate license");
@@ -101,17 +101,8 @@ const AllocateLicense = () => {
     : 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full overflow-auto">
       <div className="p-4 max-w-2xl mx-auto space-y-4">
-        <div className="flex items-center gap-3">
-          <BackButton />
-          <div>
-            <h1 className="text-xl font-bold">Allocate License</h1>
-            <p className="text-xs text-muted-foreground">
-              Assign a license seat to a user
-            </p>
-          </div>
-        </div>
 
         <form onSubmit={handleSubmit}>
           <Card>
@@ -180,7 +171,7 @@ const AllocateLicense = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate("/assets/licenses")}
+                  onClick={() => navigate("/assets/advanced?tab=licenses")}
                   disabled={allocateLicense.isPending}
                 >
                   Cancel
