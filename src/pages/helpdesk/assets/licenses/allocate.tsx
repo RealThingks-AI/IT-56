@@ -12,13 +12,13 @@ import {
 import { toast } from "sonner";
 import { useUsers } from "@/hooks/useUsers";
 import { getUserDisplayName } from "@/lib/userUtils";
+import { UserPlus } from "lucide-react";
 
 const AllocateLicense = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  // Bug 2 fix: read "license" param instead of "licenseId"
   const [licenseId, setLicenseId] = useState(searchParams.get("license") || "");
   const [userId, setUserId] = useState("");
   const [assetId, setAssetId] = useState("");
@@ -41,10 +41,13 @@ const AllocateLicense = () => {
     queryKey: ["itam-assets-assigned", userId],
     queryFn: async () => {
       if (!userId) return [];
+      // Find the user's auth_user_id for asset lookup
+      const selectedUser = users.find(u => u.id === userId);
+      const lookupId = selectedUser?.auth_user_id || userId;
       const { data } = await supabase
         .from("itam_assets")
         .select("*")
-        .eq("assigned_to", userId)
+        .eq("assigned_to", lookupId)
         .eq("is_active", true);
       return data || [];
     },
@@ -60,10 +63,14 @@ const AllocateLicense = () => {
         throw new Error("No seats available for this license");
       }
 
+      // Use auth_user_id for allocation (matches users table FK)
+      const selectedUser = users.find(u => u.id === userId);
+      const allocationUserId = selectedUser?.auth_user_id || userId;
+
       const { error: allocError } = await supabase.from("itam_license_allocations").insert({
         license_id: licenseId,
         asset_id: assetId || null,
-        user_id: userId,
+        user_id: allocationUserId,
       });
       if (allocError) throw allocError;
 
@@ -74,7 +81,6 @@ const AllocateLicense = () => {
       if (updateError) throw updateError;
     },
     onSuccess: () => {
-      // Bug 8 fix: invalidate correct query keys
       queryClient.invalidateQueries({ queryKey: ["itam-licenses-list"] });
       queryClient.invalidateQueries({ queryKey: ["itam-license-detail"] });
       queryClient.invalidateQueries({ queryKey: ["itam-license-allocations"] });
@@ -103,6 +109,19 @@ const AllocateLicense = () => {
   return (
     <div className="h-full overflow-auto">
       <div className="p-4 max-w-2xl mx-auto space-y-4">
+        {/* Page Header */}
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5 text-primary" />
+            <div>
+              <h1 className="text-lg font-semibold">Allocate License</h1>
+              {selectedLicense && (
+                <p className="text-xs text-muted-foreground">{selectedLicense.name}</p>
+              )}
+            </div>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit}>
           <Card>
