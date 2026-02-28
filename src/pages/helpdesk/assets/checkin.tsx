@@ -626,15 +626,14 @@ const CheckinPage = () => {
           <div className="w-[408px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto max-h-full">
             {/* Check-in Form */}
             <Card className="flex-shrink-0 shadow-sm border">
-              <CardHeader className="pb-2 px-3 pt-3">
+              <CardHeader className="pb-1.5 px-3 pt-2.5">
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <ArrowDownToLine className="h-3.5 w-3.5" />
                   Check In
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">Return selected assets to inventory</p>
               </CardHeader>
 
-              <CardContent className="space-y-3 px-3 pb-3">
+              <CardContent className="space-y-2 px-3 pb-3">
                 {selectedRows.length > 0 ? (
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {selectedRows.map((id) => {
@@ -684,8 +683,8 @@ const CheckinPage = () => {
                   />
                 </div>
 
-                <div className="pt-2 space-y-1.5 border-t">
-                  <Button className="w-full h-8 text-xs" onClick={handleCheckin} disabled={!canCheckin}>
+                <div className="pt-2 flex gap-2 border-t">
+                  <Button className="flex-1 h-8 text-xs" onClick={handleCheckin} disabled={!canCheckin}>
                     {showSuccess ? (
                       <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Done!</>
                     ) : checkinMutation.isPending ? (
@@ -694,7 +693,7 @@ const CheckinPage = () => {
                       <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Check In{selectedRows.length > 0 ? ` (${selectedRows.length})` : ""}</>
                     )}
                   </Button>
-                  <Button variant="outline" className="w-full h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkinMutation.isPending || showSuccess}>
+                  <Button variant="outline" className="flex-1 h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkinMutation.isPending || showSuccess}>
                     Cancel
                   </Button>
                 </div>
@@ -702,18 +701,18 @@ const CheckinPage = () => {
             </Card>
 
             {/* Recent Check Ins */}
-            <Card className="flex-shrink-0 shadow-sm border">
-              <CardHeader className="pb-1.5 px-3 pt-3">
+            <Card className="flex-1 min-h-0 shadow-sm border flex flex-col">
+              <CardHeader className="pb-1.5 px-3 pt-2.5 flex-shrink-0">
                 <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
                   <History className="h-3 w-3" />
                   Recent Check Ins
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-3 pb-3">
+              <CardContent className="px-3 pb-3 flex-1 min-h-0 overflow-y-auto">
                 {recentCheckins.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">No recent check ins</p>
                 ) : (
-                  <div className="max-h-[220px] overflow-y-auto">
+                  <div>
                     <Table wrapperClassName="border-0 rounded-none">
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">

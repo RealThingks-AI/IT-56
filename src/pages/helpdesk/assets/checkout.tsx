@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +39,8 @@ import {
   Loader2,
   AlertCircle,
   History,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react";
 import { cn, sanitizeSearchInput } from "@/lib/utils";
 import { useUsers } from "@/hooks/useUsers";
@@ -94,6 +96,7 @@ const CheckoutPage = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ column: "name", direction: "asc" });
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
 
   const { uiSettings, updateUISettings } = useUISettings();
   const { data: users = [] } = useUsers();
@@ -550,15 +553,14 @@ const CheckoutPage = () => {
           <div className="w-[408px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto max-h-full">
             {/* Checkout Form */}
             <Card className="flex-shrink-0 shadow-sm border">
-              <CardHeader className="pb-2 px-3 pt-3">
+              <CardHeader className="pb-1.5 px-3 pt-2.5">
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <UserCheck className="h-3.5 w-3.5" />
                   Check Out
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">Assign selected assets to a user</p>
               </CardHeader>
 
-              <CardContent className="space-y-3 px-3 pb-3">
+              <CardContent className="space-y-2 px-3 pb-3">
                 {selectedAssets.length > 0 ? (
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {selectedAssets.map(id => {
@@ -578,18 +580,35 @@ const CheckoutPage = () => {
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">Assign To <span className="text-destructive">*</span></Label>
-                  <Select value={assignTo || undefined} onValueChange={setAssignTo}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select person" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {getUserDisplayName(user) || user.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={userSearchOpen} onOpenChange={setUserSearchOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-between h-8 text-xs font-normal">
+                        {assignTo ? assigneeName : "Select person..."}
+                        <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[370px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search users..." className="h-8 text-xs" />
+                        <CommandList>
+                          <CommandEmpty className="py-3 text-xs">No users found.</CommandEmpty>
+                          <CommandGroup>
+                            {users.map((user) => (
+                              <CommandItem
+                                key={user.id}
+                                value={getUserDisplayName(user) || user.email}
+                                onSelect={() => { setAssignTo(user.id); setUserSearchOpen(false); }}
+                                className="text-xs"
+                              >
+                                {getUserDisplayName(user) || user.email}
+                                {assignTo === user.id && <Check className="ml-auto h-3 w-3" />}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div className="space-y-1.5">
@@ -631,8 +650,8 @@ const CheckoutPage = () => {
                   />
                 </div>
 
-                <div className="pt-2 space-y-1.5 border-t">
-                  <Button className="w-full h-8 text-xs" onClick={handleCheckout} disabled={!canCheckout}>
+                <div className="pt-2 flex gap-2 border-t">
+                  <Button className="flex-1 h-8 text-xs" onClick={handleCheckout} disabled={!canCheckout}>
                     {showSuccess ? (
                       <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Done!</>
                     ) : checkoutMutation.isPending ? (
@@ -641,7 +660,7 @@ const CheckoutPage = () => {
                       <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Check Out{selectedAssets.length > 0 ? ` (${selectedAssets.length})` : ""}</>
                     )}
                   </Button>
-                  <Button variant="outline" className="w-full h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkoutMutation.isPending || showSuccess}>
+                  <Button variant="outline" className="flex-1 h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkoutMutation.isPending || showSuccess}>
                     Cancel
                   </Button>
                 </div>
@@ -649,18 +668,18 @@ const CheckoutPage = () => {
             </Card>
 
             {/* Recent Check Outs */}
-            <Card className="flex-shrink-0 shadow-sm border">
-              <CardHeader className="pb-1.5 px-3 pt-3">
+            <Card className="flex-1 min-h-0 shadow-sm border flex flex-col">
+              <CardHeader className="pb-1.5 px-3 pt-2.5 flex-shrink-0">
                 <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
                   <History className="h-3 w-3" />
                   Recent Check Outs
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-3 pb-3">
+              <CardContent className="px-3 pb-3 flex-1 min-h-0 overflow-y-auto">
                 {recentCheckouts.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">No recent check outs</p>
                 ) : (
-                  <div className="max-h-[220px] overflow-y-auto">
+                  <div>
                     <Table wrapperClassName="border-0 rounded-none">
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
