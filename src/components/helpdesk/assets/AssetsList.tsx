@@ -793,10 +793,6 @@ export function AssetsList({
           </div>
 
           <div className="flex items-center gap-0.5">
-            
-
-
-
 
 
 
@@ -825,11 +821,6 @@ export function AssetsList({
 
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
-            
-
-
-
-
 
 
 
