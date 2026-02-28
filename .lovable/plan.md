@@ -1,73 +1,96 @@
 
 
-# Checkout & Checkin Section Optimization
+# Compact Checkout & Checkin Cards Optimization
 
 ## Changes Overview
 
-### 1. Increase Right Panel Width (+20%)
-Both `checkout.tsx` and `checkin.tsx` have `w-[340px]` on the right-side form card. Increase to `w-[408px]` (340 * 1.2).
+### 1. Make form cards more compact
+- Remove the subtitle text ("Assign selected assets to a user" / "Return selected assets to inventory") from both cards
+- Reduce `space-y-3` to `space-y-2` in CardContent
+- Reduce CardHeader padding
 
-### 2. Add Recent Transactions Card
-Below the checkout/checkin form card, add a new card showing the last 10 transactions from `itam_asset_history`:
-- **Checkout page**: Shows recent `checked_out` actions
-- **Checkin page**: Shows recent `checked_in` actions
-- Compact table with columns: Date, Asset Tag, User, and a link to the asset detail
-- Uses the same `itam_asset_history` table with appropriate action filter
-- The right panel becomes a scrollable column (`overflow-y-auto`) containing both the form card and the recent transactions card
+### 2. Searchable dropdown for "Assign To" field (Checkout)
+Replace the plain `<Select>` with a searchable `Popover` + `Command` (cmdk) combo that lets users type to filter the user list. This follows the combobox pattern already available via the `cmdk` dependency.
 
-### 3. Layout Compaction
-- Reduce notes textarea from `rows={3}` to `rows={2}` and `min-h-[60px]` to `min-h-[48px]`
-- Reduce `space-y-4` to `space-y-3` in form content
-- Reduce padding gaps between form sections
+### 3. Place Check Out and Cancel buttons side by side
+Change both buttons from stacked (`w-full` each, `space-y-1.5`) to a horizontal `flex gap-2` row. Apply same to Checkin page.
 
-### 4. Bugs & Improvements Found
-- **Checkout page search doesn't search by user name** -- unlike checkin which filters by `getUserName()`, checkout search only queries DB columns. Not applicable here since checkout searches available (unassigned) assets, so no user to search. No fix needed.
-- **Right panel `lg:self-start`** prevents the panel from filling the full height when content is short, but also prevents scrolling when content overflows. Fix: change to a flex column layout with `overflow-y-auto` to accommodate both the form card and the new recent transactions card.
+### 4. Recent transactions card fills remaining space
+Change the recent transactions card from `flex-shrink-0` to `flex-1 min-h-0` with internal `overflow-y-auto`, so it stretches to fill all remaining vertical space instead of leaving empty whitespace below it.
+
+### 5. Apply all changes to Checkin page
+Mirror all layout/compaction changes on `checkin.tsx`.
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/pages/helpdesk/assets/checkout.tsx` | Widen right panel to `w-[408px]`, wrap in scrollable column, add recent checkouts card, compact form spacing |
-| `src/pages/helpdesk/assets/checkin.tsx` | Same changes: widen panel, add recent checkins card, compact form spacing |
+| `src/pages/helpdesk/assets/checkout.tsx` | Remove subtitle, searchable user combobox, side-by-side buttons, transactions card flex-1 |
+| `src/pages/helpdesk/assets/checkin.tsx` | Remove subtitle, side-by-side buttons, transactions card flex-1, compact spacing |
 
 ## Technical Details
 
-### Right Panel Structure (both pages)
-```text
-Before:
-  flex gap-3
-    [Asset Table Card (flex-1)]
-    [Form Card (w-340px, sticky)]
+### Searchable User Combobox (Checkout)
+Uses the existing `cmdk` package (already installed) with `Popover` + `Command`:
 
-After:
-  flex gap-3
-    [Asset Table Card (flex-1)]
-    [Right Column (w-408px, overflow-y-auto, flex-col, gap-3)]
-      [Form Card]
-      [Recent Transactions Card]
-```
-
-### Recent Transactions Query
 ```typescript
-const { data: recentTransactions = [] } = useQuery({
-  queryKey: ["recent-checkouts"],  // or "recent-checkins"
-  queryFn: async () => {
-    const { data } = await supabase
-      .from("itam_asset_history")
-      .select("id, created_at, action, new_value, old_value, asset_tag, performed_by")
-      .eq("action", "checked_out")  // or "checked_in"
-      .order("created_at", { ascending: false })
-      .limit(10);
-    return data || [];
-  },
-  staleTime: 30_000,
-});
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+
+// State
+const [userSearchOpen, setUserSearchOpen] = useState(false);
+
+// UI
+<Popover open={userSearchOpen} onOpenChange={setUserSearchOpen}>
+  <PopoverTrigger asChild>
+    <Button variant="outline" className="w-full justify-between h-8 text-xs">
+      {assignTo ? assigneeName : "Select person..."}
+      <ChevronsUpDown className="ml-1 h-3 w-3 opacity-50" />
+    </Button>
+  </PopoverTrigger>
+  <PopoverContent className="w-[370px] p-0">
+    <Command>
+      <CommandInput placeholder="Search users..." className="h-8 text-xs" />
+      <CommandList>
+        <CommandEmpty>No users found.</CommandEmpty>
+        <CommandGroup>
+          {users.map(user => (
+            <CommandItem key={user.id} value={getUserDisplayName(user) || user.email}
+              onSelect={() => { setAssignTo(user.id); setUserSearchOpen(false); }}>
+              {getUserDisplayName(user) || user.email}
+              {assignTo === user.id && <Check className="ml-auto h-3 w-3" />}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
+    </Command>
+  </PopoverContent>
+</Popover>
 ```
 
-### Recent Transactions Card UI
-- Compact card with title "Recent Check Outs" / "Recent Check Ins" and a history icon
-- Small table: Date (relative like "2h ago"), Asset Tag (linked), User name
-- Max height capped, scrollable if needed
-- Uses the existing `usersMap` / `resolveUser` pattern already in each page for user name resolution
+### Side-by-side Buttons
+```tsx
+// Before: stacked
+<div className="pt-2 space-y-1.5 border-t">
+  <Button className="w-full">Check Out</Button>
+  <Button variant="outline" className="w-full">Cancel</Button>
+</div>
+
+// After: side by side
+<div className="pt-2 flex gap-2 border-t">
+  <Button className="flex-1">Check Out</Button>
+  <Button variant="outline" className="flex-1">Cancel</Button>
+</div>
+```
+
+### Transactions Card Fill Space
+```tsx
+// Before
+<Card className="flex-shrink-0 shadow-sm border">
+
+// After
+<Card className="flex-1 min-h-0 shadow-sm border flex flex-col">
+  <CardContent className="flex-1 min-h-0 overflow-y-auto ...">
+```
+
+Remove the inner `max-h-[220px]` constraint so the table fills available space naturally.
 
