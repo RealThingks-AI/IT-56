@@ -14,6 +14,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { CalendarIcon, Search, Trash2, X, AlertTriangle } from "lucide-react";
@@ -29,6 +31,7 @@ const DisposePage = () => {
   const [disposalDate, setDisposalDate] = useState<Date>(new Date());
   const [disposalValue, setDisposalValue] = useState("");
   const [notes, setNotes] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Fetch non-disposed assets
   const { data: assets = [], isLoading } = useQuery({
@@ -59,12 +62,10 @@ const DisposePage = () => {
 
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-      // Process each asset individually to merge custom_fields
       for (const assetId of selectedAssets) {
-        // Fetch existing asset to preserve custom_fields
         const { data: existing } = await supabase
           .from("itam_assets")
-          .select("custom_fields, status")
+          .select("custom_fields, status, asset_tag")
           .eq("id", assetId)
           .single();
 
@@ -92,16 +93,15 @@ const DisposePage = () => {
 
         if (error) throw error;
 
-        // Close any open assignments for this asset
         await supabase
           .from("itam_asset_assignments")
           .update({ returned_at: new Date().toISOString() })
           .eq("asset_id", assetId)
           .is("returned_at", null);
 
-        // Log to history
         await supabase.from("itam_asset_history").insert({
           asset_id: assetId,
+          asset_tag: existing?.asset_tag || null,
           action: "disposed",
           old_value: existing?.status,
           new_value: "disposed",
@@ -134,12 +134,24 @@ const DisposePage = () => {
   };
 
   const handleDispose = () => {
-    disposeMutation.mutate();
+    setConfirmOpen(true);
   };
 
   const totalValue = assets
     .filter(a => selectedAssets.includes(a.id))
     .reduce((sum, a) => sum + (parseFloat(String(a.purchase_price || 0)) || 0), 0);
+
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-4">
+        <Skeleton className="h-16 w-full rounded-lg" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Skeleton className="lg:col-span-2 h-[500px] rounded-lg" />
+          <Skeleton className="h-[400px] rounded-lg" />
+        </div>
+      </div>
+    );
+  }
 
   return (
       <div className="p-4 space-y-4">
@@ -218,7 +230,17 @@ const DisposePage = () => {
                           />
                         </TableCell>
                         <TableCell className="font-medium">{asset.name}</TableCell>
-                        <TableCell>{asset.asset_tag || asset.asset_id}</TableCell>
+                        <TableCell>
+                          <span
+                            className="text-primary hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/assets/detail/${asset.asset_tag || asset.asset_id}`);
+                            }}
+                          >
+                            {asset.asset_tag || asset.asset_id}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <Badge variant="secondary">{asset.status}</Badge>
                         </TableCell>
@@ -236,7 +258,7 @@ const DisposePage = () => {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {assets.length === 0 && !isLoading && (
+                    {assets.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                           No assets found
@@ -257,12 +279,12 @@ const DisposePage = () => {
                 Disposal Details
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               {selectedAssets.length > 0 && (
                 <div className="p-3 bg-accent rounded-lg">
                   <p className="text-sm">
                     <span className="font-medium">Total Value:</span>{' '}
-                    {totalValue.toLocaleString("en-IN")}
+                    ₹{totalValue.toLocaleString("en-IN")}
                     <span className="text-xs text-muted-foreground ml-1">(mixed currencies possible)</span>
                   </p>
                 </div>
@@ -292,9 +314,7 @@ const DisposePage = () => {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal"
-                      )}
+                      className="w-full justify-start text-left font-normal"
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {format(disposalDate, "PPP")}
@@ -332,10 +352,10 @@ const DisposePage = () => {
                 />
               </div>
 
-              <div className="pt-4 space-y-2">
+              <div className="pt-4 flex gap-2">
                 <Button 
                   variant="destructive"
-                  className="w-full" 
+                  className="flex-1" 
                   onClick={handleDispose}
                   disabled={selectedAssets.length === 0 || !disposalMethod || disposeMutation.isPending}
                 >
@@ -343,7 +363,7 @@ const DisposePage = () => {
                 </Button>
                 <Button 
                   variant="outline" 
-                  className="w-full"
+                  className="flex-1"
                   onClick={() => navigate("/assets/allassets")}
                 >
                   Cancel
@@ -352,6 +372,25 @@ const DisposePage = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Confirmation Dialog */}
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Disposal</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to dispose {selectedAssets.length} asset(s)?
+                This will mark them as disposed and remove from active inventory.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => disposeMutation.mutate()}>
+                Dispose
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
   );
 };

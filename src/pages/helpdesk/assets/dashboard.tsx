@@ -544,7 +544,7 @@ const AssetDashboard = () => {
                           {recentCheckins.length > 0 ?
                       <div className="divide-y divide-border/50">
                               {recentCheckins.map((c: any, i: number) =>
-                        <FeedRow key={c.id} index={i} tag={c.asset_tag || c.asset?.asset_tag || c.asset?.asset_id || "—"} col2={c.user_name || "—"} col3={(c.asset?.category as any)?.name || "—"} col4={(c.asset?.category as any)?.name || "—"} date={c.created_at ? format(new Date(c.created_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
+                        <FeedRow key={c.id} index={i} tag={c.asset_tag || c.asset?.asset_tag || c.asset?.asset_id || "—"} col2={c.user_name || "—"} col3={(c.asset?.category as any)?.name || "—"} date={c.created_at ? format(new Date(c.created_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
                         )}
                             </div> :
                       <FeedEmptyState message="No recent check-ins" />}
@@ -554,7 +554,7 @@ const AssetDashboard = () => {
                           {recentCheckouts.length > 0 ?
                       <div className="divide-y divide-border/50">
                               {recentCheckouts.map((c: any, i: number) =>
-                        <FeedRow key={c.id} index={i} tag={c.asset_tag || c.asset_id || ""} col2={c.assigned_to_name || "—"} col3={(c.category as any)?.name || "—"} col4={(c.category as any)?.name || "—"} date={c.checked_out_at ? format(new Date(c.checked_out_at), 'MMM dd, yyyy') : (c.updated_at ? format(new Date(c.updated_at), 'MMM dd') : '')} onClick={() => navigate(`/assets/detail/${c.asset_tag || c.asset_id}`)} />
+                        <FeedRow key={c.id} index={i} tag={c.asset_tag || c.asset_id || ""} col2={c.assigned_to_name || "—"} col3={(c.category as any)?.name || "—"} date={c.checked_out_at ? format(new Date(c.checked_out_at), 'MMM dd, yyyy') : (c.updated_at ? format(new Date(c.updated_at), 'MMM dd') : '')} onClick={() => navigate(`/assets/detail/${c.asset_tag || c.asset_id}`)} />
                         )}
                             </div> :
                       <FeedEmptyState message="No assets currently checked out" />}
