@@ -384,7 +384,7 @@ const AssetDashboard = () => {
     return hasCol4 ? (
       <div className={cn("grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-2 hover:bg-accent/50 cursor-pointer transition-colors duration-100 group", index !== undefined && index % 2 === 1 && "bg-muted/20")} onClick={onClick}>
         <span className="text-[11px] text-muted-foreground tabular-nums">{index !== undefined ? index + 1 : ""}</span>
-        <span className="text-xs font-semibold text-foreground truncate font-mono">{tag}</span>
+        <span className="text-xs font-semibold text-primary truncate font-mono">{tag}</span>
         <span className="text-xs text-muted-foreground truncate">{col2 || "—"}</span>
         <span className="text-xs text-muted-foreground truncate">{col3 || "—"}</span>
         <div className="flex items-center justify-end gap-1">
@@ -395,7 +395,7 @@ const AssetDashboard = () => {
     ) : (
       <div className={cn("grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-2 hover:bg-accent/50 cursor-pointer transition-colors duration-100 group", index !== undefined && index % 2 === 1 && "bg-muted/20")} onClick={onClick}>
         <span className="text-[11px] text-muted-foreground tabular-nums">{index !== undefined ? index + 1 : ""}</span>
-        <span className="text-xs font-semibold text-foreground truncate font-mono">{tag}</span>
+        <span className="text-xs font-semibold text-primary truncate font-mono">{tag}</span>
         <span className="text-xs text-muted-foreground truncate">{col2 || "—"}</span>
         <div className="flex items-center justify-end gap-1">
           {date && <span className="text-[11px] text-muted-foreground tabular-nums">{date}</span>}

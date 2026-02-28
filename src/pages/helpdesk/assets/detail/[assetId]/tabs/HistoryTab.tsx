@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -82,7 +83,8 @@ function processHistory(items: any[]): any[] {
 }
 
 export const HistoryTab = ({ assetId }: HistoryTabProps) => {
-  const { resolveUserName } = useUsersLookup();
+  const navigate = useNavigate();
+  const { users, resolveUserName } = useUsersLookup();
 
   const { data: history, isLoading } = useQuery({
     queryKey: ["asset-history", assetId],
@@ -111,6 +113,20 @@ export const HistoryTab = ({ assetId }: HistoryTabProps) => {
     const str = String(value);
     if (UUID_REGEX.test(str)) { const name = resolveUserName(str); if (name) return name; }
     return str;
+  };
+
+  const renderClickableValue = (value: any) => {
+    if (value == null) return "—";
+    const str = String(value);
+    if (UUID_REGEX.test(str)) {
+      const name = resolveUserName(str);
+      if (name) {
+        return (
+          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${str}`); }}>{name}</span>
+        );
+      }
+    }
+    return resolveValue(value) || "—";
   };
 
   const sortDetailEntries = (entries: [string, any][]) =>
@@ -147,8 +163,8 @@ export const HistoryTab = ({ assetId }: HistoryTabProps) => {
         {changes.map((change, idx) => (
           <TableRow key={idx}>
             <TableCell className="font-medium text-xs">{change.field}</TableCell>
-            <TableCell className="text-xs text-muted-foreground">{resolveValue(change.old) || "—"}</TableCell>
-            <TableCell className="text-xs font-medium">{resolveValue(change.new) || "—"}</TableCell>
+            <TableCell className="text-xs text-muted-foreground">{renderClickableValue(change.old)}</TableCell>
+            <TableCell className="text-xs font-medium">{renderClickableValue(change.new)}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -231,16 +247,18 @@ export const HistoryTab = ({ assetId }: HistoryTabProps) => {
                   })()}
                   {item.old_value && item.new_value && (
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <span className="truncate max-w-[200px]">{resolveValue(item.old_value)}</span>
+                      <span className="truncate max-w-[200px]">{renderClickableValue(item.old_value)}</span>
                       <ArrowRight className="h-3 w-3 shrink-0" />
-                      <span className="truncate max-w-[200px] text-foreground">{resolveValue(item.new_value)}</span>
+                      <span className="truncate max-w-[200px] text-foreground">{renderClickableValue(item.new_value)}</span>
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <User className="h-3 w-3" />
-                    {performedByName || "Unknown"}
+                    {item.performed_by ? (
+                      <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${item.performed_by}`); }}>{performedByName || "Unknown"}</span>
+                    ) : "Unknown"}
                   </span>
                   {item.created_at && (
                     <span>{format(new Date(item.created_at), "dd MMM yyyy, HH:mm")}</span>

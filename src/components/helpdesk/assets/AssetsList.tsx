@@ -526,8 +526,14 @@ export function AssetsList({
       case "cost":
         return formatCurrency(asset.purchase_price, asset);
 
-      case "created_by":
-        return getUserName(asset.created_by) || "—";
+      case "created_by": {
+        const createdByName = getUserName(asset.created_by);
+        if (!createdByName || createdByName === "—") return "—";
+        const createdByUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(asset.created_by || "");
+        return createdByUuid ? (
+          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${asset.created_by}`); }}>{createdByName}</span>
+        ) : createdByName;
+      }
 
       case "created_at":
         return formatDate(asset.created_at);
@@ -542,7 +548,9 @@ export function AssetsList({
         return formatDate(asset.purchase_date);
 
       case "purchased_from":
-        return asset.vendor?.name || "—";
+        return asset.vendor?.name ? (
+          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/vendors/detail/${asset.vendor.id}`); }}>{asset.vendor.name}</span>
+        ) : "—";
 
       case "serial_number":
         return asset.serial_number || "—";
@@ -570,9 +578,14 @@ export function AssetsList({
       case "site":
         return asset.location?.site?.name || "—";
 
-      case "assigned_to":
-        // Look up user name if it's a UUID, otherwise display as-is
-        return getUserName(asset.assigned_to) || "—";
+      case "assigned_to": {
+        const assignedName = getUserName(asset.assigned_to);
+        if (!assignedName || assignedName === "—") return "—";
+        const assignedIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(asset.assigned_to || "");
+        return assignedIsUuid ? (
+          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${asset.assigned_to}`); }}>{assignedName}</span>
+        ) : assignedName;
+      }
 
       case "event_date":
         return formatDate(asset.checked_out_at);

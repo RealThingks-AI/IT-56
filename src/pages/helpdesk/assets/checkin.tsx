@@ -607,9 +607,17 @@ const CheckinPage = () => {
                               onClick={() => row.photoUrl && setPreviewImage({ url: row.photoUrl, name: row.assetName })}
                             />
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground px-2 py-1 truncate">{row.assetTag || row.assetCode}</TableCell>
+                          <TableCell className="text-xs px-2 py-1 truncate">
+                            {(row.assetTag || row.assetCode) ? (
+                              <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/detail/${row.assetTag || row.assetCode}`); }}>{row.assetTag || row.assetCode}</span>
+                            ) : "—"}
+                          </TableCell>
                           <TableCell className="text-xs font-medium px-2 py-1 truncate">{row.assetName}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground px-2 py-1 truncate">{getUserName(row.assignedTo)}</TableCell>
+                          <TableCell className="text-xs px-2 py-1 truncate">
+                            {row.assignedTo ? (
+                              <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${row.assignedTo}`); }}>{getUserName(row.assignedTo)}</span>
+                            ) : "—"}
+                          </TableCell>
                           <TableCell className="text-xs text-muted-foreground px-2 py-1 truncate">
                             {row.assignedAt ? format(new Date(row.assignedAt), "MMM dd, yyyy") : "—"}
                           </TableCell>
@@ -728,10 +736,18 @@ const CheckinPage = () => {
                               {formatRelativeTime(tx.created_at)}
                             </TableCell>
                             <TableCell className="text-[11px] px-1.5 py-0.5">
-                              {tx.asset_tag || "—"}
+                              {tx.asset_tag ? (
+                                <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/detail/${tx.asset_tag}`); }}>{tx.asset_tag}</span>
+                              ) : "—"}
                             </TableCell>
                             <TableCell className="text-[11px] text-muted-foreground px-1.5 py-0.5 truncate max-w-[120px]">
-                              {resolveUserName(tx.performed_by) || tx.old_value || "—"}
+                              {(() => {
+                                const userName = tx.old_value || resolveUserName(tx.performed_by) || "—";
+                                const userId = tx.old_value && /^[0-9a-f]{8}-/i.test(tx.old_value) ? tx.old_value : tx.performed_by;
+                                return userName !== "—" && userId ? (
+                                  <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${userId}`); }}>{userName}</span>
+                                ) : userName;
+                              })()}
                             </TableCell>
                           </TableRow>
                         ))}

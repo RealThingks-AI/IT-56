@@ -176,7 +176,7 @@ const VendorDetail = () => {
                   <div className="flex justify-between items-center text-sm">
                     <div>
                       <p className="font-medium">{asset.name}</p>
-                      <p className="text-xs text-muted-foreground">{asset.asset_tag}</p>
+                      <p className="text-xs text-primary">{asset.asset_tag}</p>
                     </div>
                     <span>{asset.status}</span>
                   </div>
