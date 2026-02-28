@@ -1,59 +1,73 @@
 
 
-# Add User Name Search to Asset Search Bars
+# Checkout & Checkin Section Optimization
 
-## Problem
-Searching for a user name like "deepak" in the All Assets search bar returns 0 results because the search only queries asset fields (name, asset_tag, serial_number, model, description). The `assigned_to` column stores UUIDs, not names, so user name matching requires a two-step lookup.
+## Changes Overview
 
-## Solution
-Use a pre-query approach: when a search term is entered, first query the `users` table for matching names/emails, collect their IDs, then include those IDs in the asset filter using Supabase's `.or()` with an `.in()` condition.
+### 1. Increase Right Panel Width (+20%)
+Both `checkout.tsx` and `checkin.tsx` have `w-[340px]` on the right-side form card. Increase to `w-[408px]` (340 * 1.2).
+
+### 2. Add Recent Transactions Card
+Below the checkout/checkin form card, add a new card showing the last 10 transactions from `itam_asset_history`:
+- **Checkout page**: Shows recent `checked_out` actions
+- **Checkin page**: Shows recent `checked_in` actions
+- Compact table with columns: Date, Asset Tag, User, and a link to the asset detail
+- Uses the same `itam_asset_history` table with appropriate action filter
+- The right panel becomes a scrollable column (`overflow-y-auto`) containing both the form card and the recent transactions card
+
+### 3. Layout Compaction
+- Reduce notes textarea from `rows={3}` to `rows={2}` and `min-h-[60px]` to `min-h-[48px]`
+- Reduce `space-y-4` to `space-y-3` in form content
+- Reduce padding gaps between form sections
+
+### 4. Bugs & Improvements Found
+- **Checkout page search doesn't search by user name** -- unlike checkin which filters by `getUserName()`, checkout search only queries DB columns. Not applicable here since checkout searches available (unassigned) assets, so no user to search. No fix needed.
+- **Right panel `lg:self-start`** prevents the panel from filling the full height when content is short, but also prevents scrolling when content overflows. Fix: change to a flex column layout with `overflow-y-auto` to accommodate both the form card and the new recent transactions card.
 
 ## Files to Modify
 
-### 1. `src/components/helpdesk/assets/AssetsList.tsx`
-Both the **count query** and the **data query** need the same fix:
+| File | Changes |
+|------|---------|
+| `src/pages/helpdesk/assets/checkout.tsx` | Widen right panel to `w-[408px]`, wrap in scrollable column, add recent checkouts card, compact form spacing |
+| `src/pages/helpdesk/assets/checkin.tsx` | Same changes: widen panel, add recent checkins card, compact form spacing |
 
-- Before building the `.or()` filter, query `users` for rows where `name` or `email` matches the search term
-- Collect matching user IDs
-- Append `assigned_to.in.(id1,id2,...)` to the existing `.or()` filter string
+## Technical Details
 
-```typescript
-// Pre-query: find user IDs matching the search term
-let matchingUserIds: string[] = [];
-if (filters.search) {
-  const s = sanitizeSearchInput(filters.search);
-  const { data: matchedUsers } = await supabase
-    .from("users")
-    .select("id")
-    .or(`name.ilike.%${s}%,email.ilike.%${s}%`);
-  matchingUserIds = (matchedUsers || []).map(u => u.id);
-}
+### Right Panel Structure (both pages)
+```text
+Before:
+  flex gap-3
+    [Asset Table Card (flex-1)]
+    [Form Card (w-340px, sticky)]
 
-// Then in the .or() filter, add assigned_to.in.() if there are matches
-let orFilter = `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`;
-if (matchingUserIds.length > 0) {
-  orFilter += `,assigned_to.in.(${matchingUserIds.join(",")})`;
-}
-query = query.or(orFilter);
+After:
+  flex gap-3
+    [Asset Table Card (flex-1)]
+    [Right Column (w-408px, overflow-y-auto, flex-col, gap-3)]
+      [Form Card]
+      [Recent Transactions Card]
 ```
 
-This change applies to both:
-- The **count query** (line ~174-178)
-- The **data query** (line ~214-218)
+### Recent Transactions Query
+```typescript
+const { data: recentTransactions = [] } = useQuery({
+  queryKey: ["recent-checkouts"],  // or "recent-checkins"
+  queryFn: async () => {
+    const { data } = await supabase
+      .from("itam_asset_history")
+      .select("id, created_at, action, new_value, old_value, asset_tag, performed_by")
+      .eq("action", "checked_out")  // or "checked_in"
+      .order("created_at", { ascending: false })
+      .limit(10);
+    return data || [];
+  },
+  staleTime: 30_000,
+});
+```
 
-To avoid duplicating the user lookup, extract it into a shared helper or run it once and pass results to both queries via a shared state.
-
-### 2. `src/components/helpdesk/assets/GlobalAssetSearch.tsx`
-Apply the same pattern to the global search dropdown:
-- Add a parallel `users` query alongside assets, categories, and departments
-- Show matching users in a new "Users" command group with a Person icon
-- Clicking a user result navigates to `/assets/allassets?search=<userName>` to show their assigned assets
-
-## Technical Approach
-
-Since both the count and data queries need the same user IDs, the cleanest approach is to:
-1. Extract the user-matching logic into the query function itself (both queries already run independently via React Query)
-2. Each query function will do a lightweight user lookup first, then build the combined filter
-
-The user lookup query is fast (small table, indexed) and cached by React Query with `staleTime`, so the extra round-trip is minimal.
+### Recent Transactions Card UI
+- Compact card with title "Recent Check Outs" / "Recent Check Ins" and a history icon
+- Small table: Date (relative like "2h ago"), Asset Tag (linked), User name
+- Max height capped, scrollable if needed
+- Uses the existing `usersMap` / `resolveUser` pattern already in each page for user name resolution
 
