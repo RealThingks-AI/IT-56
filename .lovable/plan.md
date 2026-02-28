@@ -1,93 +1,139 @@
 
 
-# Make Asset Tags & User Names Clickable Across the Entire Asset App
+# Asset App -- Full Audit: Bugs, Issues & Industry-Standard Improvements
 
-## Problem
-Asset tags and user names appear as plain text throughout the app. Users cannot click on them to navigate to the asset detail view or the employee/user view. This is a standard UX pattern in all ITAM/ITSM tools (ServiceNow, Freshservice, Snipe-IT, etc.) where identifiers are always hyperlinked.
+## Bugs Found
 
-## Solution
-Add clickable navigation links (styled in `text-primary` with `hover:underline cursor-pointer`) for:
-- **Asset tags** -- navigate to `/assets/detail/{asset_tag}`
-- **User names** -- navigate to `/assets/employees?user={user_id}`
+### BUG 1: Dispose page lacks confirmation dialog
+**File:** `src/pages/helpdesk/assets/dispose.tsx` (line 136-138)
+The Dispose button directly calls `disposeMutation.mutate()` without any confirmation dialog. This is a destructive action that should always require confirmation (like checkout/checkin pages do with `AlertDialog`).
 
-All clicks on these links will use `e.stopPropagation()` to prevent triggering parent row clicks.
+**Fix:** Add an `AlertDialog` confirmation before executing the disposal mutation.
+
+### BUG 2: Dispose page doesn't record `asset_tag` in history
+**File:** `src/pages/helpdesk/assets/dispose.tsx` (line 103-115)
+When logging to `itam_asset_history`, the `asset_tag` field is not set. Other pages (checkout, checkin) properly set this field for log consistency.
+
+**Fix:** Fetch the `asset_tag` from the asset record and include it in the history insert.
+
+### BUG 3: Reserve page "Reserve For" dropdown is not searchable
+**File:** `src/pages/helpdesk/assets/reserve.tsx` (line 196-208)
+Uses a plain `<Select>` for the user dropdown. Checkout already uses a searchable combobox (Popover + Command). With many users, scrolling through a non-searchable list is impractical.
+
+**Fix:** Replace with the same searchable `Popover + Command` combobox pattern used in checkout.
+
+### BUG 4: Dispose page missing asset tag in history + no clickable links
+**File:** `src/pages/helpdesk/assets/dispose.tsx` (lines 220-221)
+Asset Tag/ID column in the disposal table is plain text with no clickable link to asset detail. Same for the "Total Value" section which doesn't show currency symbol correctly.
+
+**Fix:** Make asset tag clickable with `text-primary hover:underline cursor-pointer` navigating to `/assets/detail/{asset_tag}`.
+
+### BUG 5: Dashboard checkin feed shows duplicate category in col3 AND col4
+**File:** `src/pages/helpdesk/assets/dashboard.tsx` (line 547)
+`FeedRow` for check-ins passes `col3` and `col4` both as `(c.asset?.category as any)?.name`. The col3 should show the user name and col4 should show category.
+
+**Fix:** Pass `col3={c.user_name || "---"}` and `col4={(c.asset?.category as any)?.name || "---"}`.
+
+### BUG 6: Dashboard checkout feed same duplicate issue
+**File:** `src/pages/helpdesk/assets/dashboard.tsx` (line 557)
+Same as above -- `col3` and `col4` both show category name. Should be `col3={c.assigned_to_name}` and `col4={category}`.
+
+**Fix:** Correct the column mapping.
+
+### BUG 7: Reserve page buttons are stacked instead of side-by-side
+**File:** `src/pages/helpdesk/assets/reserve.tsx` (lines 270-285)
+"Reserve Asset" and "Cancel" buttons use `space-y-2` (stacked). Inconsistent with checkout/checkin which now use side-by-side buttons.
+
+**Fix:** Change to `flex gap-2` with `flex-1` on each button.
+
+### BUG 8: Dispose page buttons are stacked instead of side-by-side
+**File:** `src/pages/helpdesk/assets/dispose.tsx` (lines 335-350)
+Same issue as Reserve page.
+
+**Fix:** Change to `flex gap-2` with `flex-1` on each button.
+
+## Improvements Needed
+
+### IMP 1: Reserve page layout inconsistency
+The Reserve and Dispose pages use an old layout pattern (`p-4 space-y-4`, `lg:grid-cols-3`) that doesn't match the optimized checkout/checkin layout (full-height flex with scrollable side panel). This causes inconsistent UX across the asset module.
+
+**Fix:** Align Reserve and Dispose pages to use the same full-height flex layout pattern as checkout/checkin.
+
+### IMP 2: Dispose page should use the same compact card styling
+The Dispose page uses `space-y-4` and `space-y-2` with larger padding. Should match the compact `space-y-2` and smaller padding pattern used in checkout/checkin.
+
+### IMP 3: Reserve page missing "Recent Reservations" card
+Checkout and Checkin pages now show recent transactions. Reserve page should show recent reservations for consistency.
+
+### IMP 4: AssetsList pagination has empty lines (lines 796-803, 829-837)
+**File:** `src/components/helpdesk/assets/AssetsList.tsx`
+There are suspicious empty lines in the pagination section (lines 796-803 and 829-837) suggesting removed "first page" and "last page" buttons that left dead whitespace in the code.
+
+**Fix:** Clean up the empty lines.
+
+### IMP 5: Missing loading state on dispose page
+The Dispose page has no loading skeleton when assets are being fetched. Other pages (checkout, checkin, add) show proper loading states.
+
+**Fix:** Add a loading state similar to checkout/checkin.
 
 ## Files to Modify
 
-### 1. `src/components/helpdesk/assets/AssetsList.tsx` (All Assets list view)
-- **`assigned_to` cell** (line ~573-575): Wrap resolved user name in a clickable `<span>` that navigates to `/assets/employees?user={asset.assigned_to}`. Style: `text-primary hover:underline cursor-pointer`. Add `e.stopPropagation()`.
-- **`purchased_from` / vendor cell** (line ~544-545): Make vendor name clickable, navigating to `/assets/vendors/detail/{vendor.id}`.
-- **`created_by` cell** (line ~529-530): Make the resolved user name clickable to employee view.
+| File | Changes |
+|------|---------|
+| `src/pages/helpdesk/assets/dispose.tsx` | Add confirmation dialog, add asset_tag to history, make asset tags clickable, side-by-side buttons, add loading state, compact styling |
+| `src/pages/helpdesk/assets/reserve.tsx` | Searchable user combobox, side-by-side buttons, make asset tags clickable |
+| `src/pages/helpdesk/assets/dashboard.tsx` | Fix duplicate category in col3/col4 for checkin and checkout feeds |
+| `src/components/helpdesk/assets/AssetsList.tsx` | Clean up empty lines in pagination section |
 
-### 2. `src/pages/helpdesk/assets/checkout.tsx`
-- **Recent Checkouts table** (lines ~697-698): Make `asset_tag` cell clickable with `text-primary hover:underline`, navigating to `/assets/detail/{asset_tag}`. Add `e.stopPropagation()`.
-- **Recent Checkouts table** (lines ~700-701): Make user name cell clickable, navigating to `/assets/employees?user={performed_by}`.
+## Technical Details
 
-### 3. `src/pages/helpdesk/assets/checkin.tsx`
-- **Asset list table** (line ~610): Make `assetTag` cell clickable to `/assets/detail/{assetTag}`. Style: `text-primary hover:underline cursor-pointer`.
-- **Asset list table** (line ~612): Make `userName` cell clickable to `/assets/employees?user={assignedTo}`.
-- **Recent Check Ins table** (lines ~730-731): Make `asset_tag` clickable to asset detail.
-- **Recent Check Ins table** (lines ~733-734): Make user name clickable to employee view.
-
-### 4. `src/pages/helpdesk/assets/detail/[assetId]/tabs/HistoryTab.tsx`
-- **Performed by** (line ~243): Make the user name clickable to `/assets/employees?user={item.performed_by}`.
-- **Old/new values** (lines ~234-236): When resolved values are user names (UUID detected), make them clickable.
-
-### 5. `src/pages/helpdesk/assets/detail/[assetId]/tabs/DetailsTab.tsx`
-- **Vendor name** (line ~65): Already clickable -- no change needed.
-- **Checked Out To** (line ~93): Already clickable -- no change needed.
-
-### 6. `src/pages/helpdesk/assets/AssetLogsPage.tsx`
-- **"By" column** (line ~179): Make `resolveUser(log.performed_by)` clickable to employee view.
-- Asset tag column already has clickable link -- no change needed.
-
-### 7. `src/pages/helpdesk/assets/vendors/detail/[vendorId].tsx`
-- **Assets tab** (line ~156): Asset tag is shown but not styled as a link. Add `text-primary` styling to the asset tag text.
-
-### 8. `src/pages/helpdesk/assets/dashboard.tsx`
-- The `FeedRow` component already has an `onClick` for the entire row. The user name column (col2) within feed rows showing checked-in/checked-out assets should be styled as `text-primary` to indicate clickability of the row.
-
-## Technical Approach
-
-### Clickable Pattern
-For each clickable element, the pattern is:
+### Dispose Confirmation Dialog
 ```tsx
-<span
-  className="text-primary hover:underline cursor-pointer"
-  onClick={(e) => {
-    e.stopPropagation();
-    navigate(`/assets/detail/${assetTag}`);
-  }}
->
-  {assetTag}
-</span>
+const [confirmOpen, setConfirmOpen] = useState(false);
+
+// Button triggers confirmation
+<Button onClick={() => setConfirmOpen(true)} ...>Dispose</Button>
+
+// AlertDialog confirms
+<AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Confirm Disposal</AlertDialogTitle>
+      <AlertDialogDescription>
+        Are you sure you want to dispose {selectedAssets.length} asset(s)?
+        This will mark them as disposed and remove from active inventory.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Cancel</AlertDialogCancel>
+      <AlertDialogAction onClick={() => disposeMutation.mutate()}>
+        Dispose
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
 ```
 
-### User Name Click Pattern
+### Dashboard Feed Column Fix
 ```tsx
-<span
-  className="text-primary hover:underline cursor-pointer"
-  onClick={(e) => {
-    e.stopPropagation();
-    navigate(`/assets/employees?user=${userId}`);
-  }}
->
-  {userName}
-</span>
+// checkedin feed (line 547) - Before:
+col3={(c.asset?.category as any)?.name || "---"}
+col4={(c.asset?.category as any)?.name || "---"}
+
+// After:
+col2={c.asset_tag || c.asset?.asset_tag || "---"}
+col3={c.user_name || "---"}
+col4={(c.asset?.category as any)?.name || "---"}
+
+// checkedout feed (line 557) - Before:
+col3={(c.category as any)?.name || "---"}
+col4={(c.category as any)?.name || "---"}
+
+// After:
+col3={c.assigned_to_name || "---"}
+col4={(c.category as any)?.name || "---"}
 ```
 
-### Guards
-- Only apply clickable styling when the value is not "---" or null
-- For user names, only make clickable when we have the actual UUID (not just a display string)
-- For asset tags, only make clickable when the tag is a real human-readable tag (not a raw UUID)
-
-### `useUsersLookup` Enhancement
-The `resolveUserName` hook currently returns just the name string. For pages that need both the name and ID for navigation, we'll use the existing `users` array from the hook to find the user ID alongside the name.
-
-## Bugs & Issues Found
-
-1. **Checkin recent transactions**: The "User" column shows `performed_by` (who did the action) instead of the actual user the asset was checked in from. Should show `old_value` resolved as user name where possible.
-2. **Checkout recent transactions**: Same issue -- shows `performed_by` instead of the user it was checked out to. Should prefer `new_value`.
-3. **AssetsList `assigned_to` column**: Currently returns plain text with no click handler -- this is the most critical fix since it's the main list view.
-4. **HistoryTab user references**: User names in old/new values and performed_by are plain text -- should be clickable for quick navigation.
+### Searchable Combobox for Reserve Page
+Same pattern as checkout page -- use `Popover` + `Command` (cmdk) with search input to filter users.
 
