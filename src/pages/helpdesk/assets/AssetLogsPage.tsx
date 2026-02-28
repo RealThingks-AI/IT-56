@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +31,7 @@ function formatAction(action: string) {
 }
 
 export default function AssetLogsPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [datePreset, setDatePreset] = useState("all");
@@ -176,7 +178,11 @@ export default function AssetLogsPage() {
                   </TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{formatAction(log.action)}</Badge></TableCell>
                   <TableCell className="text-xs max-w-[200px] truncate">{log.old_value || log.new_value ? `${log.old_value || "-"} → ${log.new_value || "-"}` : "-"}</TableCell>
-                  <TableCell className="text-xs">{resolveUser(log.performed_by)}</TableCell>
+                  <TableCell className="text-xs">
+                    {log.performed_by ? (
+                      <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${log.performed_by}`); }}>{resolveUser(log.performed_by)}</span>
+                    ) : "—"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

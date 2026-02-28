@@ -695,10 +695,18 @@ const CheckoutPage = () => {
                               {formatRelativeTime(tx.created_at)}
                             </TableCell>
                             <TableCell className="text-[11px] px-1.5 py-0.5">
-                              {tx.asset_tag || "—"}
+                              {tx.asset_tag ? (
+                                <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/detail/${tx.asset_tag}`); }}>{tx.asset_tag}</span>
+                              ) : "—"}
                             </TableCell>
                             <TableCell className="text-[11px] text-muted-foreground px-1.5 py-0.5 truncate max-w-[120px]">
-                              {resolveUserName(tx.performed_by) || tx.new_value || "—"}
+                              {(() => {
+                                const userName = tx.new_value || resolveUserName(tx.performed_by) || "—";
+                                const userId = tx.new_value && /^[0-9a-f]{8}-/i.test(tx.new_value) ? tx.new_value : tx.performed_by;
+                                return userName !== "—" && userId ? (
+                                  <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${userId}`); }}>{userName}</span>
+                                ) : userName;
+                              })()}
                             </TableCell>
                           </TableRow>
                         ))}
