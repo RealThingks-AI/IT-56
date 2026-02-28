@@ -36,16 +36,26 @@ export default function AssetLogsPage() {
   const [page, setPage] = useState(0);
   const [selectedLog, setSelectedLog] = useState<any>(null);
 
-  const { data: usersMap } = useQuery({
+  const { data: usersMap, isLoading: usersLoading } = useQuery({
     queryKey: ["users-map-logs"],
     staleTime: 10 * 60 * 1000,
     queryFn: async () => {
-      const { data } = await supabase.from("users").select("id, name, email");
+      const { data } = await supabase.from("users").select("id, auth_user_id, name, email");
       const map: Record<string, string> = {};
-      data?.forEach((u) => { map[u.id] = u.name || u.email || u.id; });
+      data?.forEach((u) => {
+        const displayName = u.name || u.email || u.id;
+        map[u.id] = displayName;
+        if (u.auth_user_id) map[u.auth_user_id] = displayName;
+      });
       return map;
     },
   });
+
+  const resolveUser = (id: string | null | undefined) => {
+    if (!id) return "—";
+    if (usersLoading || !usersMap) return "...";
+    return usersMap[id] || "Unknown";
+  };
 
   // Separate query for total stats (not affected by pagination)
   const { data: statCounts } = useQuery({
@@ -53,9 +63,9 @@ export default function AssetLogsPage() {
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
       const [checkouts, checkins, changes] = await Promise.all([
-        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).eq("action", "checkout"),
-        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).eq("action", "checkin"),
-        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).in("action", ["status_change", "updated"]),
+        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).eq("action", "checked_out"),
+        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).eq("action", "checked_in"),
+        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).in("action", ["disposed", "reassigned", "returned_to_stock", "status_changed", "lost", "updated"]),
       ]);
       return {
         checkouts: checkouts.count || 0,
@@ -109,9 +119,12 @@ export default function AssetLogsPage() {
           <SelectTrigger className="w-[150px] h-8"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Actions</SelectItem>
-              <SelectItem value="checkout">Check Out</SelectItem>
-              <SelectItem value="checkin">Check In</SelectItem>
-              <SelectItem value="status_change">Status Change</SelectItem>
+              <SelectItem value="checked_out">Check Out</SelectItem>
+              <SelectItem value="checked_in">Check In</SelectItem>
+              <SelectItem value="reassigned">Reassigned</SelectItem>
+              <SelectItem value="returned_to_stock">Returned to Stock</SelectItem>
+              <SelectItem value="disposed">Disposed</SelectItem>
+              <SelectItem value="lost">Lost</SelectItem>
               <SelectItem value="created">Created</SelectItem>
               <SelectItem value="updated">Updated</SelectItem>
             </SelectContent>
@@ -134,21 +147,20 @@ export default function AssetLogsPage() {
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Date</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Asset</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Action</TableHead>
-                <TableHead className="font-medium text-xs uppercase text-muted-foreground">Field</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Old / New</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">By</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-12">
+                <TableRow><TableCell colSpan={5} className="text-center py-12">
                   <div className="flex flex-col items-center justify-center">
                     <Loader2 className="h-8 w-8 text-muted-foreground animate-spin mb-2" />
                     <p className="text-sm text-muted-foreground">Loading logs...</p>
                   </div>
                 </TableCell></TableRow>
               ) : logs.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-12">
+              <TableRow><TableCell colSpan={5} className="text-center py-12">
                 <div className="flex flex-col items-center justify-center">
                   <ClipboardList className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
                   <p className="text-sm text-muted-foreground">No logs found</p>
@@ -163,9 +175,8 @@ export default function AssetLogsPage() {
                     ) : <span className="text-xs text-muted-foreground">-</span>}
                   </TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{formatAction(log.action)}</Badge></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{log.field_name || "-"}</TableCell>
                   <TableCell className="text-xs max-w-[200px] truncate">{log.old_value || log.new_value ? `${log.old_value || "-"} → ${log.new_value || "-"}` : "-"}</TableCell>
-                  <TableCell className="text-xs">{usersMap?.[log.performed_by] || "System"}</TableCell>
+                  <TableCell className="text-xs">{resolveUser(log.performed_by)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -197,7 +208,7 @@ export default function AssetLogsPage() {
                 <div><span className="text-muted-foreground">Asset:</span> {selectedLog.itam_assets?.asset_tag || "N/A"}</div>
                 {selectedLog.old_value && <div><span className="text-muted-foreground">Old Value:</span> {selectedLog.old_value}</div>}
                 {selectedLog.new_value && <div><span className="text-muted-foreground">New Value:</span> {selectedLog.new_value}</div>}
-                <div><span className="text-muted-foreground">By:</span> {usersMap?.[selectedLog.performed_by] || "System"}</div>
+                <div><span className="text-muted-foreground">By:</span> {resolveUser(selectedLog.performed_by)}</div>
                 {selectedLog.details && (
                   <div className="space-y-1">
                     <span className="text-muted-foreground">Details:</span>

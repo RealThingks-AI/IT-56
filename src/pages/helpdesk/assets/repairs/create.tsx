@@ -17,7 +17,15 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { format } from "date-fns";
 import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+
+const generateRepairNumber = () => {
+  const now = new Date();
+  const datePart = format(now, "yyyyMMdd");
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `RPR-${datePart}-${rand}`;
+};
 
 const CreateRepair = () => {
   const navigate = useNavigate();
@@ -30,11 +38,11 @@ const CreateRepair = () => {
     asset_id: preSelectedAssetId || "",
     vendor_id: "",
     issue_description: "",
+    diagnosis: "",
     cost: "",
     notes: "",
   });
 
-  // Fetch assets
   const { data: assets = [] } = useQuery({
     queryKey: ["itam-assets-all"],
     queryFn: async () => {
@@ -47,7 +55,6 @@ const CreateRepair = () => {
     },
   });
 
-  // Fetch vendors
   const { data: vendors = [] } = useQuery({
     queryKey: ["itam-vendors"],
     queryFn: async () => {
@@ -60,7 +67,6 @@ const CreateRepair = () => {
     },
   });
 
-  // Create repair mutation
   const createRepairMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const currentUser = (await supabase.auth.getUser()).data.user;
@@ -69,10 +75,12 @@ const CreateRepair = () => {
         .from("itam_repairs")
         .insert({
           asset_id: data.asset_id,
+          repair_number: generateRepairNumber(),
           vendor_id: data.vendor_id || null,
           issue_description: data.issue_description,
+          diagnosis: data.diagnosis || null,
           cost: data.cost ? parseFloat(data.cost) : null,
-          notes: data.notes,
+          notes: data.notes || null,
           status: "open",
           created_by: currentUser?.id,
         })
@@ -81,17 +89,15 @@ const CreateRepair = () => {
 
       if (error) throw error;
 
-      // Update asset status to maintenance
       await supabase
         .from("itam_assets")
         .update({ status: "maintenance", updated_by: currentUser?.id })
         .eq("id", data.asset_id);
 
-      // Log to history
       await supabase.from("itam_asset_history").insert({
         asset_id: data.asset_id,
         action: "repair_created",
-        details: { issue: data.issue_description },
+        details: { issue: data.issue_description, repair_number: repairData.repair_number },
         performed_by: currentUser?.id,
       });
 
@@ -109,18 +115,16 @@ const CreateRepair = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!formData.asset_id || !formData.issue_description) {
       toast.error("Please fill in required fields");
       return;
     }
-
     createRepairMutation.mutate(formData);
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="h-full overflow-auto">
+      <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in-0 duration-200">
         <div className="flex items-center gap-4">
           <BackButton />
           <div>
@@ -130,11 +134,11 @@ const CreateRepair = () => {
         </div>
 
         <Card className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="asset_id">
-                  Asset <span className="text-red-500">*</span>
+                  Asset <span className="text-destructive">*</span>
                 </Label>
                 <Select
                   value={formData.asset_id}
@@ -172,23 +176,34 @@ const CreateRepair = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="issue_description">
-                  Issue Description <span className="text-red-500">*</span>
-                </Label>
-                <Textarea
-                  id="issue_description"
-                  value={formData.issue_description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, issue_description: e.target.value })
-                  }
-                  placeholder="Describe the issue..."
-                  rows={5}
-                  required
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="issue_description">
+                Issue Description <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="issue_description"
+                value={formData.issue_description}
+                onChange={(e) => setFormData({ ...formData, issue_description: e.target.value })}
+                placeholder="Describe the issue..."
+                rows={4}
+                required
+              />
+            </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="diagnosis">Initial Diagnosis</Label>
+              <Textarea
+                id="diagnosis"
+                value={formData.diagnosis}
+                onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })}
+                placeholder="Preliminary diagnosis (optional)..."
+                rows={2}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cost">Estimated Cost</Label>
                 <Input
@@ -196,26 +211,24 @@ const CreateRepair = () => {
                   type="number"
                   step="0.01"
                   value={formData.cost}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cost: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                   placeholder="0.00"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Additional Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Any additional notes..."
-                  rows={3}
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="notes">Additional Notes</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Any additional notes..."
+                rows={2}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
               <Button
                 type="button"
                 variant="outline"

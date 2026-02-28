@@ -56,6 +56,7 @@ const LinkedProblems = lazy(() => import("./pages/helpdesk/tickets/linked-proble
 import AllAssets from "./pages/helpdesk/assets/allassets";
 import AssetDashboard from "./pages/helpdesk/assets/dashboard";
 import AssetAdvancedPage from "./pages/helpdesk/assets/advanced/index";
+import AssetEmployeesPage from "./pages/helpdesk/assets/employees";
 
 const AssetDetail = lazy(() => import("./pages/helpdesk/assets/detail/[assetId]"));
 const AssetReports = lazy(() => import("./pages/helpdesk/assets/reports"));
@@ -111,6 +112,7 @@ const AdminLogsPage = lazy(() => import("./pages/admin/logs"));
 const AdminSystemPage = lazy(() => import("./pages/admin/system"));
 const AdminBackupPage = lazy(() => import("./pages/admin/backup"));
 const AdminReportsPage = lazy(() => import("./pages/admin/reports"));
+const AdminEmailPage = lazy(() => import("./pages/admin/email"));
 
 // Auth
 const AuthConfirm = lazy(() => import("./pages/AuthConfirm"));
@@ -194,6 +196,7 @@ const App = () => {
                     <Route path="/assets/reserve" element={<AssetReserve />} />
                     <Route path="/assets/alerts" element={<AssetAlerts />} />
                     <Route path="/assets/advanced" element={<AssetAdvancedPage />} />
+                    <Route path="/assets/employees" element={<AssetEmployeesPage />} />
                     <Route path="/assets/detail/:assetId" element={<AssetDetail />} />
                     <Route path="/assets/reports" element={<AssetReports />} />
                     <Route path="/assets/import-export" element={<AssetsImportExport />} />
@@ -251,6 +254,7 @@ const App = () => {
                     <Route path="/admin/system" element={<AdminSystemPage />} />
                     <Route path="/admin/backup" element={<AdminBackupPage />} />
                     <Route path="/admin/reports" element={<AdminReportsPage />} />
+                    <Route path="/admin/email" element={<AdminEmailPage />} />
                     
                   </Route>
 

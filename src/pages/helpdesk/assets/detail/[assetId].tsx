@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
+// ScrollArea removed - tabs use overflow-y-auto directly
 import { Edit, ChevronLeft, ChevronRight, Package, ZoomIn } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -428,29 +428,29 @@ const AssetDetail = () => {
 
               {/* Asset Details - Two Tables */}
               <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Left Table */}
+              {/* Left Table */}
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-xs">
                     <tbody>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Asset Tag</td>
-                        <td className="p-1.5 font-medium text-primary">{asset.asset_tag || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Asset Tag</td>
+                        <td className="p-2 font-medium text-primary">{asset.asset_tag || '—'}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Serial Number</td>
-                        <td className="p-1.5">{asset.serial_number || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Serial Number</td>
+                        <td className="p-2">{asset.serial_number || '—'}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Purchase Date</td>
-                        <td className="p-1.5">{asset.purchase_date ? format(new Date(asset.purchase_date), "dd/MM/yyyy") : '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Purchase Date</td>
+                        <td className="p-2">{asset.purchase_date ? format(new Date(asset.purchase_date), "dd/MM/yyyy") : '—'}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Purchase Price</td>
-                        <td className="p-1.5 font-semibold">{getCurrencySymbol()}{asset.purchase_price?.toLocaleString() || '0.00'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Purchase Price</td>
+                        <td className="p-2 font-semibold">{getCurrencySymbol()}{asset.purchase_price?.toLocaleString() || '0.00'}</td>
                       </tr>
                       <tr>
-                        <td className="p-1.5 font-semibold">Model</td>
-                        <td className="p-1.5">{asset.model || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Model</td>
+                        <td className="p-2">{asset.model || '—'}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -461,26 +461,26 @@ const AssetDetail = () => {
                   <table className="w-full text-xs">
                     <tbody>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Make</td>
-                        <td className="p-1.5">{asset.make?.name || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Make</td>
+                        <td className="p-2">{asset.make?.name || '—'}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Location</td>
-                        <td className="p-1.5">{asset.location?.name || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Location</td>
+                        <td className="p-2">{asset.location?.name || '—'}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Category</td>
-                        <td className="p-1.5">{asset.category?.name || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Category</td>
+                        <td className="p-2">{asset.category?.name || '—'}</td>
                       </tr>
                       <tr className="border-b">
-                        <td className="p-1.5 font-semibold">Department</td>
-                        <td className="p-1.5">{asset.department?.name || '—'}</td>
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Department</td>
+                        <td className="p-2">{asset.department?.name || '—'}</td>
                       </tr>
                       <tr>
-                        <td className="p-1.5 font-semibold">Status</td>
-                        <td className="p-1.5">
+                        <td className="p-2 font-semibold w-[120px] text-muted-foreground">Status</td>
+                        <td className="p-2">
                           <Badge variant="outline" className={`${getStatusColor(asset.status) === 'default' ? 'bg-green-100 text-green-800' : ''} capitalize text-xs`}>
-                            {asset.status === 'in_use' ? 'Checked out' : asset.status || 'available'}
+                            {(asset.status || 'available').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                           </Badge>
                         </td>
                       </tr>
@@ -510,70 +510,48 @@ const AssetDetail = () => {
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="details" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <DetailsTab asset={asset} />
-            </ScrollArea>
+          <TabsContent value="details" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <DetailsTab asset={asset} />
           </TabsContent>
 
-          <TabsContent value="warranty" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <WarrantyTab asset={asset} />
-            </ScrollArea>
+          <TabsContent value="warranty" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <WarrantyTab asset={asset} />
           </TabsContent>
 
-          <TabsContent value="events" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <EventsTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="events" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <EventsTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="docs" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <DocsTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="docs" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <DocsTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="photos" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <PhotosTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="photos" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <PhotosTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="reserve" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <ReserveTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="reserve" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <ReserveTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="maintenance" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <MaintenanceTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="maintenance" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <MaintenanceTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="contracts" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <ContractsTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="contracts" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <ContractsTab asset={asset} />
           </TabsContent>
 
-          <TabsContent value="linking" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <LinkingTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="linking" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <LinkingTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="audit" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <AuditTab assetId={asset.id} />
-            </ScrollArea>
+          <TabsContent value="audit" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <AuditTab assetId={asset.id} />
           </TabsContent>
 
-          <TabsContent value="history" className="flex-1 min-h-0 mt-3 data-[state=inactive]:hidden">
-            <ScrollArea className="h-full">
-              <HistoryTab assetId={String(asset.id)} />
-            </ScrollArea>
+          <TabsContent value="history" className="flex-1 min-h-0 mt-3 overflow-y-auto data-[state=inactive]:hidden">
+            <HistoryTab assetId={String(asset.id)} />
           </TabsContent>
         </Tabs>
       </div>

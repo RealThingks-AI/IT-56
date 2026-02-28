@@ -25,6 +25,13 @@ import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
 import { useUsers } from "@/hooks/useUsers";
 import { getUserDisplayName } from "@/lib/userUtils";
 
+const generateRepairNumber = () => {
+  const now = new Date();
+  const datePart = format(now, "yyyyMMdd");
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `RPR-${datePart}-${rand}`;
+};
+
 interface RepairAssetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,14 +44,11 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
   const queryClient = useQueryClient();
   const [scheduleDate, setScheduleDate] = useState<Date>(new Date());
   const [assignedTo, setAssignedTo] = useState("");
-  const [completedDate, setCompletedDate] = useState<Date | undefined>();
   const [repairCost, setRepairCost] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Fetch users for assignment dropdown
   const { data: users = [] } = useUsers();
 
-  // Fetch asset's currency
   const { data: assetCurrency } = useQuery({
     queryKey: ["asset-currency", assetId],
     queryFn: async () => {
@@ -66,34 +70,31 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
     mutationFn: async () => {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-      // Create repair record
       const { error: repairError } = await supabase
         .from("itam_repairs")
         .insert({
           asset_id: assetId,
-          status: completedDate ? "completed" : "in_progress",
+          repair_number: generateRepairNumber(),
+          status: "open",
           issue_description: notes || "Repair/Maintenance scheduled",
           cost: repairCost ? parseFloat(repairCost) : null,
           started_at: scheduleDate.toISOString(),
-          completed_at: completedDate?.toISOString() || null,
           notes: notes || null,
+          created_by: currentUser?.id,
         });
       
       if (repairError) throw repairError;
 
-      // Update asset status to maintenance
       const { error: assetError } = await supabase
         .from("itam_assets")
-        .update({ status: ASSET_STATUS.MAINTENANCE })
+        .update({ status: ASSET_STATUS.MAINTENANCE, updated_by: currentUser?.id })
         .eq("id", assetId);
       
       if (assetError) throw assetError;
 
-      // Resolve assigned user name for history
       const selectedUser = users.find(u => u.id === assignedTo);
-      const assignedName = selectedUser ? (getUserDisplayName(selectedUser) || selectedUser.email) : (assignedTo || null);
+      const assignedName = selectedUser ? (getUserDisplayName(selectedUser) || selectedUser.email) : null;
 
-      // Log to history
       await supabase.from("itam_asset_history").insert({
         asset_id: assetId,
         action: "sent_for_repair",
@@ -111,10 +112,8 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
       invalidateAllAssetQueries(queryClient);
       onSuccess?.();
       onOpenChange(false);
-      // Reset form
       setScheduleDate(new Date());
       setAssignedTo("");
-      setCompletedDate(undefined);
       setRepairCost("");
       setNotes("");
     },
@@ -123,10 +122,6 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
       console.error(error);
     },
   });
-
-  const handleSubmit = () => {
-    repairMutation.mutate();
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -180,34 +175,7 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
           </div>
 
           <div className="space-y-2">
-            <Label>Date Completed</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !completedDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {completedDate ? format(completedDate, "dd/MM/yyyy") : "dd/MM/yyyy"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={completedDate}
-                  onSelect={setCompletedDate}
-                  initialFocus
-                  className="pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="repairCost">Repair Cost</Label>
+            <Label htmlFor="repairCost">Estimated Cost</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{currencySymbol}</span>
               <Input
@@ -222,27 +190,27 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes">Issue Description / Notes</Label>
             <Textarea
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Additional notes..."
+              placeholder="Describe the issue or maintenance needed..."
               rows={3}
             />
           </div>
         </div>
 
-        <DialogFooter className="flex-row-reverse sm:flex-row-reverse gap-2">
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
           <Button 
-            onClick={handleSubmit} 
+            onClick={() => repairMutation.mutate()} 
             disabled={repairMutation.isPending}
           >
             {repairMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Repair
-          </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Create Repair
           </Button>
         </DialogFooter>
       </DialogContent>

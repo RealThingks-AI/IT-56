@@ -174,7 +174,7 @@ export function AssetsList({
       if (filters.search) {
         const s = sanitizeSearchInput(filters.search);
         query = query.or(
-          `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%`
+          `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`
         );
       }
       if (filters.status) {
@@ -214,7 +214,7 @@ export function AssetsList({
       if (filters.search) {
         const s = sanitizeSearchInput(filters.search);
         query = query.or(
-          `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%`
+          `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`
         );
       }
       if (filters.status) {
@@ -476,13 +476,36 @@ export function AssetsList({
 
 
 
-      case "asset_tag":
+      case "asset_tag": {
         // Hide raw UUIDs — only show human-readable asset tags
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(asset.asset_tag || "");
+        const searchTerm = filters?.search?.toLowerCase();
+        const tagVal = asset.asset_tag?.toLowerCase() || "";
+        const tagMatches = searchTerm && tagVal.includes(searchTerm);
+        const serialMatches = searchTerm && !tagMatches && asset.serial_number?.toLowerCase()?.includes(searchTerm);
+        const nameMatches = searchTerm && !tagMatches && !serialMatches && asset.name?.toLowerCase()?.includes(searchTerm);
+        const modelMatches = searchTerm && !tagMatches && !serialMatches && !nameMatches && asset.model?.toLowerCase()?.includes(searchTerm);
+        const descMatches = searchTerm && !tagMatches && !serialMatches && !nameMatches && !modelMatches && asset.description?.toLowerCase()?.includes(searchTerm);
         return (
-          <span className="text-primary hover:underline cursor-pointer">
-            {(!asset.asset_tag || isUuid) ? "—" : asset.asset_tag}
-          </span>);
+          <>
+            <span className="text-primary hover:underline cursor-pointer">
+              {(!asset.asset_tag || isUuid) ? "—" : asset.asset_tag}
+            </span>
+            {serialMatches && (
+              <div className="text-[10px] text-muted-foreground/70 truncate max-w-[160px]">S/N: {asset.serial_number}</div>
+            )}
+            {nameMatches && (
+              <div className="text-[10px] text-muted-foreground/70 truncate max-w-[160px]">Name: {asset.name}</div>
+            )}
+            {modelMatches && (
+              <div className="text-[10px] text-muted-foreground/70 truncate max-w-[160px]">Model: {asset.model}</div>
+            )}
+            {descMatches && (
+              <div className="text-[10px] text-muted-foreground/70 truncate max-w-[160px]">Desc: {asset.description}</div>
+            )}
+          </>
+        );
+      }
 
 
       case "make":

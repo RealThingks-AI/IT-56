@@ -74,7 +74,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   bootstrap: async () => {
     const current = get();
     if (current.status === "loading" || current.status === "ready") return;
-    if (current.retries >= MAX_RETRIES) return;
 
     set({ status: "loading" });
 

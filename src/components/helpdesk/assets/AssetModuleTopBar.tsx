@@ -13,9 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { AssetColumnSettings, SYSTEM_COLUMN_ORDER } from "./AssetColumnSettings";
-import { useUISettings } from "@/hooks/useUISettings";
-import { toast } from "sonner";
+import { AssetColumnSettings } from "./AssetColumnSettings";
 import {
   Tooltip,
   TooltipContent,
@@ -45,57 +43,6 @@ interface AssetModuleTopBarProps {
   } | null;
 }
 
-// XLSX export utility
-const exportToXLSX = async (data: any[], filename: string, columns: { id: string; label: string }[]) => {
-  if (!data || data.length === 0) {
-    toast.error("No data to export");
-    return;
-  }
-
-  const resolveValue = (item: any, colId: string): string => {
-    switch (colId) {
-      case "asset_tag": return item.asset_tag || "";
-      case "category": return item.category?.name || "";
-      case "status": return item.status || "";
-      case "make": return item.make?.name || "";
-      case "model": return item.model || "";
-      case "serial_number": return item.serial_number || "";
-      case "assigned_to": {
-        const assignedUser = item.assigned_user;
-        return assignedUser?.name || assignedUser?.email || item.assigned_to || "";
-      }
-      case "location": return item.location?.name || "";
-      case "site": return item.location?.site?.name || "";
-      case "department": return item.department?.name || "";
-      case "cost": return item.purchase_price?.toString() || "";
-      case "purchase_date": return item.purchase_date || "";
-      case "purchased_from": return item.vendor?.name || "";
-      case "description": return item.description || "";
-      case "created_at": return item.created_at || "";
-      case "created_by": {
-        const creator = item.created_user;
-        return creator?.name || creator?.email || item.created_by || "";
-      }
-      default: return "";
-    }
-  };
-
-  const rows = data.map(item => {
-    const row: Record<string, string> = {};
-    columns.forEach(col => {
-      row[col.label] = resolveValue(item, col.id);
-    });
-    return row;
-  });
-
-  const XLSX = await import("xlsx");
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Assets");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
-
-  toast.success(`Exported ${data.length} records to ${filename}.xlsx`);
-};
 
 export function AssetModuleTopBar({ 
   onColumnsChange, 
@@ -115,30 +62,6 @@ export function AssetModuleTopBar({
   const navigate = useNavigate();
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
 
-  const { assetColumns: savedColumns } = useUISettings();
-
-  // Build visible columns from saved settings or defaults
-  const getVisibleColumnsForExport = () => {
-    const columns = savedColumns && savedColumns.length > 0
-      ? SYSTEM_COLUMN_ORDER.map(systemCol => {
-          const savedCol = savedColumns.find(c => c.id === systemCol.id);
-          return savedCol ? { ...systemCol, visible: savedCol.visible } : systemCol;
-        })
-      : [...SYSTEM_COLUMN_ORDER];
-    return columns
-      .filter(c => c.visible)
-      .sort((a, b) => a.order_index - b.order_index);
-  };
-
-  const handleExportToExcel = () => {
-    const visibleColumns = getVisibleColumnsForExport();
-    
-    if (exportData && exportData.length > 0) {
-      exportToXLSX(exportData, exportFilename, visibleColumns);
-    } else {
-      toast.info("No data available to export. Load assets first.");
-    }
-  };
 
   const portalTarget = document.getElementById("module-header-portal");
 
@@ -200,7 +123,7 @@ export function AssetModuleTopBar({
                     </DropdownMenuItem>
                   )}
                   {showExport && (
-                    <DropdownMenuItem onClick={handleExportToExcel}>
+                    <DropdownMenuItem onClick={() => navigate("/assets/import-export")}>
                       <FileSpreadsheet className="mr-2 h-3.5 w-3.5" />
                       Export to Excel
                     </DropdownMenuItem>

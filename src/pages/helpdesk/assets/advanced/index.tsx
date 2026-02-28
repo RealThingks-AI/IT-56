@@ -16,7 +16,7 @@ import {
   Search, Plus, Users, Building2, Mail, Phone, Globe, Wrench, Shield,
   TrendingUp, CheckCircle, ExternalLink, MapPin, FolderTree, 
   Briefcase, Package, Pencil, Trash2, Settings, FileBarChart,
-  ChevronLeft, ChevronRight, Tag, Loader2, MoreHorizontal, UserX, PackageX,
+  ChevronLeft, ChevronRight, Tag, Loader2, MoreHorizontal,
   Send, Eye, ScrollText, Key, TrendingDown, FileDown, Image, FileText, X
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -27,14 +27,12 @@ import { format, differenceInDays, isPast } from "date-fns";
 import { toast } from "sonner";
 import { useAssetSetupConfig } from "@/hooks/useAssetSetupConfig";
 import { EmailsTab } from "@/components/helpdesk/assets/setup/EmailsTab";
-import { EmployeeAssetsDialog } from "@/components/helpdesk/assets/EmployeeAssetsDialog";
-import { useUsers, AppUser } from "@/hooks/useUsers";
 import AssetReports from "@/pages/helpdesk/assets/reports";
 import AssetLogsPage from "@/pages/helpdesk/assets/AssetLogsPage";
 
 import LicensesIndex from "@/pages/helpdesk/assets/licenses/index";
 import DepreciationDashboard from "@/pages/helpdesk/assets/depreciation/index";
-import ImportExportPage from "@/pages/helpdesk/assets/import-export";
+
 
 // ─── Inline Documents Components ───────────────────────────────────────────────
 // Photo gallery rendered inline (not as a dialog trigger card)
@@ -320,7 +318,7 @@ const DocumentsStats = () => {
 // Wrapper components to embed existing pages without their own headers/padding
 const LicensesContent = () => <LicensesIndex embedded />;
 const DepreciationContent = () => <DepreciationDashboard embedded />;
-const ImportExportContent = () => <ImportExportPage embedded />;
+
 
 
 // Tab configuration for Setup sub-navigation
@@ -329,7 +327,6 @@ const SETUP_TABS = [
   { id: "categories", label: "Categories" },
   { id: "departments", label: "Departments" },
   { id: "makes", label: "Makes" },
-  { id: "emails", label: "Emails" },
   { id: "vendors", label: "Vendors" },
 ] as const;
 
@@ -422,7 +419,7 @@ const exportCSV = (rows: Record<string, string | number>[], filename: string) =>
   toast.success(`Exported ${rows.length} records`);
 };
 
-const VALID_TABS = ["employees", "licenses", "repairs", "warranties", "depreciation", "documents", "import-export", "reports", "logs", "setup"] as const;
+const VALID_TABS = ["licenses", "repairs", "warranties", "depreciation", "documents", "emails", "reports", "logs", "setup"] as const;
 
 export default function AdvancedPage() {
   const navigate = useNavigate();
@@ -432,7 +429,7 @@ export default function AdvancedPage() {
   // ─── URL-synced tab state (Phase 1: B4, B5, Phase 3: F20) ─────────────────
   const urlTab = searchParams.get("tab");
   const urlSection = searchParams.get("section");
-  const activeTab = urlTab && (VALID_TABS as readonly string[]).includes(urlTab) ? urlTab : "employees";
+  const activeTab = urlTab && (VALID_TABS as readonly string[]).includes(urlTab) ? urlTab : "licenses";
   const setupSubTab: SetupTabId = (urlSection && SETUP_TABS.some(t => t.id === urlSection) ? urlSection : "sites") as SetupTabId;
 
   const setActiveTab = useCallback((tab: string) => {
@@ -454,7 +451,6 @@ export default function AdvancedPage() {
   }, [setSearchParams]);
   
   // Isolated search/filter state per tab
-  const [employeeSearch, setEmployeeSearch] = useState("");
   const [vendorSearch, setVendorSearch] = useState("");
   const [maintenanceSearch, setMaintenanceSearch] = useState("");
   const [maintenanceStatusFilter, setMaintenanceStatusFilter] = useState("all");
@@ -462,23 +458,14 @@ export default function AdvancedPage() {
   const [warrantyStatusFilter, setWarrantyStatusFilter] = useState("all");
 
   // Sorting state
-  const [employeeSort, setEmployeeSort] = useState<SortConfig>({ column: "name", direction: "asc" });
   const [vendorSort, setVendorSort] = useState<SortConfig>({ column: "name", direction: "asc" });
   const [repairSort, setRepairSort] = useState<SortConfig>({ column: "created_at", direction: "desc" });
   const [warrantySort, setWarrantySort] = useState<SortConfig>({ column: "warranty_expiry", direction: "asc" });
-  const [employeeRoleFilter, setEmployeeRoleFilter] = useState("all");
-  const [employeeStatusFilter, setEmployeeStatusFilter] = useState("all");
-  const [employeeAssetFilter, setEmployeeAssetFilter] = useState<"all" | "with_assets" | "no_assets">("all");
 
   // Pagination state
-  const [employeePage, setEmployeePage] = useState(1);
   const [vendorPage, setVendorPage] = useState(1);
   const [maintenancePage, setMaintenancePage] = useState(1);
   const [warrantyPage, setWarrantyPage] = useState(1);
-  
-  // Employee assets dialog
-  const [selectedEmployee, setSelectedEmployee] = useState<AppUser | null>(null);
-  const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   
   // Setup config for sites, locations, etc.
   const { sites, locations, categories, departments, makes } = useAssetSetupConfig();
@@ -586,54 +573,9 @@ export default function AdvancedPage() {
   });
 
   // Reset pagination on search change
-  useEffect(() => { setEmployeePage(1); }, [employeeSearch, employeeAssetFilter, employeeStatusFilter, employeeRoleFilter]);
   useEffect(() => { setVendorPage(1); }, [vendorSearch]);
   useEffect(() => { setMaintenancePage(1); }, [maintenanceSearch, maintenanceStatusFilter]);
   useEffect(() => { setWarrantyPage(1); }, [warrantySearch, warrantyStatusFilter]);
-
-  // Fetch ALL users (active + inactive) for the employees tab
-  const { data: employees = [], isLoading: loadingEmployees } = useQuery({
-    queryKey: ["app-users-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("id, auth_user_id, name, email, role, status")
-        .order("name");
-      if (error) { console.error("Failed to fetch users:", error); return []; }
-      return (data || []) as AppUser[];
-    },
-    enabled: activeTab === "employees",
-    staleTime: 2 * 60 * 1000,
-  });
-
-  // Fetch asset counts for employees
-  const { data: assetCounts = {} } = useQuery({
-    queryKey: ["employee-asset-counts"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("itam_assets")
-        .select("assigned_to")
-        .eq("is_active", true)
-        .not("assigned_to", "is", null);
-      
-      const counts: Record<string, number> = {};
-      data?.forEach((a) => {
-        if (a.assigned_to) {
-          counts[a.assigned_to] = (counts[a.assigned_to] || 0) + 1;
-        }
-      });
-      return counts;
-    },
-    enabled: activeTab === "employees",
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const getEmployeeAssetCount = (emp: AppUser) => {
-    return (assetCounts[emp.id] || 0) + 
-      (emp.auth_user_id && emp.auth_user_id !== emp.id 
-        ? (assetCounts[emp.auth_user_id] || 0) 
-        : 0);
-  };
 
   // Fetch vendors
   const { data: vendors = [], isLoading: loadingVendors } = useQuery({
@@ -657,7 +599,7 @@ export default function AdvancedPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("itam_repairs")
-        .select("*, asset:itam_assets(id, name, asset_tag, asset_id)")
+        .select("*, asset:itam_assets(id, name, asset_tag, asset_id), vendor:itam_vendors(id, name)")
         .order("created_at", { ascending: false });
       return data || [];
     },
@@ -711,38 +653,6 @@ export default function AdvancedPage() {
     enabled: activeTab === "vendors" || (activeTab === "setup" && setupSubTab === "vendors"),
     staleTime: 5 * 60 * 1000,
   });
-
-  // Filter & sort employees
-  const filteredEmployees = employees
-    .filter((emp) => {
-      if (employeeStatusFilter !== "all" && emp.status !== employeeStatusFilter) return false;
-      if (employeeRoleFilter !== "all" && (emp.role || "user") !== employeeRoleFilter) return false;
-      if (employeeAssetFilter === "with_assets" && getEmployeeAssetCount(emp) === 0) return false;
-      if (employeeAssetFilter === "no_assets" && getEmployeeAssetCount(emp) > 0) return false;
-      if (employeeSearch) {
-        return emp.name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-          emp.email?.toLowerCase().includes(employeeSearch.toLowerCase());
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const { column, direction } = employeeSort;
-      if (!direction) return 0;
-      const mult = direction === "asc" ? 1 : -1;
-      if (column === "assets") {
-        return (getEmployeeAssetCount(a) - getEmployeeAssetCount(b)) * mult;
-      }
-      const valA = (column === "name" ? a.name : column === "email" ? a.email : column === "role" ? (a.role || "user") : a.status) || "";
-      const valB = (column === "name" ? b.name : column === "email" ? b.email : column === "role" ? (b.role || "user") : b.status) || "";
-      return valA.localeCompare(valB) * mult;
-    });
-
-  const handleEmployeeSort = (column: string) => {
-    setEmployeeSort(prev => ({
-      column,
-      direction: prev.column === column ? (prev.direction === "asc" ? "desc" : prev.direction === "desc" ? null : "asc") : "asc",
-    }));
-  };
 
   // Filter & sort vendors
   const filteredVendors = vendors
@@ -843,9 +753,6 @@ export default function AdvancedPage() {
   };
 
   // Paginated slices
-  const employeeTotalPages = Math.ceil(filteredEmployees.length / ITEMS_PER_PAGE);
-  const paginatedEmployees = filteredEmployees.slice((employeePage - 1) * ITEMS_PER_PAGE, employeePage * ITEMS_PER_PAGE);
-
   const vendorTotalPages = Math.ceil(filteredVendors.length / ITEMS_PER_PAGE);
   const paginatedVendors = filteredVendors.slice((vendorPage - 1) * ITEMS_PER_PAGE, vendorPage * ITEMS_PER_PAGE);
 
@@ -976,11 +883,6 @@ export default function AdvancedPage() {
   const warrantyExpiring = assetsWithWarranty.filter(a => getWarrantyStatus(a.warranty_expiry).status === "expiring").length;
   const warrantyExpired = assetsWithWarranty.filter(a => getWarrantyStatus(a.warranty_expiry).status === "expired").length;
   const warrantyActive = assetsWithWarranty.filter(a => getWarrantyStatus(a.warranty_expiry).status === "active").length;
-
-  const handleViewEmployeeAssets = (employee: AppUser) => {
-    setSelectedEmployee(employee);
-    setEmployeeDialogOpen(true);
-  };
 
   const getSetupItems = () => {
     switch (setupSubTab) {
@@ -1405,7 +1307,7 @@ export default function AdvancedPage() {
 
     if (setupSubTab === "sites") return renderSitesLocationsTable();
     if (setupSubTab === "categories") return renderCategoriesTable();
-    if (setupSubTab === "emails") return <EmailsTab />;
+    // emails moved to top-level tab
     if (setupSubTab === "vendors") return renderVendorsSetupContent();
 
     return (
@@ -1433,13 +1335,12 @@ export default function AdvancedPage() {
         <div className="sticky top-0 z-30 bg-background border-b px-4 py-2">
           <div className="relative">
             <TabsList className="h-9 bg-muted rounded-lg p-1 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden scrollbar-none">
-              <TabsTrigger value="employees" className="text-xs flex-shrink-0">Employees</TabsTrigger>
               <TabsTrigger value="licenses" className="text-xs flex-shrink-0">Licenses</TabsTrigger>
               <TabsTrigger value="repairs" className="text-xs flex-shrink-0">Repairs</TabsTrigger>
               <TabsTrigger value="warranties" className="text-xs flex-shrink-0">Warranties</TabsTrigger>
               <TabsTrigger value="depreciation" className="text-xs flex-shrink-0">Depreciation</TabsTrigger>
               <TabsTrigger value="documents" className="text-xs flex-shrink-0">Documents</TabsTrigger>
-              <TabsTrigger value="import-export" className="text-xs flex-shrink-0">Import/Export</TabsTrigger>
+              <TabsTrigger value="emails" className="text-xs flex-shrink-0">Emails</TabsTrigger>
               <TabsTrigger value="reports" className="text-xs flex-shrink-0">Reports</TabsTrigger>
               <TabsTrigger value="logs" className="text-xs flex-shrink-0">Logs</TabsTrigger>
               <TabsTrigger value="setup" className="text-xs flex-shrink-0">Setup</TabsTrigger>
@@ -1481,200 +1382,6 @@ export default function AdvancedPage() {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-auto p-4">
-          {/* Employees Tab */}
-          <TabsContent value="employees" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
-            {/* Stat Cards — with loading skeletons */}
-            {loadingEmployees ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-[68px] rounded-lg" />)}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                <StatCard icon={Users} value={employees.length} label="Total Employees" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" onClick={() => { setEmployeeStatusFilter("all"); setEmployeeRoleFilter("all"); setEmployeeAssetFilter("all"); }} active={employeeStatusFilter === "all" && employeeRoleFilter === "all" && employeeAssetFilter === "all"} />
-                <StatCard icon={CheckCircle} value={employees.filter(e => e.status === "active").length} label="Active" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" onClick={() => { setEmployeeStatusFilter("active"); setEmployeeRoleFilter("all"); setEmployeeAssetFilter("all"); }} active={employeeStatusFilter === "active" && employeeRoleFilter === "all" && employeeAssetFilter === "all"} />
-                <StatCard icon={UserX} value={employees.filter(e => e.status !== "active").length} label="Inactive" colorClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" onClick={() => { setEmployeeStatusFilter("inactive"); setEmployeeRoleFilter("all"); setEmployeeAssetFilter("all"); }} active={employeeStatusFilter === "inactive" && employeeRoleFilter === "all" && employeeAssetFilter === "all"} />
-                <StatCard icon={Package} value={Object.values(assetCounts).reduce((sum, c) => sum + c, 0)} label="Assets Assigned" colorClass="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" onClick={() => { setEmployeeStatusFilter("all"); setEmployeeRoleFilter("all"); setEmployeeAssetFilter("with_assets"); }} active={employeeAssetFilter === "with_assets" && employeeStatusFilter === "all" && employeeRoleFilter === "all"} />
-                <StatCard icon={PackageX} value={employees.filter(e => getEmployeeAssetCount(e) === 0).length} label="No Assets" colorClass="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" onClick={() => { setEmployeeStatusFilter("all"); setEmployeeRoleFilter("all"); setEmployeeAssetFilter("no_assets"); }} active={employeeAssetFilter === "no_assets" && employeeStatusFilter === "all" && employeeRoleFilter === "all"} />
-              </div>
-            )}
-
-            <Card>
-              <CardContent className="pt-4 space-y-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="relative max-w-sm flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search employees..." value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} className="pl-9 pr-8 h-8" />
-                    {employeeSearch && (
-                      <button onClick={() => setEmployeeSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                   <Badge variant="secondary" className="text-xs tabular-nums">{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? "s" : ""}</Badge>
-                  <Select value={employeeRoleFilter} onValueChange={setEmployeeRoleFilter}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue placeholder="All Roles" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Roles</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={employeeStatusFilter} onValueChange={setEmployeeStatusFilter}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="ml-auto flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => exportCSV(filteredEmployees.map(e => ({
-                      Name: e.name || "",
-                      Email: e.email || "",
-                      Role: e.role || "user",
-                      Status: e.status || "",
-                      "Assets Assigned": getEmployeeAssetCount(e),
-                    })), "employees")}>
-                      <FileDown className="h-4 w-4 mr-1" />
-                      Export
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-8" onClick={() => window.open("/admin/users", "_blank")}>
-                      <Users className="h-4 w-4 mr-1.5" />
-                      Manage Users
-                    </Button>
-                    {(employeeRoleFilter !== "all" || employeeStatusFilter !== "all" || employeeAssetFilter !== "all" || employeeSearch) && (
-                      <Button size="sm" variant="ghost" className="h-8 text-muted-foreground" onClick={() => { setEmployeeRoleFilter("all"); setEmployeeStatusFilter("all"); setEmployeeAssetFilter("all"); setEmployeeSearch(""); }}>
-                        <X className="h-3.5 w-3.5 mr-1" />
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <Table>
-                    <TableHeader className="bg-muted/50">
-                      <TableRow>
-                        <SortableTableHeader column="name" label="Name" sortConfig={employeeSort} onSort={handleEmployeeSort} />
-                        <SortableTableHeader column="email" label="Email" sortConfig={employeeSort} onSort={handleEmployeeSort} />
-                        <SortableTableHeader column="role" label="Role" sortConfig={employeeSort} onSort={handleEmployeeSort} />
-                        <SortableTableHeader column="status" label="Status" sortConfig={employeeSort} onSort={handleEmployeeSort} />
-                        <SortableTableHeader column="assets" label="Assets" sortConfig={employeeSort} onSort={handleEmployeeSort} />
-                        <TableHead className="font-medium text-xs uppercase text-muted-foreground w-[80px]">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loadingEmployees ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-12">
-                            <div className="flex flex-col items-center justify-center">
-                              <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
-                              <p className="text-sm text-muted-foreground">Loading employees...</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : paginatedEmployees.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-12">
-                            <div className="flex flex-col items-center justify-center">
-                       <Users className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
-                              <p className="text-sm text-muted-foreground">No employees found</p>
-                              {(employeeRoleFilter !== "all" || employeeStatusFilter !== "all" || employeeAssetFilter !== "all" || employeeSearch) && (
-                                <Button size="sm" variant="ghost" className="mt-2 text-xs" onClick={() => { setEmployeeRoleFilter("all"); setEmployeeStatusFilter("all"); setEmployeeAssetFilter("all"); setEmployeeSearch(""); }}>
-                                  Clear filters
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        paginatedEmployees.map((employee) => {
-                          const assetCount = getEmployeeAssetCount(employee);
-                          const initials = employee.name
-                            ? employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-                            : employee.email[0].toUpperCase();
-                          return (
-                            <TableRow
-                              key={employee.id}
-                              className="h-11 hover:bg-muted/50 cursor-pointer transition-colors group"
-                              tabIndex={0}
-                              onClick={() => handleViewEmployeeAssets(employee)}
-                              onKeyDown={(e) => { if (e.key === "Enter") handleViewEmployeeAssets(employee); }}
-                              title="Click to view assigned assets"
-                            >
-                              <TableCell className="font-medium py-2">
-                                <div className="flex items-center gap-2.5">
-                                  <Avatar className="h-7 w-7">
-                                    <AvatarFallback className={`text-xs font-medium ${getAvatarColor(employee.name || employee.email)}`}>{initials}</AvatarFallback>
-                                  </Avatar>
-                                  <span className="truncate max-w-[180px]">{employee.name || "—"}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate py-2" title={employee.email}>{employee.email || "—"}</TableCell>
-                              <TableCell className="text-sm capitalize py-2">{employee.role || "user"}</TableCell>
-                              <TableCell className="py-2">
-                                <StatusDot
-                                  status={employee.status === "active" ? "active" : employee.status === "suspended" ? "pending" : "inactive"}
-                                  label={employee.status ? employee.status.charAt(0).toUpperCase() + employee.status.slice(1) : "Unknown"}
-                                />
-                              </TableCell>
-                              <TableCell className="py-2">
-                                <div className="flex items-center gap-1.5">
-                                  <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                                  <span className="text-sm font-medium tabular-nums">{assetCount}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-2">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-48">
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewEmployeeAssets(employee); }}>
-                                      <Eye className="h-4 w-4 mr-2" />
-                                      View Assets
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/assets/checkout?user=${employee.id}`); }}>
-                                      <Package className="h-4 w-4 mr-2" />
-                                      Assign Asset
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/admin/users?edit=${employee.id}`); }}>
-                                      <Users className="h-4 w-4 mr-2" />
-                                      View Profile
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); window.open(`mailto:${employee.email}`, '_blank'); }}>
-                                      <Send className="h-4 w-4 mr-2" />
-                                      Email User
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                
-                <PaginationControls
-                  currentPage={employeePage}
-                  totalPages={employeeTotalPages}
-                  totalItems={filteredEmployees.length}
-                  itemsPerPage={ITEMS_PER_PAGE}
-                  onPageChange={setEmployeePage}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* Logs Tab */}
           <TabsContent value="logs" className="mt-0 animate-in fade-in-0 duration-200">
             <AssetLogsPage />
@@ -1685,11 +1392,11 @@ export default function AdvancedPage() {
             <LicensesContent />
           </TabsContent>
 
-          {/* Repairs Tab — with sortable headers (Phase 3: F4) */}
+          {/* Repairs Tab */}
           <TabsContent value="repairs" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <StatCard icon={Wrench} value={maintenancePending} label="Pending" colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" />
-              <StatCard icon={Wrench} value={maintenanceInProgress} label="In Progress" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
+              <StatCard icon={Settings} value={maintenanceInProgress} label="In Progress" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
               <StatCard icon={CheckCircle} value={maintenanceCompleted} label="Completed" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
             </div>
 
@@ -1723,6 +1430,9 @@ export default function AdvancedPage() {
                       Asset: m.asset?.name || "",
                       "Asset Tag": m.asset?.asset_tag || "",
                       Issue: m.issue_description || "",
+                      Vendor: (m as any).vendor?.name || "",
+                      Cost: m.cost || "",
+                      Diagnosis: m.diagnosis || "",
                       Status: m.status || "",
                       Created: m.created_at ? format(new Date(m.created_at), "yyyy-MM-dd") : "",
                       "Days Open": m.status !== "completed" && m.status !== "cancelled" && m.created_at
@@ -1739,52 +1449,56 @@ export default function AdvancedPage() {
                   </div>
                 </div>
 
-                  <Table>
-                    <TableHeader className="bg-muted/50">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <SortableTableHeader column="repair_number" label="Repair #" sortConfig={repairSort} onSort={handleRepairSort} />
+                      <SortableTableHeader column="asset" label="Asset" sortConfig={repairSort} onSort={handleRepairSort} />
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground">Issue</TableHead>
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground">Vendor</TableHead>
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground">Cost</TableHead>
+                      <SortableTableHeader column="status" label="Status" sortConfig={repairSort} onSort={handleRepairSort} />
+                      <SortableTableHeader column="created_at" label="Created" sortConfig={repairSort} onSort={handleRepairSort} />
+                      <SortableTableHeader column="days_open" label="Days Open" sortConfig={repairSort} onSort={handleRepairSort} />
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground w-[60px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loadingMaintenances ? (
                       <TableRow>
-                        <SortableTableHeader column="repair_number" label="Repair #" sortConfig={repairSort} onSort={handleRepairSort} />
-                        <SortableTableHeader column="asset" label="Asset" sortConfig={repairSort} onSort={handleRepairSort} />
-                        <TableHead className="font-medium text-xs uppercase text-muted-foreground">Issue</TableHead>
-                        <SortableTableHeader column="status" label="Status" sortConfig={repairSort} onSort={handleRepairSort} />
-                        <SortableTableHeader column="created_at" label="Created" sortConfig={repairSort} onSort={handleRepairSort} />
-                        <SortableTableHeader column="days_open" label="Days Open" sortConfig={repairSort} onSort={handleRepairSort} />
-                        <TableHead className="font-medium text-xs uppercase text-muted-foreground w-[80px]">Action</TableHead>
+                        <TableCell colSpan={9} className="text-center py-12">
+                          <div className="flex flex-col items-center justify-center">
+                            <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
+                            <p className="text-sm text-muted-foreground">Loading repair records...</p>
+                          </div>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loadingMaintenances ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-12">
-                            <div className="flex flex-col items-center justify-center">
-                              <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
-                              <p className="text-sm text-muted-foreground">Loading records...</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : paginatedMaintenances.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-12">
-                            <div className="flex flex-col items-center justify-center">
-                              <Wrench className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
-                              <p className="text-sm text-muted-foreground">No repair records found</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        paginatedMaintenances.map((maintenance) => {
-                          const daysOpen = maintenance.status !== "completed" && maintenance.status !== "cancelled" && maintenance.created_at
-                            ? differenceInDays(new Date(), new Date(maintenance.created_at))
-                            : null;
-                          return (
+                    ) : paginatedMaintenances.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-12">
+                          <div className="flex flex-col items-center justify-center">
+                            <Wrench className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
+                            <p className="text-sm text-muted-foreground">No repair records found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paginatedMaintenances.map((maintenance) => {
+                        const daysOpen = maintenance.status !== "completed" && maintenance.status !== "cancelled" && maintenance.created_at
+                          ? differenceInDays(new Date(), new Date(maintenance.created_at))
+                          : null;
+                        return (
                           <TableRow key={maintenance.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate(`/assets/repairs/detail/${maintenance.id}`)}>
-                            <TableCell className="font-medium">{maintenance.repair_number}</TableCell>
+                            <TableCell className="font-medium text-sm">{maintenance.repair_number || `R-${maintenance.id}`}</TableCell>
                             <TableCell>
                               <div>
-                                <p className="text-sm">{maintenance.asset?.name || '-'}</p>
-                                <p className="text-xs text-muted-foreground">{maintenance.asset?.asset_id || maintenance.asset?.asset_tag}</p>
+                                <p className="text-sm font-medium">{maintenance.asset?.name || '—'}</p>
+                                <p className="text-xs text-muted-foreground">{maintenance.asset?.asset_tag || ''}</p>
                               </div>
                             </TableCell>
-                            <TableCell className="max-w-xs truncate">{maintenance.issue_description || '-'}</TableCell>
+                            <TableCell className="max-w-[200px] truncate text-sm">{maintenance.issue_description || '-'}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{(maintenance as any).vendor?.name || '—'}</TableCell>
+                            <TableCell className="text-sm">{maintenance.cost ? `₹${Number(maintenance.cost).toLocaleString()}` : '—'}</TableCell>
                             <TableCell>{getMaintenanceStatusDot(maintenance.status)}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {maintenance.created_at ? format(new Date(maintenance.created_at), 'MMM d, yyyy') : '-'}
@@ -1797,22 +1511,31 @@ export default function AdvancedPage() {
                               ) : "—"}
                             </TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="sm" className="h-7" onClick={(e) => { e.stopPropagation(); navigate(`/assets/repairs/detail/${maintenance.id}`); }}>
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/assets/repairs/detail/${maintenance.id}`); }}>
+                                    <Eye className="h-4 w-4 mr-2" /> View Details
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </TableCell>
                           </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
                 <PaginationControls currentPage={maintenancePage} totalPages={maintenanceTotalPages} totalItems={filteredMaintenances.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setMaintenancePage} />
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Warranties Tab — with sortable headers and dark mode row highlighting (Phase 1: B3, Phase 3: F4) */}
+          {/* Warranties Tab */}
           <TabsContent value="warranties" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <StatCard icon={CheckCircle} value={warrantyActive} label="Active" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
@@ -1825,7 +1548,12 @@ export default function AdvancedPage() {
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="relative flex-1 max-w-sm min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search warranties..." value={warrantySearch} onChange={(e) => setWarrantySearch(e.target.value)} className="pl-9 h-8" />
+                    <Input placeholder="Search warranties..." value={warrantySearch} onChange={(e) => setWarrantySearch(e.target.value)} className="pl-9 pr-8 h-8" />
+                    {warrantySearch && (
+                      <button onClick={() => setWarrantySearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                   <Select value={warrantyStatusFilter} onValueChange={setWarrantyStatusFilter}>
                     <SelectTrigger className="w-[140px] h-8">
@@ -1851,77 +1579,76 @@ export default function AdvancedPage() {
                   </div>
                 </div>
 
-                  <Table>
-                    <TableHeader className="bg-muted/50">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <SortableTableHeader column="name" label="Asset" sortConfig={warrantySort} onSort={handleWarrantySort} />
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground">Make / Model</TableHead>
+                      <SortableTableHeader column="category" label="Category" sortConfig={warrantySort} onSort={handleWarrantySort} />
+                      <SortableTableHeader column="warranty_expiry" label="Expiry Date" sortConfig={warrantySort} onSort={handleWarrantySort} />
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground">Status</TableHead>
+                      <SortableTableHeader column="days" label="Days" sortConfig={warrantySort} onSort={handleWarrantySort} />
+                      <TableHead className="font-medium text-xs uppercase text-muted-foreground w-[80px]">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loadingWarranties ? (
                       <TableRow>
-                        <SortableTableHeader column="name" label="Asset" sortConfig={warrantySort} onSort={handleWarrantySort} />
-                        <TableHead className="font-medium text-xs uppercase text-muted-foreground">Make / Model</TableHead>
-                        <SortableTableHeader column="category" label="Category" sortConfig={warrantySort} onSort={handleWarrantySort} />
-                        <SortableTableHeader column="warranty_expiry" label="Expiry Date" sortConfig={warrantySort} onSort={handleWarrantySort} />
-                        <TableHead className="font-medium text-xs uppercase text-muted-foreground">Status</TableHead>
-                        <SortableTableHeader column="days" label="Days" sortConfig={warrantySort} onSort={handleWarrantySort} />
-                        <TableHead className="font-medium text-xs uppercase text-muted-foreground w-[80px]">Action</TableHead>
+                        <TableCell colSpan={7} className="text-center py-12">
+                          <div className="flex flex-col items-center justify-center">
+                            <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
+                            <p className="text-sm text-muted-foreground">Loading warranty records...</p>
+                          </div>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loadingWarranties ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-12">
-                            <div className="flex flex-col items-center justify-center">
-                              <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
-                              <p className="text-sm text-muted-foreground">Loading warranty records...</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : paginatedWarranties.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-12">
-                            <div className="flex flex-col items-center justify-center">
-                              <Shield className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
-                              <p className="text-sm text-muted-foreground">No warranty records found</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        paginatedWarranties.map((asset) => {
-                          const warrantyInfo = getWarrantyStatus(asset.warranty_expiry);
-                          // Dark mode compatible row highlighting (Phase 1: B3)
-                          const rowClass = warrantyInfo.status === "expired"
-                            ? "bg-destructive/5 hover:bg-destructive/10 dark:bg-destructive/10 dark:hover:bg-destructive/15"
-                            : warrantyInfo.status === "expiring"
-                            ? "bg-amber-100/30 hover:bg-amber-100/50 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
-                            : "";
-                          return (
-                            <TableRow key={asset.id} className={`${rowClass} cursor-pointer transition-colors`} onClick={() => navigate(`/assets/detail/${asset.id}`)}>
-                              <TableCell className="font-medium">
-                                <div>
-                                  <p className="text-sm">{asset.name}</p>
-                                  <p className="text-xs text-muted-foreground">{asset.asset_tag}</p>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
-                                {(asset as any).make?.name || "—"}
-                                {asset.model ? ` • ${asset.model}` : ""}
-                              </TableCell>
-                              <TableCell>{(asset as any).category?.name || '—'}</TableCell>
-                              <TableCell>{format(new Date(asset.warranty_expiry), 'MMM dd, yyyy')}</TableCell>
-                              <TableCell>
-                                <StatusDot status={warrantyInfo.status as any} label={warrantyInfo.label} />
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                {warrantyInfo.status === "expired" ? `${warrantyInfo.days} days ago` : `${warrantyInfo.days} days left`}
-                              </TableCell>
-                              <TableCell>
-                                <Button variant="ghost" size="sm" className="h-7" onClick={() => navigate(`/assets/detail/${asset.id}`)}>
-                                  <ExternalLink className="h-3.5 w-3.5" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
+                    ) : paginatedWarranties.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12">
+                          <div className="flex flex-col items-center justify-center">
+                            <Shield className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
+                            <p className="text-sm text-muted-foreground">No warranty records found</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paginatedWarranties.map((asset) => {
+                        const warrantyInfo = getWarrantyStatus(asset.warranty_expiry);
+                        const rowClass = warrantyInfo.status === "expired"
+                          ? "bg-destructive/5 hover:bg-destructive/10 dark:bg-destructive/10 dark:hover:bg-destructive/15"
+                          : warrantyInfo.status === "expiring"
+                          ? "bg-amber-100/30 hover:bg-amber-100/50 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
+                          : "";
+                        return (
+                          <TableRow key={asset.id} className={`${rowClass} cursor-pointer transition-colors`} onClick={() => navigate(`/assets/detail/${asset.id}`)}>
+                            <TableCell className="font-medium">
+                              <div>
+                                <p className="text-sm">{asset.name}</p>
+                                <p className="text-xs text-muted-foreground">{asset.asset_tag}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {(asset as any).make?.name || "—"}
+                              {asset.model ? ` • ${asset.model}` : ""}
+                            </TableCell>
+                            <TableCell>{(asset as any).category?.name || '—'}</TableCell>
+                            <TableCell>{format(new Date(asset.warranty_expiry), 'MMM dd, yyyy')}</TableCell>
+                            <TableCell>
+                              <StatusDot status={warrantyInfo.status as any} label={warrantyInfo.label} />
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {warrantyInfo.status === "expired" ? `${warrantyInfo.days} days ago` : `${warrantyInfo.days} days left`}
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="sm" className="h-7" onClick={() => navigate(`/assets/detail/${asset.id}`)}>
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
                 <PaginationControls currentPage={warrantyPage} totalPages={warrantyTotalPages} totalItems={filteredWarranties.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setWarrantyPage} />
               </CardContent>
             </Card>
@@ -1932,21 +1659,21 @@ export default function AdvancedPage() {
             <DepreciationContent />
           </TabsContent>
 
-          {/* Documents Tab — inline content (Phase 2: B2) */}
+          {/* Documents Tab */}
           <TabsContent value="documents" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
             <DocumentsStats />
             <InlinePhotoGallery />
             <InlineDocumentsList />
           </TabsContent>
 
-          {/* Import/Export Tab */}
-          <TabsContent value="import-export" className="mt-0 animate-in fade-in-0 duration-200">
-            <ImportExportContent />
-          </TabsContent>
-
           {/* Reports Tab */}
           <TabsContent value="reports" className="mt-0 animate-in fade-in-0 duration-200">
             <AssetReports />
+          </TabsContent>
+
+          {/* Emails Tab */}
+          <TabsContent value="emails" className="mt-0 animate-in fade-in-0 duration-200">
+            <EmailsTab />
           </TabsContent>
 
           {/* Setup Tab */}
@@ -2013,8 +1740,7 @@ export default function AdvancedPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Employee Assets Dialog */}
-      <EmployeeAssetsDialog employee={selectedEmployee} open={employeeDialogOpen} onOpenChange={setEmployeeDialogOpen} />
+      {/* Delete Confirmation Dialog */}
     </div>
   );
 }

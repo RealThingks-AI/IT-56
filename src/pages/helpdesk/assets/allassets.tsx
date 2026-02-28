@@ -4,13 +4,12 @@ import { createPortal } from "react-dom";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Search, Plus, ChevronDown, Settings, FileSpreadsheet, CheckSquare, UserCheck, Wrench, Package, Trash2 } from "lucide-react";
+import { X, Search, Plus, Settings, FileSpreadsheet, CheckSquare, UserCheck, Wrench, Package, Trash2 } from "lucide-react";
 import { AssetsList } from "@/components/helpdesk/assets/AssetsList";
-import { AssetColumnSettings, SYSTEM_COLUMN_ORDER } from "@/components/helpdesk/assets/AssetColumnSettings";
+import { AssetColumnSettings } from "@/components/helpdesk/assets/AssetColumnSettings";
 import { useAssetSetupConfig } from "@/hooks/useAssetSetupConfig";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ASSET_STATUS_OPTIONS } from "@/lib/assetStatusUtils";
-import { useUISettings } from "@/hooks/useUISettings";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -19,42 +18,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-// XLSX export utility - dynamically loaded
-const exportToXLSX = async (data: any[], filename: string, columns: { id: string; label: string }[]) => {
-  if (!data || data.length === 0) { toast.error("No data to export"); return; }
-  const resolveValue = (item: any, colId: string): string => {
-    switch (colId) {
-      case "asset_tag": return item.asset_tag || "";
-      case "category": return item.category?.name || "";
-      case "status": return item.status || "";
-      case "make": return item.make?.name || "";
-      case "model": return item.model || "";
-      case "serial_number": return item.serial_number || "";
-      case "assigned_to": return item.assigned_user?.name || item.assigned_user?.email || item.assigned_to || "";
-      case "location": return item.location?.name || "";
-      case "site": return item.location?.site?.name || "";
-      case "department": return item.department?.name || "";
-      case "cost": return item.purchase_price?.toString() || "";
-      case "purchase_date": return item.purchase_date || "";
-      case "purchased_from": return item.vendor?.name || "";
-      case "description": return item.description || "";
-      case "created_at": return item.created_at || "";
-      case "created_by": return item.created_user?.name || item.created_user?.email || item.created_by || "";
-      default: return "";
-    }
-  };
-  const rows = data.map(item => {
-    const row: Record<string, string> = {};
-    columns.forEach(col => { row[col.label] = resolveValue(item, col.id); });
-    return row;
-  });
-  const XLSX = await import("xlsx");
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Assets");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
-  toast.success(`Exported ${data.length} records to ${filename}.xlsx`);
-};
 
 export default function AllAssets() {
   const navigate = useNavigate();
@@ -68,12 +31,10 @@ export default function AllAssets() {
   });
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [bulkActions, setBulkActions] = useState<any>(null);
-  const [assetsData, setAssetsData] = useState<any[]>([]);
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchParams.get("search") || "");
   const { categories } = useAssetSetupConfig();
-  const { assetColumns: savedColumns } = useUISettings();
   // Confirmation dialog states
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean; title: string; description: string; action: () => void; variant: "default" | "destructive";
@@ -144,22 +105,6 @@ export default function AllAssets() {
     setFilters({ search: "", status: null, type: null, typeName: null, warranty: null, recent: null });
     setSearchParams({}, { replace: true });
     setLocalSearch("");
-  };
-
-  const getVisibleColumnsForExport = () => {
-    const columns = savedColumns && savedColumns.length > 0
-      ? SYSTEM_COLUMN_ORDER.map(systemCol => {
-          const savedCol = savedColumns.find(c => c.id === systemCol.id);
-          return savedCol ? { ...systemCol, visible: savedCol.visible } : systemCol;
-        })
-      : [...SYSTEM_COLUMN_ORDER];
-    return columns.filter(c => c.visible).sort((a, b) => a.order_index - b.order_index);
-  };
-
-  const handleExportToExcel = () => {
-    const visibleColumns = getVisibleColumnsForExport();
-    if (assetsData.length > 0) { exportToXLSX(assetsData, "assets-export", visibleColumns); }
-    else { toast.info("No data available to export. Load assets first."); }
   };
 
   const hasActiveFilters = filters.search || filters.status || filters.type || filters.warranty || filters.recent;
@@ -233,7 +178,7 @@ export default function AllAssets() {
               <Settings className="mr-2 h-3.5 w-3.5" />
               Customize Columns
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleExportToExcel}>
+            <DropdownMenuItem onClick={() => navigate("/assets/import-export")}>
               <FileSpreadsheet className="mr-2 h-3.5 w-3.5" />
               Export to Excel
             </DropdownMenuItem>
@@ -310,7 +255,7 @@ export default function AllAssets() {
             setSelectedAssetIds(selectedIds);
             setBulkActions(actions);
           }}
-          onDataLoad={(data) => setAssetsData(data)}
+          
         />
       </div>
 

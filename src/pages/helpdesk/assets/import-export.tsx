@@ -1,67 +1,64 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AssetModuleTopBar } from "@/components/helpdesk/assets/AssetModuleTopBar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  ArrowLeft, 
-  Download, 
-  Upload, 
-  FileSpreadsheet, 
-  CheckCircle2, 
-  XCircle, 
-  AlertTriangle,
-  FileDown,
-  Headphones
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  ArrowLeft, Download, Upload, FileSpreadsheet,
+  CheckSquare, Square, FileDown, Search,
 } from "lucide-react";
-import { useAssetExportImport, EXPORT_FIELD_GROUPS, getDefaultSelectedFields } from "@/hooks/useAssetExportImport";
+import {
+  useAssetExportImport, EXPORT_FIELD_GROUPS, IMPORT_FIELD_GROUPS,
+  getDefaultSelectedFields, getAllFieldKeys, parseFileToRows, validateRowsForPreview,
+} from "@/hooks/useAssetExportImport";
+import type { ExportFormat, ValidatedRow } from "@/hooks/useAssetExportImport";
+import { FileDropzone } from "@/components/helpdesk/assets/FileDropzone";
+import { ImportPreviewTable } from "@/components/helpdesk/assets/ImportPreviewTable";
+import { ImportResultSection } from "@/components/helpdesk/assets/ImportResultSection";
 
 export default function ImportExportPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const {
-    exportAssets,
-    importAssets,
-    importPeripherals,
-    downloadTemplate,
-    isExporting,
-    isImporting,
-    importProgress,
-    importErrors,
+    exportAssets, importAssets, downloadTemplate, resetImportState,
+    isExporting, isImporting, importProgress, importPhase, importErrors,
   } = useAssetExportImport();
 
-  const [activeTab, setActiveTab] = useState<"export" | "import" | "peripherals">("export");
+  const [activeTab, setActiveTab] = useState<"export" | "import">("export");
   const [selectedFields, setSelectedFields] = useState<string[]>(getDefaultSelectedFields());
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("xlsx");
+
+  // Import state
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<{ success: number; errors: any[] } | null>(null);
-  const [peripheralFile, setPeripheralFile] = useState<File | null>(null);
-  const [peripheralResult, setPeripheralResult] = useState<{ success: number; errors: any[] } | null>(null);
+  const [validatedRows, setValidatedRows] = useState<ValidatedRow[] | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+
+  // Column reference search
+  const [columnSearch, setColumnSearch] = useState("");
+
+  const allFieldKeys = useMemo(() => getAllFieldKeys(), []);
+  const allSelected = selectedFields.length === allFieldKeys.length;
 
   const handleFieldToggle = (fieldKey: string, checked: boolean) => {
-    if (checked) {
-      setSelectedFields((prev) => [...prev, fieldKey]);
-    } else {
-      setSelectedFields((prev) => prev.filter((f) => f !== fieldKey));
-    }
+    setSelectedFields((prev) => checked ? [...prev, fieldKey] : prev.filter((f) => f !== fieldKey));
   };
 
   const handleSelectAll = (groupKey: string, checked: boolean) => {
     const group = EXPORT_FIELD_GROUPS[groupKey as keyof typeof EXPORT_FIELD_GROUPS];
     const fieldKeys = group.fields.map((f) => f.key);
-    
-    if (checked) {
-      setSelectedFields((prev) => [...new Set([...prev, ...fieldKeys])]);
-    } else {
-      setSelectedFields((prev) => prev.filter((f) => !fieldKeys.includes(f)));
-    }
+    setSelectedFields((prev) =>
+      checked ? [...new Set([...prev, ...fieldKeys])] : prev.filter((f) => !fieldKeys.includes(f))
+    );
   };
+
+  const handleMasterToggle = () => setSelectedFields(allSelected ? [] : [...allFieldKeys]);
 
   const isGroupFullySelected = (groupKey: string) => {
     const group = EXPORT_FIELD_GROUPS[groupKey as keyof typeof EXPORT_FIELD_GROUPS];
@@ -70,117 +67,119 @@ export default function ImportExportPage({ embedded = false }: { embedded?: bool
 
   const handleExport = async () => {
     if (selectedFields.length === 0) return;
-    await exportAssets(selectedFields);
+    await exportAssets(selectedFields, exportFormat);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImportFile(file);
-      setImportResult(null);
+  const handleFileSelect = async (file: File) => {
+    setImportFile(file);
+    setImportResult(null);
+    resetImportState();
+    setIsParsing(true);
+    try {
+      const rows = await parseFileToRows(file);
+      if (rows.length > 0) {
+        const validated = await validateRowsForPreview(rows);
+        setValidatedRows(validated);
+      } else {
+        setValidatedRows([]);
+      }
+    } catch (err: any) {
+      setValidatedRows(null);
+      const { toast } = await import("sonner");
+      toast.error(err.message || "Failed to parse file");
+    } finally {
+      setIsParsing(false);
     }
+  };
+
+  const handleClearImport = () => {
+    setImportFile(null);
+    setImportResult(null);
+    setValidatedRows(null);
+    resetImportState();
   };
 
   const handleImport = async () => {
     if (!importFile) return;
     const result = await importAssets(importFile);
     setImportResult(result);
+    setValidatedRows(null);
   };
 
-  const handlePeripheralFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setPeripheralFile(file);
-      setPeripheralResult(null);
-    }
-  };
+  const progressPercent = importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0;
 
-  const handlePeripheralImport = async () => {
-    if (!peripheralFile) return;
-    const result = await importPeripherals(peripheralFile);
-    setPeripheralResult(result);
-  };
+  // Filter import field groups for the "Supported Columns" reference
+  const filteredImportGroups = useMemo(() => {
+    if (!columnSearch.trim()) return Object.entries(IMPORT_FIELD_GROUPS);
+    const q = columnSearch.toLowerCase();
+    return Object.entries(IMPORT_FIELD_GROUPS)
+      .map(([key, group]) => {
+        const filtered = group.fields.filter((f) => f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q));
+        return filtered.length > 0 ? [key, { ...group, fields: filtered }] as const : null;
+      })
+      .filter(Boolean) as unknown as [string, typeof IMPORT_FIELD_GROUPS[keyof typeof IMPORT_FIELD_GROUPS]][];
+  }, [columnSearch]);
 
   return (
-    <div className={embedded ? "" : "min-h-screen bg-background"}>
+    <div className={embedded ? "h-full" : "h-full overflow-auto bg-background"}>
       {!embedded && <AssetModuleTopBar />}
+      <div className={embedded ? "space-y-4" : "px-4 py-4 space-y-4 max-w-6xl"}>
 
-      <div className={embedded ? "space-y-4" : "px-4 py-4 space-y-4"}>
-        {/* Header */}
-        {!embedded && (
-          <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div>
-              <h1 className="text-xl font-semibold">Import / Export Assets</h1>
-              <p className="text-sm text-muted-foreground">
-                Bulk import or export your asset data
-              </p>
-            </div>
-          </div>
-        )}
 
-        {/* Tabs */}
+
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
-            <TabsTrigger value="export" className="gap-2">
-              <Download className="h-4 w-4" />
-              Export
+          <TabsList className="grid w-full max-w-xs grid-cols-2">
+            <TabsTrigger value="export" className="gap-1.5 text-xs">
+              <Download className="h-3.5 w-3.5" /> Export
             </TabsTrigger>
-            <TabsTrigger value="import" className="gap-2">
-              <Upload className="h-4 w-4" />
-              Import
-            </TabsTrigger>
-            <TabsTrigger value="peripherals" className="gap-2">
-              <Headphones className="h-4 w-4" />
-              Peripherals
+            <TabsTrigger value="import" className="gap-1.5 text-xs">
+              <Upload className="h-3.5 w-3.5" /> Import
             </TabsTrigger>
           </TabsList>
 
-          {/* Export Tab */}
-          <TabsContent value="export" className="space-y-4 mt-4">
+          {/* ═══════ EXPORT ═══════ */}
+          <TabsContent value="export" className="space-y-4 mt-4 animate-in fade-in-0 duration-200">
             <Card>
-              {!embedded && (
-                <CardHeader>
-                  <CardTitle className="text-base">Select Fields to Export</CardTitle>
-                  <CardDescription>
-                    Choose which fields to include in your export file. Human-readable names will be used.
-                  </CardDescription>
-                </CardHeader>
-              )}
-              <CardContent className={embedded ? "pt-4 space-y-6" : "space-y-6"}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-sm font-medium">Select Fields to Export</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5" onClick={handleMasterToggle}>
+                      {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                      {allSelected ? "Deselect All" : "Select All"}
+                    </Button>
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedFields.length}/{allFieldKeys.length}
+                    </Badge>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-5 pt-0">
                 {Object.entries(EXPORT_FIELD_GROUPS).map(([groupKey, group]) => (
-                  <div key={groupKey} className="space-y-3">
+                  <div key={groupKey} className="space-y-2">
                     <div className="flex items-center gap-2">
                       <Checkbox
                         id={`group-${groupKey}`}
                         checked={isGroupFullySelected(groupKey)}
-                        onCheckedChange={(checked) => handleSelectAll(groupKey, !!checked)}
+                        onCheckedChange={(c) => handleSelectAll(groupKey, !!c)}
                       />
-                      <Label
-                        htmlFor={`group-${groupKey}`}
-                        className="text-sm font-medium cursor-pointer"
-                      >
+                      <Label htmlFor={`group-${groupKey}`} className="text-xs font-medium cursor-pointer">
                         {group.label}
                       </Label>
-                      <Badge variant="secondary" className="text-xs">
-                        {group.fields.filter((f) => selectedFields.includes(f.key)).length}/
-                        {group.fields.length}
+                      <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                        {group.fields.filter((f) => selectedFields.includes(f.key)).length}/{group.fields.length}
                       </Badge>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pl-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-3 gap-y-1.5 pl-6">
                       {group.fields.map((field) => (
-                        <div key={field.key} className="flex items-center gap-2">
+                        <div key={field.key} className="flex items-center gap-1.5">
                           <Checkbox
                             id={field.key}
                             checked={selectedFields.includes(field.key)}
-                            onCheckedChange={(checked) => handleFieldToggle(field.key, !!checked)}
+                            onCheckedChange={(c) => handleFieldToggle(field.key, !!c)}
+                            className="h-3.5 w-3.5"
                           />
-                          <Label
-                            htmlFor={field.key}
-                            className="text-xs cursor-pointer text-muted-foreground"
-                          >
+                          <Label htmlFor={field.key} className="text-[11px] cursor-pointer text-muted-foreground leading-tight">
                             {field.label}
                           </Label>
                         </div>
@@ -189,309 +188,132 @@ export default function ImportExportPage({ embedded = false }: { embedded?: bool
                   </div>
                 ))}
 
-                <div className="flex items-center gap-3 pt-4 border-t">
-                  <Button onClick={handleExport} disabled={isExporting || selectedFields.length === 0}>
-                    {isExporting ? (
-                      <>Exporting...</>
-                    ) : (
-                      <>
-                        <FileSpreadsheet className="h-4 w-4 mr-2" />
-                        Export {selectedFields.length} Fields as CSV
-                      </>
+                <div className="flex items-center gap-3 pt-3 border-t flex-wrap">
+                  <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as ExportFormat)}>
+                    <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="xlsx">XLSX</SelectItem>
+                      <SelectItem value="csv">CSV</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" onClick={handleExport} disabled={isExporting || selectedFields.length === 0}>
+                    {isExporting ? "Exporting..." : (
+                      <><FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" /> Export {selectedFields.length} Fields</>
                     )}
                   </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {selectedFields.length} fields selected
-                  </span>
+                  <span className="text-xs text-muted-foreground">{selectedFields.length} fields selected</span>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Import Tab */}
-          <TabsContent value="import" className="space-y-4 mt-4">
+          {/* ═══════ IMPORT ═══════ */}
+          <TabsContent value="import" className="space-y-4 mt-4 animate-in fade-in-0 duration-200">
             <Card>
-              {!embedded && (
-                <CardHeader>
-                  <CardTitle className="text-base">Import Assets</CardTitle>
-                  <CardDescription>
-                    Upload an Excel (.xlsx) or CSV file to import assets. AssetTiger exports are fully supported.
-                  </CardDescription>
-                </CardHeader>
-              )}
-              <CardContent className={embedded ? "pt-4 space-y-4" : "space-y-4"}>
-                {/* Template Download */}
-                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-                  <FileDown className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Download Import Template</p>
-                    <p className="text-xs text-muted-foreground">
-                      Get the correct CSV format with example data
-                    </p>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Import Assets</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                {/* Template */}
+                <div className="flex items-center gap-3 p-2.5 bg-muted/50 rounded-lg">
+                  <FileDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium">Download Import Template</p>
+                    <p className="text-[11px] text-muted-foreground">Pre-formatted with all 16 importable columns</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={downloadTemplate}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Template
-                  </Button>
+                  <div className="flex gap-1.5">
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => downloadTemplate("xlsx")}>
+                      <Download className="h-3 w-3 mr-1" /> XLSX
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => downloadTemplate("csv")}>
+                      <Download className="h-3 w-3 mr-1" /> CSV
+                    </Button>
+                  </div>
                 </div>
 
-                {/* File Upload */}
-                <div className="space-y-2">
-                  <Label htmlFor="import-file">Select File (.xlsx, .xls, .csv)</Label>
-                  <Input
-                    id="import-file"
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleFileSelect}
-                    disabled={isImporting}
+                <FileDropzone
+                  accept=".xlsx,.xls,.csv"
+                  file={importFile}
+                  onFileSelect={handleFileSelect}
+                  onClear={handleClearImport}
+                  disabled={isImporting}
+                  label="Drop your asset file here or click to browse"
+                  description="Supports .xlsx, .xls, .csv"
+                />
+
+                {isParsing && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Parsing file...
+                  </div>
+                )}
+
+                {validatedRows && validatedRows.length > 0 && !importResult && (
+                  <ImportPreviewTable
+                    validatedRows={validatedRows}
+                    totalRows={validatedRows.length}
+                    onConfirm={handleImport}
+                    onCancel={handleClearImport}
+                    isImporting={isImporting}
                   />
-                  {importFile && (
-                    <p className="text-sm text-muted-foreground">
-                      Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
+                )}
 
-                {/* Import Button */}
-                <Button
-                  onClick={handleImport}
-                  disabled={!importFile || isImporting}
-                  className="w-auto"
-                >
-                  {isImporting ? (
-                    <>
-                      <Upload className="h-4 w-4 mr-2 animate-pulse" />
-                      Importing... ({importProgress.current}/{importProgress.total})
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Import Assets
-                    </>
-                  )}
-                </Button>
+                {validatedRows && validatedRows.length === 0 && !isParsing && (
+                  <p className="text-xs text-destructive">File is empty or has no data rows.</p>
+                )}
 
-                {/* Progress */}
                 {isImporting && (
-                  <div className="space-y-2">
-                    <Progress
-                      value={(importProgress.current / importProgress.total) * 100}
-                      className="h-2"
-                    />
-                    <p className="text-xs text-muted-foreground text-center">
-                      Processing row {importProgress.current} of {importProgress.total}
+                  <div className="space-y-1.5 animate-in fade-in-0 duration-200">
+                    <Progress value={progressPercent} className="h-1.5" />
+                    <p className="text-[11px] text-muted-foreground text-center">
+                      {importPhase === "validating"
+                        ? `Validating row ${importProgress.current} of ${importProgress.total}`
+                        : `Writing ${importProgress.current} of ${importProgress.total} to database`}
                     </p>
                   </div>
                 )}
 
-                {/* Import Result */}
                 {importResult && (
-                  <div className="space-y-3 pt-4 border-t">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 text-primary">
-                        <CheckCircle2 className="h-5 w-5" />
-                        <span className="font-medium">{importResult.success} imported</span>
-                      </div>
-                      {importResult.errors.length > 0 && (
-                        <div className="flex items-center gap-2 text-destructive">
-                          <XCircle className="h-5 w-5" />
-                          <span className="font-medium">{importResult.errors.length} errors</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Error Details */}
-                    {importErrors.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <AlertTriangle className="h-4 w-4 text-warning" />
-                          Import Errors
-                        </div>
-                        <ScrollArea className="h-48 rounded-md border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="w-20">Row</TableHead>
-                                <TableHead>Error</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {importErrors.map((err, idx) => (
-                                <TableRow key={idx}>
-                                  <TableCell className="font-mono text-xs">{err.row}</TableCell>
-                                  <TableCell className="text-xs text-destructive">
-                                    {err.error}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </ScrollArea>
-                      </div>
-                    )}
-                  </div>
+                  <ImportResultSection result={importResult} errors={importErrors} onClear={handleClearImport} />
                 )}
               </CardContent>
             </Card>
 
-            {/* Field Mapping Reference */}
+            {/* Supported Columns reference — uses IMPORT fields only */}
             <Card>
-              {!embedded && (
-                <CardHeader>
-                  <CardTitle className="text-base">Supported Columns (AssetTiger Compatible)</CardTitle>
-                  <CardDescription>
-                    All 28 AssetTiger columns are supported, plus additional fields
-                  </CardDescription>
-                </CardHeader>
-              )}
-              <CardContent className={embedded ? "pt-4" : ""}>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {[
-                    "Asset Tag ID", "Description", "Category", "Brand", "Model",
-                    "Serial No", "Status", "Cost", "Purchase Date", "Purchased from",
-                    "Location", "Site", "Department", "Assigned to", "Date Created",
-                    "Created by", "Leased to", "Relation", "Transact as a whole",
-                    "Event Date", "Event Due Date", "Event Notes", "Asset Configuration",
-                    "Asset Classification", "Asset Photo", "Headphone", "Mouse", "Keyboard",
-                    "Warranty Expiry",
-                  ].map((c) => (
-                    <Badge key={c} variant="outline" className="text-xs justify-start">
-                      {c}
-                    </Badge>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-3">
-                  <strong>Required:</strong> Asset Tag ID. All other fields are optional.
-                  Category, Brand, Location, Site, Department, and Vendor will be <strong>auto-created</strong> if they don't already exist.
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Peripherals Tab */}
-          <TabsContent value="peripherals" className="space-y-4 mt-4">
-            <Card>
-              {!embedded && (
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Headphones className="h-5 w-5" />
-                    Import Peripherals (Headphones, Mouse, Keyboard)
-                  </CardTitle>
-                  <CardDescription>
-                    Upload the peripheral Excel file with columns: Sr No, Name, Email, Headphone Serial, HP Tag, Mouse Serial, Mouse Tag, KB Serial, KB Tag
-                  </CardDescription>
-                </CardHeader>
-              )}
-              <CardContent className={embedded ? "pt-4 space-y-4" : "space-y-4"}>
-                {/* Format Guide */}
-                <div className="p-3 bg-muted/50 rounded-lg space-y-2">
-                  <p className="text-sm font-medium">Expected Excel Format</p>
-                  <div className="grid grid-cols-9 gap-1 text-xs text-muted-foreground">
-                    {["Sr No", "Name", "Email", "HP Serial", "HP Tag", "Mouse Serial", "Mouse Tag", "KB Serial", "KB Tag"].map((h) => (
-                      <Badge key={h} variant="outline" className="text-[10px] justify-center">
-                        {h}
-                      </Badge>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Entries with "NA" as serial or tag will be skipped. Rows without an email are created as unassigned (available).
-                  </p>
-                </div>
-
-                {/* File Upload */}
-                <div className="space-y-2">
-                  <Label htmlFor="peripheral-file">Select Peripheral Excel (.xlsx, .xls)</Label>
-                  <Input
-                    id="peripheral-file"
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handlePeripheralFileSelect}
-                    disabled={isImporting}
-                  />
-                  {peripheralFile && (
-                    <p className="text-sm text-muted-foreground">
-                      Selected: {peripheralFile.name} ({(peripheralFile.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
-
-                {/* Import Button */}
-                <Button
-                  onClick={handlePeripheralImport}
-                  disabled={!peripheralFile || isImporting}
-                  className="w-auto"
-                >
-                  {isImporting ? (
-                    <>
-                      <Upload className="h-4 w-4 mr-2 animate-pulse" />
-                      Importing... ({importProgress.current}/{importProgress.total})
-                    </>
-                  ) : (
-                    <>
-                      <Headphones className="h-4 w-4 mr-2" />
-                      Import Peripherals
-                    </>
-                  )}
-                </Button>
-
-                {/* Progress */}
-                {isImporting && activeTab === "peripherals" && (
-                  <div className="space-y-2">
-                    <Progress
-                      value={importProgress.total > 0 ? (importProgress.current / importProgress.total) * 100 : 0}
-                      className="h-2"
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm font-medium">Supported Import Columns</CardTitle>
+                  <div className="relative w-40">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <Input
+                      placeholder="Search fields..."
+                      value={columnSearch}
+                      onChange={(e) => setColumnSearch(e.target.value)}
+                      className="h-7 text-xs pl-7"
                     />
-                    <p className="text-xs text-muted-foreground text-center">
-                      Processing {importProgress.current} of {importProgress.total} peripheral entries
-                    </p>
                   </div>
-                )}
-
-                {/* Peripheral Result */}
-                {peripheralResult && (
-                  <div className="space-y-3 pt-4 border-t">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 text-primary">
-                        <CheckCircle2 className="h-5 w-5" />
-                        <span className="font-medium">{peripheralResult.success} imported</span>
-                      </div>
-                      {peripheralResult.errors.length > 0 && (
-                        <div className="flex items-center gap-2 text-destructive">
-                          <XCircle className="h-5 w-5" />
-                          <span className="font-medium">{peripheralResult.errors.length} warnings</span>
-                        </div>
-                      )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-3">
+                {filteredImportGroups.map(([key, group]) => (
+                  <div key={key}>
+                    <p className="text-[11px] font-medium text-muted-foreground mb-1">{group.label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.fields.map((f) => (
+                        <Badge key={f.key} variant="outline" className="text-[10px]">{f.label}</Badge>
+                      ))}
                     </div>
-
-                    {importErrors.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <AlertTriangle className="h-4 w-4 text-warning" />
-                          Import Log
-                        </div>
-                        <ScrollArea className="h-48 rounded-md border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="w-20">Row</TableHead>
-                                <TableHead>Detail</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {importErrors.map((err, idx) => (
-                                <TableRow key={idx}>
-                                  <TableCell className="font-mono text-xs">{err.row}</TableCell>
-                                  <TableCell className="text-xs text-muted-foreground">
-                                    {err.error}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </ScrollArea>
-                      </div>
-                    )}
                   </div>
+                ))}
+                {filteredImportGroups.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No matching fields found.</p>
+                )}
+                {!columnSearch && (
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    <strong>Required:</strong> Asset Tag ID. All other fields are optional.
+                    Category, Brand, Location, Site, Department, and Vendor are <strong>auto-created</strong> if they don't exist.
+                  </p>
                 )}
               </CardContent>
             </Card>

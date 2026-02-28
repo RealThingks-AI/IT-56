@@ -281,6 +281,20 @@ const CheckinPage = () => {
         if (assignmentError) throw assignmentError;
       }
 
+      // Create pre-closed assignment records for orphan assets (source: "asset" with no assignment record)
+      const orphanItems = selectedItems.filter((item) => item.source === "asset" && !item.assignmentId);
+      if (orphanItems.length > 0) {
+        const orphanAssignments = orphanItems.map((item) => ({
+          asset_id: item.assetUuid,
+          assigned_to: item.assignedTo || "00000000-0000-0000-0000-000000000000",
+          assigned_at: item.assignedAt || now,
+          returned_at: now,
+          notes: notes || "Bulk check-in (retroactive assignment record)",
+        }));
+        const { error: orphanError } = await supabase.from("itam_asset_assignments").insert(orphanAssignments);
+        if (orphanError) console.error("Failed to create orphan assignment records:", orphanError);
+      }
+
       const { error: updateError } = await supabase
         .from("itam_assets")
         .update({
@@ -303,12 +317,27 @@ const CheckinPage = () => {
         .in("id", assetIds);
       if (assetFetchError) throw assetFetchError;
 
-      const historyEntries = (assetRecords || []).map((asset) => ({
-        asset_id: asset.id,
-        action: "checked_in",
-        details: { notes, returned_at: now, asset_tag: asset.asset_tag },
-        performed_by: currentUser?.id,
-      }));
+      // Resolve previous user names for history
+      const prevUserIds = [...new Set(selectedItems.map(item => item.assignedTo).filter(Boolean))] as string[];
+      let prevUserMap = new Map<string, string>();
+      if (prevUserIds.length > 0) {
+        const { data: prevUsers } = await supabase.from("users").select("id, name, email").in("id", prevUserIds);
+        prevUserMap = new Map((prevUsers || []).map(u => [u.id, u.name || u.email || u.id]));
+      }
+
+      const historyEntries = (assetRecords || []).map((asset) => {
+        const item = selectedItems.find(si => si.assetUuid === asset.id);
+        const prevUserName = item?.assignedTo ? (prevUserMap.get(item.assignedTo) || item.assignedTo) : "Unknown";
+        return {
+          asset_id: asset.id,
+          action: "checked_in",
+          old_value: prevUserName,
+          new_value: "Available",
+          asset_tag: asset.asset_tag,
+          details: { notes, returned_at: now, returned_from: prevUserName },
+          performed_by: currentUser?.id,
+        };
+      });
 
       if (historyEntries.length > 0) {
         const { error: historyError } = await supabase.from("itam_asset_history").insert(historyEntries);
@@ -321,10 +350,70 @@ const CheckinPage = () => {
 
       return selectedItems.length;
     },
-    onSuccess: (count) => {
+    onSuccess: async (count) => {
       setShowSuccess(true);
       toast.success(`${count} asset(s) checked in successfully`);
       invalidateAllAssetQueries(queryClient);
+
+      // Send consolidated emails grouped by previous assignee
+      try {
+        const selectedItems = selectedRows
+          .map((id) => selectedCache.get(id))
+          .filter(Boolean) as CheckinRow[];
+
+        // Group by assignedTo user
+        const userAssetMap = new Map<string, string[]>();
+        for (const item of selectedItems) {
+          if (item.assignedTo) {
+            const existing = userAssetMap.get(item.assignedTo) || [];
+            existing.push(item.assetUuid);
+            userAssetMap.set(item.assignedTo, existing);
+          }
+        }
+
+        for (const [userId, assetIds] of userAssetMap) {
+          const user = users.find(u => u.id === userId);
+          if (!user?.email) continue;
+
+          const userName = getUserDisplayName(user) || user.email;
+
+          // Fetch full asset details
+          const { data: fullAssets } = await supabase
+            .from("itam_assets")
+            .select("asset_tag, name, serial_number, model, custom_fields, itam_categories(name), make:itam_makes!make_id(name)")
+            .in("id", assetIds);
+
+          const assetRows = (fullAssets || []).map((a: any) => ({
+            asset_tag: a.asset_tag || "N/A",
+            description: a.itam_categories?.name || a.name || "N/A",
+            brand: a.make?.name || "N/A",
+            model: a.model || "N/A",
+            serial_number: a.serial_number || null,
+            photo_url: (a.custom_fields as any)?.photo_url || null,
+          }));
+
+          await supabase.functions.invoke("send-asset-email", {
+            body: {
+              templateId: "checkin",
+              recipientEmail: user.email,
+              assets: assetRows,
+              variables: {
+                user_name: userName,
+                checkin_date: format(checkInDate, "dd/MM/yyyy HH:mm"),
+                notes: notes || "—",
+              },
+            },
+          });
+        }
+
+        if (userAssetMap.size > 0) {
+          toast.success("Email notification(s) sent");
+        }
+      } catch (emailErr) {
+        console.warn("Email notification failed:", emailErr);
+        toast.warning("Email notification could not be sent");
+      }
+
       setTimeout(() => navigate(FALLBACK_NAV), 500);
     },
     onError: (error: any) => {

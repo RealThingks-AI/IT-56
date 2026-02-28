@@ -584,24 +584,104 @@ export default function AddAsset() {
             "make_id", "serial_number", "purchase_price", "notes",
             "warranty_expiry", "model", "asset_tag", "vendor_id", "purchase_date",
           ];
-          const logEntries: any[] = [];
+
+          // Build FK resolver map: field -> lookup array
+          const fkResolvers: Record<string, { list: { id: string; name: string }[]; label: string }> = {
+            category_id: { list: categories, label: "Category" },
+            location_id: { list: locations, label: "Location" },
+            department_id: { list: departments, label: "Department" },
+            make_id: { list: makes, label: "Make" },
+            vendor_id: { list: vendors, label: "Vendor" },
+          };
+
+          const resolveName = (field: string, id: string | null): string => {
+            if (!id) return "";
+            const resolver = fkResolvers[field];
+            if (resolver) {
+              const found = resolver.list.find(item => item.id === id);
+              return found?.name || id;
+            }
+            return id;
+          };
+
+          const changes: { field: string; old: string | null; new: string | null }[] = [];
+          let statusChange: { old: string | null; new: string | null } | null = null;
+
           for (const field of trackedFields) {
             const oldVal = String(currentAsset[field] ?? "");
             const newVal = String(newValues[field] ?? "");
             if (oldVal !== newVal) {
-              logEntries.push({
-                asset_id: editAssetId,
-                asset_tag: newValues.asset_tag || currentAsset.asset_tag,
-                action: field === "status" ? "status_changed" : "field_updated",
-                old_value: oldVal || null,
-                new_value: newVal || null,
-                details: { field, old: oldVal || null, new: newVal || null },
-                performed_by: authUser.id,
-              });
+              const isFk = field in fkResolvers;
+              const displayOld = isFk ? resolveName(field, currentAsset[field] as string | null) : oldVal;
+              const displayNew = isFk ? resolveName(field, newValues[field] as string | null) : newVal;
+              const label = isFk ? fkResolvers[field].label : field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+              if (field === "status") {
+                statusChange = { old: displayOld || null, new: displayNew || null };
+              } else {
+                changes.push({ field: label, old: displayOld || null, new: displayNew || null });
+              }
             }
           }
-          if (logEntries.length > 0) {
-            await supabase.from("itam_asset_history").insert(logEntries as any);
+
+          // Track custom_fields changes
+          const oldCf = (currentAsset.custom_fields as Record<string, any>) || {};
+          const newCf = newValues.custom_fields || {};
+          const customFieldKeys: { key: string; label: string; resolveSite?: boolean }[] = [
+            { key: "asset_configuration", label: "Asset Configuration" },
+            { key: "currency", label: "Currency" },
+            { key: "classification", label: "Classification" },
+            { key: "site_id", label: "Site", resolveSite: true },
+            { key: "photo_url", label: "Photo" },
+            { key: "vendor", label: "Purchased From" },
+          ];
+
+          for (const { key, label, resolveSite } of customFieldKeys) {
+            const oldRaw = oldCf[key];
+            const newRaw = newCf[key];
+            const oldStr = Array.isArray(oldRaw) ? oldRaw.join(", ") : String(oldRaw ?? "");
+            const newStr = Array.isArray(newRaw) ? newRaw.join(", ") : String(newRaw ?? "");
+            if (oldStr !== newStr) {
+              let displayOld = oldStr;
+              let displayNew = newStr;
+              if (resolveSite) {
+                displayOld = (oldRaw && sites.find(s => s.id === oldRaw)?.name) || oldStr;
+                displayNew = (newRaw && sites.find(s => s.id === newRaw)?.name) || newStr;
+              }
+              changes.push({ field: label, old: displayOld || null, new: displayNew || null });
+            }
+          }
+
+          const rowsToInsert: any[] = [];
+
+          // Status change gets its own row (separate action type)
+          if (statusChange) {
+            rowsToInsert.push({
+              asset_id: editAssetId,
+              asset_tag: newValues.asset_tag || currentAsset.asset_tag,
+              action: "status_changed",
+              old_value: statusChange.old,
+              new_value: statusChange.new,
+              details: { field: "Status", old: statusChange.old, new: statusChange.new },
+              performed_by: authUser.id,
+            });
+          }
+
+          // All other field changes consolidated into one row
+          if (changes.length > 0) {
+            rowsToInsert.push({
+              asset_id: editAssetId,
+              asset_tag: newValues.asset_tag || currentAsset.asset_tag,
+              action: "fields_updated",
+              old_value: `${changes.length} field${changes.length > 1 ? 's' : ''} updated`,
+              new_value: changes.map(c => c.field).join(", "),
+              details: { changes },
+              performed_by: authUser.id,
+            });
+          }
+
+          if (rowsToInsert.length > 0) {
+            await supabase.from("itam_asset_history").insert(rowsToInsert as any);
           }
         } catch (logErr) {
           console.error("Failed to log asset changes:", logErr);

@@ -2229,6 +2229,45 @@ export type Database = {
         }
         Relationships: []
       }
+      itam_email_logs: {
+        Row: {
+          asset_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          recipient_email: string
+          sent_by: string | null
+          status: string | null
+          subject: string | null
+          template_id: string
+          tenant_id: number | null
+        }
+        Insert: {
+          asset_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          recipient_email: string
+          sent_by?: string | null
+          status?: string | null
+          subject?: string | null
+          template_id: string
+          tenant_id?: number | null
+        }
+        Update: {
+          asset_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          recipient_email?: string
+          sent_by?: string | null
+          status?: string | null
+          subject?: string | null
+          template_id?: string
+          tenant_id?: number | null
+        }
+        Relationships: []
+      }
       itam_license_allocations: {
         Row: {
           allocated_at: string | null

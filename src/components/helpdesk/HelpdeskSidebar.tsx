@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { LayoutDashboard, Ticket, Package, CreditCard, Activity, BarChart3, Settings, ChevronLeft, ChevronRight, RefreshCw, Download, Monitor, LucideIcon, ClipboardCheck, Key, Building2, ListChecks, Receipt, List, AlertTriangle, ScrollText } from "lucide-react";
+import { LayoutDashboard, Ticket, Package, CreditCard, Activity, BarChart3, Settings, ChevronLeft, ChevronRight, RefreshCw, Download, Monitor, LucideIcon, ClipboardCheck, Key, Building2, ListChecks, Receipt, List, AlertTriangle, ScrollText, Users, FileDown } from "lucide-react";
 import appLogo from "@/assets/app-logo.png";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,6 +34,14 @@ const assetChildren: SidebarChild[] = [{
   title: "List of Assets",
   url: "/assets/allassets",
   icon: List
+}, {
+  title: "Employees",
+  url: "/assets/employees",
+  icon: Users
+}, {
+  title: "Import/Export",
+  url: "/assets/import-export",
+  icon: FileDown
 }, {
   title: "Logs",
   url: "/assets/logs",
@@ -216,8 +224,11 @@ export function HelpdeskSidebar() {
   const renderChildItem = (child: SidebarChild) => {
     const hasNestedChildren = child.children && child.children.length > 0;
     const isExpanded = expandedSections.includes(`child-${child.title}`);
+    const hasQuery = child.url.includes('?');
     const baseUrl = child.url.split('?')[0];
-    const active = location.pathname === baseUrl || location.pathname.startsWith(baseUrl);
+    const active = hasQuery
+      ? (location.pathname + location.search) === child.url
+      : location.pathname === baseUrl || location.pathname.startsWith(baseUrl);
     const nestedActive = isNestedChildActive(child);
     const Icon = child.icon;
 

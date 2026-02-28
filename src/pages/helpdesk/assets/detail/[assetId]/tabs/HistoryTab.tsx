@@ -1,19 +1,89 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
-import { Clock, History, User, ArrowRight } from "lucide-react";
+import { History, User, ArrowRight, Loader2 } from "lucide-react";
+import { useUsersLookup } from "@/hooks/useUsersLookup";
 
 interface HistoryTabProps {
   assetId: string;
 }
 
-interface HistoryDetails {
-  [key: string]: any;
+interface ChangeEntry { field: string; old: string | null; new: string | null; }
+interface HistoryDetails { changes?: ChangeEntry[]; [key: string]: any; }
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ACTION_COLORS: Record<string, string> = {
+  created: "bg-green-100 text-green-800",
+  updated: "bg-blue-100 text-blue-800",
+  field_updated: "bg-sky-100 text-sky-800",
+  fields_updated: "bg-sky-100 text-sky-800",
+  checked_out: "bg-purple-100 text-purple-800",
+  checked_in: "bg-teal-100 text-teal-800",
+  status_changed: "bg-amber-100 text-amber-800",
+  deleted: "bg-red-100 text-red-800",
+  replicated: "bg-indigo-100 text-indigo-800",
+  audit_recorded: "bg-orange-100 text-orange-800",
+  maintenance: "bg-yellow-100 text-yellow-800",
+  repair: "bg-rose-100 text-rose-800",
+  sent_for_repair: "bg-rose-100 text-rose-800",
+  repair_completed: "bg-green-100 text-green-800",
+  repair_cancelled: "bg-gray-100 text-gray-800",
+  reassigned: "bg-cyan-100 text-cyan-800",
+  returned_to_stock: "bg-emerald-100 text-emerald-800",
+  disposed: "bg-red-100 text-red-800",
+  lost: "bg-orange-100 text-orange-800",
+  marked_as_lost: "bg-orange-100 text-orange-800",
+  found: "bg-green-100 text-green-800",
+  transferred: "bg-blue-100 text-blue-800",
+};
+
+const HIDDEN_DETAIL_KEYS = new Set([
+  'checkout_type', 'changes', 'user_id', 'location_id', 'department_id',
+  'field', 'old', 'new', 'asset_id', 'previous_status', 'new_status',
+  'category_id', 'vendor_id', 'make_id',
+]);
+
+const PRIORITY_KEYS = ['notes', 'location', 'department', 'assigned_to', 'checked_out_to'];
+
+const formatLabel = (key: string) =>
+  key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const isDateKey = (key: string) =>
+  key.includes('date') || key.includes('return') || key.endsWith('_at');
+
+function processHistory(items: any[]): any[] {
+  const result: any[] = [];
+  let i = 0;
+  while (i < items.length) {
+    const item = items[i];
+    if (item.action === "fields_updated") { result.push(item); i++; continue; }
+    if (item.action === "field_updated") {
+      const group: any[] = [item];
+      const baseTime = new Date(item.created_at).getTime();
+      let j = i + 1;
+      while (j < items.length && items[j].action === "field_updated") {
+        if (Math.abs(new Date(items[j].created_at).getTime() - baseTime) <= 2000) { group.push(items[j]); j++; } else break;
+      }
+      if (group.length > 1) {
+        const changes: ChangeEntry[] = group.map((g) => {
+          const d = g.details as HistoryDetails | null;
+          return { field: d?.field || "Unknown", old: d?.old ?? g.old_value ?? null, new: d?.new ?? g.new_value ?? null };
+        });
+        result.push({ ...item, action: "fields_updated", details: { changes } });
+      } else { result.push(item); }
+      i = j; continue;
+    }
+    result.push(item); i++;
+  }
+  return result;
 }
 
 export const HistoryTab = ({ assetId }: HistoryTabProps) => {
+  const { resolveUserName } = useUsersLookup();
+
   const { data: history, isLoading } = useQuery({
     queryKey: ["asset-history", assetId],
     queryFn: async () => {
@@ -28,147 +98,165 @@ export const HistoryTab = ({ assetId }: HistoryTabProps) => {
     enabled: !!assetId,
   });
 
-  const { data: usersData = [] } = useQuery({
-    queryKey: ["users-for-history"],
-    queryFn: async () => {
-      const { data } = await supabase.from("users").select("id, name, email");
-      return data || [];
-    },
-  });
-
-  const getUserName = (userId: string | null) => {
-    if (!userId) return null;
-    const user = usersData.find((u) => u.id === userId);
-    return user?.name || user?.email || null;
-  };
-
-  const actionColors: Record<string, string> = {
-    created: "bg-green-100 text-green-800",
-    updated: "bg-blue-100 text-blue-800",
-    checked_out: "bg-purple-100 text-purple-800",
-    checked_in: "bg-teal-100 text-teal-800",
-    status_changed: "bg-amber-100 text-amber-800",
-    deleted: "bg-red-100 text-red-800",
-    replicated: "bg-indigo-100 text-indigo-800",
-    audit_recorded: "bg-orange-100 text-orange-800",
-    maintenance: "bg-yellow-100 text-yellow-800",
-    repair: "bg-rose-100 text-rose-800",
-  };
-
-  const formatDetailValue = (key: string, value: any): string => {
-    if (value === null || value === undefined) return "";
-    if (key.includes("date") || key.includes("return") || key.includes("at")) {
-      try { return format(new Date(value), "dd/MM/yyyy HH:mm"); } catch { return String(value); }
+  const resolveDetailValue = (key: string, value: any): string => {
+    if (typeof value === 'string' && UUID_REGEX.test(value)) {
+      const resolved = resolveUserName(value);
+      if (resolved) return resolved;
     }
     return String(value);
   };
 
-  const renderDetails = (details: HistoryDetails | null) => {
-    if (!details || typeof details !== 'object') return null;
-    const excludeKeys = ['checkout_type', 'user_id', 'location_id', 'department_id'];
-    const entries = Object.entries(details)
-      .filter(([key, value]) => !excludeKeys.includes(key) && value !== null && value !== undefined && value !== '');
-    if (entries.length === 0) return null;
-    return (
-      <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-        {entries.map(([key, value]) => (
-          <p key={key}>
-            {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}:{' '}
-            <span className="text-foreground">{formatDetailValue(key, value)}</span>
-          </p>
-        ))}
-      </div>
-    );
+  const resolveValue = (value: any): string => {
+    if (value == null) return "";
+    const str = String(value);
+    if (UUID_REGEX.test(str)) { const name = resolveUserName(str); if (name) return name; }
+    return str;
   };
 
-  // Group by date
-  const groupByDate = (items: any[]) => {
-    const groups: Record<string, any[]> = {};
-    items.forEach(item => {
-      const date = item.created_at ? format(new Date(item.created_at), "dd MMM yyyy") : "Unknown";
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(item);
+  const sortDetailEntries = (entries: [string, any][]) =>
+    entries.sort((a, b) => {
+      const ai = PRIORITY_KEYS.indexOf(a[0]);
+      const bi = PRIORITY_KEYS.indexOf(b[0]);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a[0].localeCompare(b[0]);
     });
-    return groups;
+
+  const getChanges = (item: any): ChangeEntry[] | null => {
+    const details = item.details as HistoryDetails | null;
+    const action: string = item.action;
+    if ((action === "fields_updated" || action === "field_updated") && details?.changes && Array.isArray(details.changes)) return details.changes;
+    if (action === "field_updated") {
+      const field = details?.field || item.field_name || "Field";
+      return [{ field, old: details?.old ?? item.old_value ?? null, new: details?.new ?? item.new_value ?? null }];
+    }
+    return null;
+  };
+
+  const renderChangesTable = (changes: ChangeEntry[]) => (
+    <Table wrapperClassName="mt-2 border-muted">
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[200px]">Field</TableHead>
+          <TableHead>Old Value</TableHead>
+          <TableHead>New Value</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {changes.map((change, idx) => (
+          <TableRow key={idx}>
+            <TableCell className="font-medium text-xs">{change.field}</TableCell>
+            <TableCell className="text-xs text-muted-foreground">{resolveValue(change.old) || "—"}</TableCell>
+            <TableCell className="text-xs font-medium">{resolveValue(change.new) || "—"}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+
+  const renderDetailGrid = (details: Record<string, any>) => {
+    const filtered = sortDetailEntries(
+      Object.entries(details).filter(([key, value]) => !HIDDEN_DETAIL_KEYS.has(key) && value !== null && value !== undefined && value !== '')
+    );
+    if (filtered.length === 0) return null;
+    return (
+      <dl className="border-t border-border/50 mt-2 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-xs">
+        {filtered.map(([key, value]) => {
+          const label = formatLabel(key);
+          let displayValue = resolveDetailValue(key, value);
+          if (isDateKey(key) && typeof value === 'string') {
+            try { displayValue = format(new Date(value), "dd MMM yyyy, HH:mm"); } catch { /* keep */ }
+          }
+          return (
+            <div key={key} className="flex gap-2">
+              <dt className="w-[140px] shrink-0 text-muted-foreground">{label}</dt>
+              <dd className="text-foreground font-medium truncate">{displayValue}</dd>
+            </div>
+          );
+        })}
+      </dl>
+    );
   };
 
   if (isLoading) {
     return (
-      <Card className="h-full">
-        <CardContent className="p-8 text-center text-muted-foreground">Loading history...</CardContent>
-      </Card>
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   if (!history || history.length === 0) {
     return (
-      <Card className="h-full">
-        <CardContent className="p-8 text-center">
-          <History className="h-12 w-12 mx-auto text-muted-foreground mb-3 opacity-50" />
-          <p className="text-muted-foreground">No history available for this asset</p>
-        </CardContent>
-      </Card>
+      <div className="text-center py-6">
+        <History className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No history available for this asset</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Field changes, status updates, and lifecycle events appear here
+        </p>
+      </div>
     );
   }
 
-  const grouped = groupByDate(history);
+  const processed = processHistory(history);
 
   return (
-    <Card className="h-full">
-      <CardContent className="p-4">
-        <div className="relative">
-          {/* Vertical timeline line */}
-          <div className="absolute left-[15px] top-6 bottom-2 w-0.5 bg-border" />
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">{processed.length} entr{processed.length !== 1 ? "ies" : "y"}</p>
+      <div className="space-y-1">
+        {processed.map((item: any) => {
+          const performedByName = resolveUserName(item.performed_by);
+          const changes = getChanges(item);
 
-          {Object.entries(grouped).map(([date, items]) => (
-            <div key={date} className="mb-4">
-              <div className="text-xs font-semibold text-muted-foreground mb-2 ml-9 uppercase tracking-wide">{date}</div>
-              <div className="space-y-1">
-                {items.map((item: any) => {
-                  const performedByName = getUserName(item.performed_by);
-                  const details = item.details as HistoryDetails | null;
-                  return (
-                    <div key={item.id} className="flex gap-3 py-1.5 relative">
-                      <div className="flex-shrink-0 w-[30px] flex justify-center z-10 mt-1">
-                        <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40 border-2 border-background" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge className={`${actionColors[item.action] || "bg-gray-100 text-gray-800"} text-xs`}>
-                            {item.action.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                          </Badge>
-                        </div>
-                        {item.old_value && item.new_value && (
-                          <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-                            <span className="truncate max-w-[120px]">{item.old_value}</span>
-                            <ArrowRight className="h-3 w-3 shrink-0" />
-                            <span className="truncate max-w-[120px] text-foreground font-medium">{item.new_value}</span>
-                          </div>
-                        )}
-                        {item.new_value && !item.old_value && item.action !== "audit_recorded" && (
-                          <p className="text-xs text-muted-foreground mt-1">→ {item.new_value}</p>
-                        )}
-                        {renderDetails(details)}
-                        <div className="flex items-center gap-3 mt-1">
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {format(new Date(item.created_at), "HH:mm")}
-                          </p>
-                          {performedByName && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <User className="h-3 w-3" />{performedByName}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+          return (
+            <div key={item.id} className="px-3 py-2 border rounded-lg hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className={`${ACTION_COLORS[item.action] || "bg-gray-100 text-gray-800"} text-xs`}>
+                    {formatLabel(item.action)}
+                  </Badge>
+                  {(item.action === "fields_updated" || item.action === "field_updated") && (() => {
+                    const ch = getChanges(item);
+                    if (ch && ch.length > 0) {
+                      const fieldNames = ch.map(c => c.field).join(", ");
+                      const truncated = fieldNames.length > 60 ? fieldNames.slice(0, 57) + "..." : fieldNames;
+                      return (
+                        <span className="text-xs text-muted-foreground">
+                          {ch.length} field{ch.length !== 1 ? "s" : ""} → {truncated}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                  {item.old_value && item.new_value && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <span className="truncate max-w-[200px]">{resolveValue(item.old_value)}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0" />
+                      <span className="truncate max-w-[200px] text-foreground">{resolveValue(item.new_value)}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    {performedByName || "Unknown"}
+                  </span>
+                  {item.created_at && (
+                    <span>{format(new Date(item.created_at), "dd MMM yyyy, HH:mm")}</span>
+                  )}
+                </div>
               </div>
+
+              {changes ? renderChangesTable(changes) : (
+                item.details && typeof item.details === 'object' && !item.details.changes && (
+                  renderDetailGrid(item.details as Record<string, any>)
+                )
+              )}
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+          );
+        })}
+      </div>
+    </div>
   );
 };

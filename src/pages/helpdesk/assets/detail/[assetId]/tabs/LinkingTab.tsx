@@ -152,17 +152,14 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
 
   if (isLoading) {
     return (
-      <Card className="h-full">
-        <CardContent className="p-4 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
-    <Card className="h-full">
-      <CardContent className="p-4">
+    <div>
         <div className="space-y-3">
           <Button 
             variant="outline" 
@@ -319,7 +316,6 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </div>
   );
 };

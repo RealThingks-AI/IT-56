@@ -20,4 +20,15 @@ export const invalidateAllAssetQueries = (queryClient: QueryClient) => {
   queryClient.invalidateQueries({ queryKey: ["itam-assets"] });
   queryClient.invalidateQueries({ queryKey: ["itam-assets-for-disposal"] });
   queryClient.invalidateQueries({ queryKey: ["itam-assets-available"] });
+  queryClient.invalidateQueries({ queryKey: ["asset-log-stats"] });
+  queryClient.invalidateQueries({ queryKey: ["asset-logs"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-checkin-rows"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-new-assets"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-disposed-assets"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-lost-assets"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-active-repairs"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-overdue-assignments"] });
+  queryClient.invalidateQueries({ queryKey: ["users-map-logs"] });
+  queryClient.invalidateQueries({ queryKey: ["itam-expiring-warranties"] });
+  queryClient.invalidateQueries({ queryKey: ["asset-checkout-validation"] });
 };

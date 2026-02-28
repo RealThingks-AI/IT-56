@@ -1,4 +1,4 @@
-import { Shield, Users, ScrollText, Settings2, HardDrive, BarChart3 } from "lucide-react";
+import { Shield, Users, ScrollText, Settings2, HardDrive, BarChart3, Mail } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import ModuleLayout from "./ModuleLayout";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -10,6 +10,7 @@ const adminSidebarItems: SidebarItem[] = [
   { title: "System Settings", url: "/admin/system", icon: Settings2 },
   { title: "Backup", url: "/admin/backup", icon: HardDrive },
   { title: "Reports", url: "/admin/reports", icon: BarChart3 },
+  { title: "Email", url: "/admin/email", icon: Mail },
 ];
 
 export default function AdminLayout() {

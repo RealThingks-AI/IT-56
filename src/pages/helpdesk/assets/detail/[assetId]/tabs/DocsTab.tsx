@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload, Download, Trash2, File, FileImage, FileSpreadsheet } from "lucide-react";
+import { FileText, Upload, Download, Trash2, File, FileImage, FileSpreadsheet, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -153,21 +153,14 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardContent className="p-4">
+    <div>
         <div className="space-y-3">
           <div className="relative">
             <input
@@ -232,7 +225,6 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 };

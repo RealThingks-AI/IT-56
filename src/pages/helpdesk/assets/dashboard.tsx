@@ -100,33 +100,72 @@ const AssetDashboard = () => {
   const { data: recentCheckins = [], isLoading: checkinsLoading, refetch: refetchCheckins } = useQuery({
     queryKey: ["itam-recent-checkins"],
     queryFn: async () => {
-      const { data } = await supabase.from("itam_asset_assignments").select("*, asset:itam_assets(id, name, asset_tag, asset_id, category:itam_categories(name))").not("returned_at", "is", null).order("returned_at", { ascending: false }).limit(15);
-      // Fetch user names for assigned_to
-      if (data && data.length > 0) {
-        const userIds = [...new Set(data.map((d) => d.assigned_to).filter(Boolean))];
-        if (userIds.length > 0) {
-          const { data: users } = await supabase.from("users").select("auth_user_id, name").in("auth_user_id", userIds);
-          const userMap = new Map((users || []).map((u) => [u.auth_user_id, u.name]));
-          return data.map((d) => ({ ...d, assigned_to_name: userMap.get(d.assigned_to) || null }));
-        }
+      // Use itam_asset_history instead of assignments - captures ALL check-ins including orphan assets
+      const { data } = await supabase
+        .from("itam_asset_history")
+        .select("id, asset_id, asset_tag, action, old_value, new_value, details, performed_by, created_at")
+        .eq("action", "checked_in")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (!data || data.length === 0) return [];
+
+      // Fetch asset info for categories
+      const assetIds = [...new Set(data.map((d) => d.asset_id))];
+      const { data: assetData } = await supabase
+        .from("itam_assets")
+        .select("id, name, asset_tag, asset_id, category:itam_categories(name)")
+        .in("id", assetIds);
+      const assetMap = new Map((assetData || []).map((a) => [a.id, a]));
+
+      // Resolve performed_by (auth UUID) to user names
+      const performerIds = [...new Set(data.map((d) => d.performed_by).filter(Boolean))] as string[];
+      let userMap = new Map<string, string>();
+      if (performerIds.length > 0) {
+        const { data: users } = await supabase.from("users").select("id, auth_user_id, name, email").in("auth_user_id", performerIds);
+        (users || []).forEach((u) => { if (u.auth_user_id) userMap.set(u.auth_user_id, u.name || u.email || u.id); });
       }
-      return (data || []).map((d) => ({ ...d, assigned_to_name: null }));
+
+      return data.map((d) => {
+        const asset = assetMap.get(d.asset_id);
+        const userName = d.old_value || (d.details as any)?.returned_from || "—";
+        return {
+          ...d,
+          asset,
+          user_name: userName,
+          performer_name: d.performed_by ? (userMap.get(d.performed_by) || null) : null,
+        };
+      });
     }
   });
 
   const { data: recentCheckouts = [], refetch: refetchCheckouts } = useQuery({
     queryKey: ["itam-recent-checkouts"],
     queryFn: async () => {
-      const { data } = await supabase.from("itam_asset_assignments").select("*, asset:itam_assets(id, name, asset_tag, asset_id, category:itam_categories(name))").is("returned_at", null).order("assigned_at", { ascending: false }).limit(15);
-      if (data && data.length > 0) {
-        const userIds = [...new Set(data.map((d) => d.assigned_to).filter(Boolean))];
-        if (userIds.length > 0) {
-          const { data: users } = await supabase.from("users").select("auth_user_id, name").in("auth_user_id", userIds);
-          const userMap = new Map((users || []).map((u) => [u.auth_user_id, u.name]));
-          return data.map((d) => ({ ...d, assigned_to_name: userMap.get(d.assigned_to) || null }));
-        }
+      // Show currently checked-out assets (current state view - more useful than historical)
+      const { data } = await supabase
+        .from("itam_assets")
+        .select("id, name, asset_tag, asset_id, status, checked_out_to, assigned_to, checked_out_at, updated_at, category:itam_categories(name)")
+        .eq("is_active", true)
+        .eq("status", "in_use")
+        .order("checked_out_at", { ascending: false, nullsFirst: false })
+        .limit(20);
+      if (!data || data.length === 0) return [];
+
+      // Resolve user names
+      const userIds = [...new Set(data.map((d) => d.checked_out_to || d.assigned_to).filter(Boolean))] as string[];
+      let userMap = new Map<string, string>();
+      if (userIds.length > 0) {
+        const { data: users } = await supabase.from("users").select("id, name, email").in("id", userIds);
+        userMap = new Map((users || []).map((u) => [u.id, u.name || u.email || u.id]));
       }
-      return (data || []).map((d) => ({ ...d, assigned_to_name: null }));
+
+      return data.map((d) => {
+        const userId = d.checked_out_to || d.assigned_to;
+        return {
+          ...d,
+          assigned_to_name: userId ? (userMap.get(userId) || null) : null,
+        };
+      });
     }
   });
 
@@ -329,27 +368,42 @@ const AssetDashboard = () => {
   const PIE_COLORS = ["#3b82f6", "#10b981", "#a855f7", "#f97316", "#06b6d4", "#f43f5e"];
 
   // ── Dynamic column headers per tab ──
-  const feedColumnHeaders: Record<string, {col1: string;col2: string;col3: string;col4: string;}> = {
-    checkedin: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
-    checkedout: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
-    repair: { col1: "#", col2: "Asset Tag", col3: "Issue", col4: "Date" },
-    new: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
-    disposed: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" },
-    lost: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "Date" }
+  const feedColumnHeaders: Record<string, {col1: string;col2: string;col3: string;col4: string;col5: string;}> = {
+    checkedin: { col1: "#", col2: "Asset Tag", col3: "User", col4: "Category", col5: "Date" },
+    checkedout: { col1: "#", col2: "Asset Tag", col3: "User", col4: "Category", col5: "Date" },
+    repair: { col1: "#", col2: "Asset Tag", col3: "Issue", col4: "", col5: "Date" },
+    new: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "", col5: "Date" },
+    disposed: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "", col5: "Date" },
+    lost: { col1: "#", col2: "Asset Tag", col3: "Category", col4: "", col5: "Date" }
   };
   const currentHeaders = feedColumnHeaders[activeTab] || feedColumnHeaders.checkedin;
 
   // ── Multi-column feed row helper ──
-  const FeedRow = ({ tag, col2, col3, date, onClick, index }: {tag: string;col2?: string;col3?: string;date?: string;onClick: () => void;index?: number;}) =>
-  <div className={cn("grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-2 hover:bg-accent/50 cursor-pointer transition-colors duration-100 group", index !== undefined && index % 2 === 1 && "bg-muted/20")} onClick={onClick}>
-      <span className="text-[11px] text-muted-foreground tabular-nums">{index !== undefined ? index + 1 : ""}</span>
-      <span className="text-xs font-semibold text-foreground truncate font-mono">{tag}</span>
-      <span className="text-xs text-muted-foreground truncate">{col2 || "—"}</span>
-      <div className="flex items-center justify-end gap-1">
-        {date && <span className="text-[11px] text-muted-foreground tabular-nums">{date}</span>}
-        <ChevronRight className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors" />
+  const FeedRow = ({ tag, col2, col3, col4, date, onClick, index }: {tag: string;col2?: string;col3?: string;col4?: string;date?: string;onClick: () => void;index?: number;}) => {
+    const hasCol4 = col4 !== undefined && col4 !== "";
+    return hasCol4 ? (
+      <div className={cn("grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-2 hover:bg-accent/50 cursor-pointer transition-colors duration-100 group", index !== undefined && index % 2 === 1 && "bg-muted/20")} onClick={onClick}>
+        <span className="text-[11px] text-muted-foreground tabular-nums">{index !== undefined ? index + 1 : ""}</span>
+        <span className="text-xs font-semibold text-foreground truncate font-mono">{tag}</span>
+        <span className="text-xs text-muted-foreground truncate">{col2 || "—"}</span>
+        <span className="text-xs text-muted-foreground truncate">{col3 || "—"}</span>
+        <div className="flex items-center justify-end gap-1">
+          {date && <span className="text-[11px] text-muted-foreground tabular-nums">{date}</span>}
+          <ChevronRight className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors" />
+        </div>
       </div>
-    </div>;
+    ) : (
+      <div className={cn("grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-2 hover:bg-accent/50 cursor-pointer transition-colors duration-100 group", index !== undefined && index % 2 === 1 && "bg-muted/20")} onClick={onClick}>
+        <span className="text-[11px] text-muted-foreground tabular-nums">{index !== undefined ? index + 1 : ""}</span>
+        <span className="text-xs font-semibold text-foreground truncate font-mono">{tag}</span>
+        <span className="text-xs text-muted-foreground truncate">{col2 || "—"}</span>
+        <div className="flex items-center justify-end gap-1">
+          {date && <span className="text-[11px] text-muted-foreground tabular-nums">{date}</span>}
+          <ChevronRight className="h-3 w-3 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors" />
+        </div>
+      </div>
+    );
+  };
 
 
   const gridColsClass = gridColumns === 3 ? "lg:grid-cols-3" : gridColumns === 4 ? "lg:grid-cols-4" : gridColumns === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5";
@@ -468,19 +522,29 @@ const AssetDashboard = () => {
                       </TabsList>
 
                       {/* Dynamic column headers */}
-                      <div className="grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-1 border-b bg-muted/30">
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col1}</span>
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col2}</span>
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col3}</span>
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider text-center">{currentHeaders.col4}</span>
-                      </div>
+                      {currentHeaders.col4 ? (
+                        <div className="grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-1 border-b bg-muted/30">
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col1}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col2}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col3}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col4}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider text-center">{currentHeaders.col5}</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-[minmax(0,0.3fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-2 px-3 py-1 border-b bg-muted/30">
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col1}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col2}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{currentHeaders.col3}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider text-center">{currentHeaders.col5}</span>
+                        </div>
+                      )}
 
                       <ScrollArea className="flex-1">
                         <TabsContent value="checkedin" className="mt-0">
                           {recentCheckins.length > 0 ?
                       <div className="divide-y divide-border/50">
                               {recentCheckins.map((c: any, i: number) =>
-                        <FeedRow key={c.id} index={i} tag={c.asset?.asset_tag || c.asset?.asset_id || ""} col2={(c.asset?.category as any)?.name || "—"} col3={c.assigned_to_name || "—"} date={c.returned_at ? format(new Date(c.returned_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
+                        <FeedRow key={c.id} index={i} tag={c.asset_tag || c.asset?.asset_tag || c.asset?.asset_id || "—"} col2={c.user_name || "—"} col3={(c.asset?.category as any)?.name || "—"} col4={(c.asset?.category as any)?.name || "—"} date={c.created_at ? format(new Date(c.created_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
                         )}
                             </div> :
                       <FeedEmptyState message="No recent check-ins" />}
@@ -490,10 +554,10 @@ const AssetDashboard = () => {
                           {recentCheckouts.length > 0 ?
                       <div className="divide-y divide-border/50">
                               {recentCheckouts.map((c: any, i: number) =>
-                        <FeedRow key={c.id} index={i} tag={c.asset?.asset_tag || c.asset?.asset_id || ""} col2={(c.asset?.category as any)?.name || "—"} col3={c.assigned_to_name || "—"} date={c.assigned_at ? format(new Date(c.assigned_at), 'MMM dd, yyyy') : ''} onClick={() => navigate(`/assets/detail/${c.asset?.asset_tag || c.asset?.asset_id}`)} />
+                        <FeedRow key={c.id} index={i} tag={c.asset_tag || c.asset_id || ""} col2={c.assigned_to_name || "—"} col3={(c.category as any)?.name || "—"} col4={(c.category as any)?.name || "—"} date={c.checked_out_at ? format(new Date(c.checked_out_at), 'MMM dd, yyyy') : (c.updated_at ? format(new Date(c.updated_at), 'MMM dd') : '')} onClick={() => navigate(`/assets/detail/${c.asset_tag || c.asset_id}`)} />
                         )}
                             </div> :
-                      <FeedEmptyState message="No recent check-outs" />}
+                      <FeedEmptyState message="No assets currently checked out" />}
                         </TabsContent>
 
                         <TabsContent value="repair" className="mt-0">

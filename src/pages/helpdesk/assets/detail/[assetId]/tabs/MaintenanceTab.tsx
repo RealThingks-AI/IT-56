@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Wrench, Plus, Calendar, CheckCircle, Trash2 } from "lucide-react";
+import { Wrench, Plus, Calendar, CheckCircle, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -168,21 +168,14 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardContent className="p-4">
+    <div>
         <div className="space-y-3">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
@@ -319,7 +312,6 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 };

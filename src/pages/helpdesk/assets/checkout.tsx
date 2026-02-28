@@ -262,6 +262,8 @@ const CheckoutPage = () => {
       const historyEntries = (assetRecords || []).map(asset => ({
         asset_id: asset.id,
         action: "checked_out",
+        old_value: "Available",
+        new_value: assignedToName,
         details: {
           assigned_to: assignedToName,
           user_id: assignTo,
@@ -277,7 +279,7 @@ const CheckoutPage = () => {
 
       return selectedAssets.length;
     },
-    onSuccess: (count) => {
+    onSuccess: async (count) => {
       setShowSuccess(true);
       toast.success(`${count} asset(s) checked out successfully`);
       invalidateAllAssetQueries(queryClient);
@@ -286,6 +288,50 @@ const CheckoutPage = () => {
         updateUISettings.mutate({
           checkoutPreferences: { lastAssignee: assignTo },
         } as any);
+
+        // Send consolidated email with all assets in a table
+        try {
+          const selectedUser = users.find(u => u.id === assignTo);
+          const userEmail = selectedUser?.email;
+          const userName = getUserDisplayName(selectedUser) || selectedUser?.email || "";
+
+          if (userEmail) {
+            // Fetch full details for all checked-out assets
+            const { data: fullAssets } = await supabase
+              .from("itam_assets")
+              .select("asset_tag, name, serial_number, model, custom_fields, itam_categories(name), make:itam_makes!make_id(name)")
+              .in("id", selectedAssets);
+
+            const assetRows = (fullAssets || []).map((a: any) => ({
+              asset_tag: a.asset_tag || "N/A",
+              description: a.itam_categories?.name || a.name || "N/A",
+              brand: a.make?.name || "N/A",
+              model: a.model || "N/A",
+              serial_number: a.serial_number || null,
+              photo_url: (a.custom_fields as any)?.photo_url || null,
+            }));
+
+            const { data, error } = await supabase.functions.invoke("send-asset-email", {
+              body: {
+                templateId: "checkout",
+                recipientEmail: userEmail,
+                assets: assetRows,
+                variables: {
+                  user_name: userName,
+                  checkout_date: format(new Date(), "dd/MM/yyyy HH:mm"),
+                  expected_return_date: expectedReturn ? format(expectedReturn, "dd/MM/yyyy") : "Not specified",
+                  notes: notes || "—",
+                },
+              },
+            });
+            if (!error && data?.success && !data?.skipped) {
+              toast.success("Email notification sent");
+            }
+          }
+        } catch (emailErr) {
+          console.warn("Email notification failed:", emailErr);
+          toast.warning("Email notification could not be sent");
+        }
       }
 
       setTimeout(() => navigate(FALLBACK_NAV), 500);

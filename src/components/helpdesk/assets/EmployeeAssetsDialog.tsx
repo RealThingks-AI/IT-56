@@ -121,11 +121,22 @@ export function EmployeeAssetsDialog({ employee, open, onOpenChange }: EmployeeA
         assigned_at: new Date().toISOString(),
       });
 
+      // Resolve names for history
+      const fromName = employee?.name || employee?.email || employee?.id || "Unknown";
+      const toUser = allUsers.find(u => u.id === newUserId);
+      const toName = toUser?.name || toUser?.email || newUserId;
+
+      // Fetch asset tag
+      const { data: assetRecord } = await supabase.from("itam_assets").select("asset_tag").eq("id", assetId).single();
+
       // Log to history
       await supabase.from("itam_asset_history").insert({
         asset_id: assetId,
         action: "reassigned",
-        details: { from: employee?.id, to: newUserId },
+        old_value: fromName,
+        new_value: toName,
+        asset_tag: assetRecord?.asset_tag || null,
+        details: { from: fromName, to: toName },
         performed_by: user?.id,
       });
     },
@@ -171,12 +182,18 @@ export function EmployeeAssetsDialog({ employee, open, onOpenChange }: EmployeeA
         }
       }
 
-      // Log to history
+      // Log to history with resolved names
       const { data: { user } } = await supabase.auth.getUser();
+      const returnedFromName = employee?.name || employee?.email || employee?.id || "Unknown";
+      const { data: assetRec } = await supabase.from("itam_assets").select("asset_tag").eq("id", assetId).single();
+
       await supabase.from("itam_asset_history").insert({
         asset_id: assetId,
         action: "returned_to_stock",
-        details: { returned_from: employee?.id },
+        old_value: returnedFromName,
+        new_value: "Available",
+        asset_tag: assetRec?.asset_tag || null,
+        details: { returned_from: returnedFromName },
         performed_by: user?.id,
       });
     },
@@ -210,9 +227,11 @@ export function EmployeeAssetsDialog({ employee, open, onOpenChange }: EmployeeA
           }
         }
 
+        const returnFromName = employee?.name || employee?.email || employee?.id || "Unknown";
         await supabase.from("itam_asset_history").insert({
           asset_id: assetId, action: "returned_to_stock",
-          details: { returned_from: employee?.id }, performed_by: user?.id,
+          old_value: returnFromName, new_value: "Available",
+          details: { returned_from: returnFromName }, performed_by: user?.id,
         });
       }
     },
@@ -251,9 +270,13 @@ export function EmployeeAssetsDialog({ employee, open, onOpenChange }: EmployeeA
           assigned_by: user?.id || null, assigned_at: new Date().toISOString(),
         });
 
+        const bulkFromName = employee?.name || employee?.email || employee?.id || "Unknown";
+        const bulkToUser = allUsers.find(u => u.id === newUserId);
+        const bulkToName = bulkToUser?.name || bulkToUser?.email || newUserId;
         await supabase.from("itam_asset_history").insert({
           asset_id: assetId, action: "reassigned",
-          details: { from: employee?.id, to: newUserId }, performed_by: user?.id,
+          old_value: bulkFromName, new_value: bulkToName,
+          details: { from: bulkFromName, to: bulkToName }, performed_by: user?.id,
         });
       }
     },

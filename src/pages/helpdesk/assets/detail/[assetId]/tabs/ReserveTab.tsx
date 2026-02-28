@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Calendar, Plus, User, X } from "lucide-react";
+import { Calendar, Plus, User, X, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -128,21 +128,14 @@ export const ReserveTab = ({ assetId }: ReserveTabProps) => {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardContent className="p-4">
+    <div>
         <div className="space-y-3">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
@@ -264,7 +257,6 @@ export const ReserveTab = ({ assetId }: ReserveTabProps) => {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 };

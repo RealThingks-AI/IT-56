@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -64,6 +64,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         setLoading(false);
+
+        // Auto-bootstrap session store if user is logged in but store is stale
+        if (initialSession?.user) {
+          const store = useSessionStore.getState();
+          if (store.status !== "ready" && store.status !== "loading") {
+            store.bootstrap();
+          }
+        }
       })
       .catch((err) => {
         clearTimeoutIfSet();

@@ -87,17 +87,14 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
 
   if (isLoading) {
     return (
-      <Card className="h-full">
-        <CardContent className="p-4 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   return (
-    <Card className="h-full">
-      <CardContent className="p-4">
+    <div>
         <div className="space-y-3">
           {/* Upload area with drag-and-drop */}
           <div
@@ -179,7 +176,6 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
             )}
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </div>
   );
 };

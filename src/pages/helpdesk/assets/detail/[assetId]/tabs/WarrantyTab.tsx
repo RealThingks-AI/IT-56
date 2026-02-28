@@ -46,7 +46,7 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
   const leaseExpiryWarning = getExpiryWarning(leaseExpiry);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 h-full">
       {/* Warranty Information */}
       <Card>
         <CardContent className="p-4">
@@ -80,7 +80,17 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
                     }
                   </span>
                 </div>
-                <Progress value={warrantyProgress.pct} className="h-2" />
+                <Progress
+                  value={warrantyProgress.pct}
+                  className="h-2"
+                  indicatorClassName={
+                    warrantyProgress.remainingDays < 0
+                      ? "bg-destructive"
+                      : warrantyProgress.remainingDays <= 30
+                        ? "bg-amber-500"
+                        : "bg-green-600"
+                  }
+                />
                 <div className="flex justify-between text-[10px] text-muted-foreground">
                   <span>{purchaseDate ? format(new Date(purchaseDate), "dd MMM yyyy") : ''}</span>
                   <span>{warrantyExpiry ? format(new Date(warrantyExpiry), "dd MMM yyyy") : ''}</span>

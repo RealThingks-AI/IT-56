@@ -32,6 +32,7 @@ import { MarkAsLostDialog } from "./MarkAsLostDialog";
 import { ReplicateAssetDialog } from "./ReplicateAssetDialog";
 import { EmailAssetDialog } from "./EmailAssetDialog";
 import { DisposeAssetDialog } from "./DisposeAssetDialog";
+import { ReassignAssetDialog } from "./ReassignAssetDialog";
 
 interface AssetActionsMenuProps {
   asset: {
@@ -56,6 +57,7 @@ export function AssetActionsMenu({ asset, onActionComplete }: AssetActionsMenuPr
   const [replicateDialogOpen, setReplicateDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [disposeDialogOpen, setDisposeDialogOpen] = useState(false);
+  const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
 
   const invalidateQueries = () => {
     invalidateAllAssetQueries(queryClient);
@@ -214,6 +216,12 @@ export function AssetActionsMenu({ asset, onActionComplete }: AssetActionsMenuPr
               Check Out
             </DropdownMenuItem>
           )}
+          {asset.status === ASSET_STATUS.IN_USE && (
+            <DropdownMenuItem onClick={() => setReassignDialogOpen(true)}>
+              <Copy className="h-4 w-4 mr-2" />
+              Reassign
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={handleMaintenance}>
             <Wrench className="h-4 w-4 mr-2" />
             Repair
@@ -306,6 +314,15 @@ export function AssetActionsMenu({ asset, onActionComplete }: AssetActionsMenuPr
         onOpenChange={setDisposeDialogOpen}
         assetId={asset.id}
         assetName={asset.asset_tag || asset.name || 'Asset'}
+        onSuccess={invalidateQueries}
+      />
+
+      <ReassignAssetDialog
+        open={reassignDialogOpen}
+        onOpenChange={setReassignDialogOpen}
+        assetId={asset.id}
+        assetName={asset.asset_tag || asset.name || 'Asset'}
+        currentAssignedTo={asset.assigned_to || null}
         onSuccess={invalidateQueries}
       />
     </>
