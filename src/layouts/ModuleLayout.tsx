@@ -75,12 +75,7 @@ export default function ModuleLayout({ moduleName, moduleIcon, sidebarItems, pag
     <div className="h-screen flex w-full overflow-hidden">
       <ModuleSidebar moduleName={moduleName} moduleIcon={moduleIcon} items={sidebarItems} />
       <main className="flex-1 h-screen flex flex-col bg-background overflow-hidden">
-        <header className="bg-background px-4 flex items-center justify-between shrink-0 h-11">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <h1 className="text-sm font-semibold text-foreground whitespace-nowrap">{derivedTitle}</h1>
-            <div id="module-header-portal" ref={portalRef} className="flex-1" />
-          </div>
-        </header>
+        <div id="module-header-portal" ref={portalRef} className="hidden" />
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>
