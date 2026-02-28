@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Package, FolderOpen, Building2, Loader2, X } from "lucide-react";
+import { Search, Package, FolderOpen, Building2, Loader2, X, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,13 +18,14 @@ interface SearchResults {
   assets: any[] | null;
   categories: any[] | null;
   departments: any[] | null;
+  users: any[] | null;
 }
 
 export function GlobalAssetSearch({ className }: { className?: string }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [results, setResults] = useState<SearchResults>({ assets: null, categories: null, departments: null });
+  const [results, setResults] = useState<SearchResults>({ assets: null, categories: null, departments: null, users: null });
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +63,7 @@ export function GlobalAssetSearch({ className }: { className?: string }) {
   // Parallel search
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
-      setResults({ assets: null, categories: null, departments: null });
+      setResults({ assets: null, categories: null, departments: null, users: null });
       setIsSearching(false);
       return;
     }
@@ -89,11 +90,17 @@ export function GlobalAssetSearch({ className }: { className?: string }) {
         .ilike("name", search)
         .eq("is_active", true)
         .limit(5),
-    ]).then(([assetsRes, categoriesRes, departmentsRes]) => {
+      supabase
+        .from("users")
+        .select("id, name, email")
+        .or(`name.ilike.${search},email.ilike.${search}`)
+        .limit(5),
+    ]).then(([assetsRes, categoriesRes, departmentsRes, usersRes]) => {
       setResults({
         assets: assetsRes.data,
         categories: categoriesRes.data,
         departments: departmentsRes.data,
+        users: usersRes.data,
       });
       setIsSearching(false);
     });
@@ -108,7 +115,7 @@ export function GlobalAssetSearch({ className }: { className?: string }) {
   const handleClear = () => {
     setQuery("");
     setDebouncedQuery("");
-    setResults({ assets: null, categories: null, departments: null });
+    setResults({ assets: null, categories: null, departments: null, users: null });
     setShowResults(false);
   };
 
@@ -125,7 +132,8 @@ export function GlobalAssetSearch({ className }: { className?: string }) {
   const hasResults =
     (results.assets && results.assets.length > 0) ||
     (results.categories && results.categories.length > 0) ||
-    (results.departments && results.departments.length > 0);
+    (results.departments && results.departments.length > 0) ||
+    (results.users && results.users.length > 0);
 
   const showDropdown = showResults && query.length >= 2;
 
@@ -238,6 +246,28 @@ export function GlobalAssetSearch({ className }: { className?: string }) {
                       >
                         <Building2 className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
                         <span className="text-sm">{dept.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+
+              {/* Users */}
+              {results.users && results.users.length > 0 && (
+                <>
+                  <CommandSeparator />
+                  <CommandGroup heading="Users">
+                    {results.users.map((user) => (
+                      <CommandItem
+                        key={user.id}
+                        value={`user-${user.name || user.email}`}
+                        onSelect={() => handleSelect(`/assets/allassets?search=${encodeURIComponent(user.name || user.email)}`)}
+                      >
+                        <User className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm truncate">{user.name || user.email}</span>
+                          {user.name && <span className="text-xs text-muted-foreground truncate">{user.email}</span>}
+                        </div>
                       </CommandItem>
                     ))}
                   </CommandGroup>

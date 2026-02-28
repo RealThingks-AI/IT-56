@@ -173,9 +173,15 @@ export function AssetsList({
 
       if (filters.search) {
         const s = sanitizeSearchInput(filters.search);
-        query = query.or(
-          `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`
-        );
+        let orFilter = `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`;
+        const { data: matchedUsers } = await supabase
+          .from("users")
+          .select("id")
+          .or(`name.ilike.%${s}%,email.ilike.%${s}%`);
+        if (matchedUsers && matchedUsers.length > 0) {
+          orFilter += `,assigned_to.in.(${matchedUsers.map(u => u.id).join(",")})`;
+        }
+        query = query.or(orFilter);
       }
       if (filters.status) {
         query = query.eq("status", filters.status);
@@ -213,9 +219,15 @@ export function AssetsList({
 
       if (filters.search) {
         const s = sanitizeSearchInput(filters.search);
-        query = query.or(
-          `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`
-        );
+        let orFilter = `name.ilike.%${s}%,asset_tag.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%,description.ilike.%${s}%`;
+        const { data: matchedUsers } = await supabase
+          .from("users")
+          .select("id")
+          .or(`name.ilike.%${s}%,email.ilike.%${s}%`);
+        if (matchedUsers && matchedUsers.length > 0) {
+          orFilter += `,assigned_to.in.(${matchedUsers.map(u => u.id).join(",")})`;
+        }
+        query = query.or(orFilter);
       }
       if (filters.status) {
         query = query.eq("status", filters.status);
