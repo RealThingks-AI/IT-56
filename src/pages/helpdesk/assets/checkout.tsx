@@ -38,6 +38,7 @@ import {
   SearchX,
   Loader2,
   AlertCircle,
+  History,
 } from "lucide-react";
 import { cn, sanitizeSearchInput } from "@/lib/utils";
 import { useUsers } from "@/hooks/useUsers";
@@ -45,6 +46,8 @@ import { getUserDisplayName } from "@/lib/userUtils";
 import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
 import { useUISettings } from "@/hooks/useUISettings";
 import { SortableTableHeader, type SortConfig } from "@/components/helpdesk/SortableTableHeader";
+import { useUsersLookup } from "@/hooks/useUsersLookup";
+import { formatRelativeTime } from "@/lib/dateUtils";
 
 interface CachedAsset {
   id: string;
@@ -94,6 +97,22 @@ const CheckoutPage = () => {
 
   const { uiSettings, updateUISettings } = useUISettings();
   const { data: users = [] } = useUsers();
+  const { resolveUserName } = useUsersLookup();
+
+  // Recent checkouts query
+  const { data: recentCheckouts = [] } = useQuery({
+    queryKey: ["recent-checkouts"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("itam_asset_history")
+        .select("id, created_at, action, new_value, old_value, asset_tag, performed_by")
+        .eq("action", "checked_out")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      return data || [];
+    },
+    staleTime: 30_000,
+  });
 
   // BUG FIX: Validate lastAssignee against current users list before applying
   const hasLoadedPrefs = useRef(false);
@@ -527,105 +546,150 @@ const CheckoutPage = () => {
             </CardContent>
           </Card>
 
-          {/* Checkout Form */}
-          <Card className="w-[340px] flex-shrink-0 flex flex-col lg:sticky lg:top-3 lg:self-start shadow-sm border">
-            <CardHeader className="pb-2 px-3 pt-3">
-              <CardTitle className="text-sm flex items-center gap-1.5">
-                <UserCheck className="h-3.5 w-3.5" />
-                Check Out
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">Assign selected assets to a user</p>
-            </CardHeader>
+          {/* Right Column */}
+          <div className="w-[408px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto max-h-full">
+            {/* Checkout Form */}
+            <Card className="flex-shrink-0 shadow-sm border">
+              <CardHeader className="pb-2 px-3 pt-3">
+                <CardTitle className="text-sm flex items-center gap-1.5">
+                  <UserCheck className="h-3.5 w-3.5" />
+                  Check Out
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Assign selected assets to a user</p>
+              </CardHeader>
 
-            <CardContent className="space-y-4 px-3 pb-3">
-              {selectedAssets.length > 0 ? (
-                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                  {selectedAssets.map(id => {
-                    const cached = selectedAssetCache.get(id);
-                    if (!cached) return null;
-                    return (
-                      <Badge key={id} variant="secondary" className="gap-0.5 text-xs h-5 px-1.5">
-                        {cached.asset_tag || cached.name}
-                        <X className="h-2.5 w-2.5 cursor-pointer hover:text-destructive transition-colors" onClick={() => toggleAsset(id)} />
-                      </Badge>
-                    );
-                  })}
+              <CardContent className="space-y-3 px-3 pb-3">
+                {selectedAssets.length > 0 ? (
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                    {selectedAssets.map(id => {
+                      const cached = selectedAssetCache.get(id);
+                      if (!cached) return null;
+                      return (
+                        <Badge key={id} variant="secondary" className="gap-0.5 text-xs h-5 px-1.5">
+                          {cached.asset_tag || cached.name}
+                          <X className="h-2.5 w-2.5 cursor-pointer hover:text-destructive transition-colors" onClick={() => toggleAsset(id)} />
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Select assets from the list</p>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Assign To <span className="text-destructive">*</span></Label>
+                  <Select value={assignTo || undefined} onValueChange={setAssignTo}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select person" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {getUserDisplayName(user) || user.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Select assets from the list</p>
-              )}
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">Assign To <span className="text-destructive">*</span></Label>
-                <Select value={assignTo || undefined} onValueChange={setAssignTo}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Select person" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {getUserDisplayName(user) || user.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Expected Return</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-8 text-xs",
+                          !expectedReturn && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-1.5 h-3 w-3" />
+                        {expectedReturn ? format(expectedReturn, "MMM dd, yyyy") : "Select date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={expectedReturn}
+                        onSelect={setExpectedReturn}
+                        initialFocus
+                        disabled={(date) => date < new Date()}
+                        className="p-2 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">Expected Return</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal h-8 text-xs",
-                        !expectedReturn && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-1.5 h-3 w-3" />
-                      {expectedReturn ? format(expectedReturn, "MMM dd, yyyy") : "Select date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={expectedReturn}
-                      onSelect={setExpectedReturn}
-                      initialFocus
-                      disabled={(date) => date < new Date()}
-                      className="p-2 pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Notes</Label>
+                   <Textarea
+                    placeholder="Checkout notes..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    className="text-xs resize-none min-h-[48px]"
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">Notes</Label>
-                 <Textarea
-                  placeholder="Checkout notes..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  className="text-xs resize-none min-h-[60px]"
-                />
-              </div>
+                <div className="pt-2 space-y-1.5 border-t">
+                  <Button className="w-full h-8 text-xs" onClick={handleCheckout} disabled={!canCheckout}>
+                    {showSuccess ? (
+                      <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Done!</>
+                    ) : checkoutMutation.isPending ? (
+                      <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing...</>
+                    ) : (
+                      <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Check Out{selectedAssets.length > 0 ? ` (${selectedAssets.length})` : ""}</>
+                    )}
+                  </Button>
+                  <Button variant="outline" className="w-full h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkoutMutation.isPending || showSuccess}>
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-              <div className="pt-2 space-y-1.5 border-t">
-                <Button className="w-full h-8 text-xs" onClick={handleCheckout} disabled={!canCheckout}>
-                  {showSuccess ? (
-                    <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Done!</>
-                  ) : checkoutMutation.isPending ? (
-                    <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing...</>
-                  ) : (
-                    <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Check Out{selectedAssets.length > 0 ? ` (${selectedAssets.length})` : ""}</>
-                  )}
-                </Button>
-                <Button variant="outline" className="w-full h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkoutMutation.isPending || showSuccess}>
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Recent Check Outs */}
+            <Card className="flex-shrink-0 shadow-sm border">
+              <CardHeader className="pb-1.5 px-3 pt-3">
+                <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                  <History className="h-3 w-3" />
+                  Recent Check Outs
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-3 pb-3">
+                {recentCheckouts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">No recent check outs</p>
+                ) : (
+                  <div className="max-h-[220px] overflow-y-auto">
+                    <Table wrapperClassName="border-0 rounded-none">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="text-[10px] px-1.5 h-6">When</TableHead>
+                          <TableHead className="text-[10px] px-1.5 h-6">Asset Tag</TableHead>
+                          <TableHead className="text-[10px] px-1.5 h-6">User</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {recentCheckouts.map((tx: any) => (
+                          <TableRow key={tx.id} className="h-7">
+                            <TableCell className="text-[11px] text-muted-foreground px-1.5 py-0.5 whitespace-nowrap">
+                              {formatRelativeTime(tx.created_at)}
+                            </TableCell>
+                            <TableCell className="text-[11px] px-1.5 py-0.5">
+                              {tx.asset_tag || "—"}
+                            </TableCell>
+                            <TableCell className="text-[11px] text-muted-foreground px-1.5 py-0.5 truncate max-w-[120px]">
+                              {resolveUserName(tx.performed_by) || tx.new_value || "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
