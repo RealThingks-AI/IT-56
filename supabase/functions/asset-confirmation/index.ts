@@ -16,7 +16,7 @@ function createSupabaseAdmin() {
 const TOKEN_EXPIRY_DAYS = 7;
 
 function redirectToResult(params: Record<string, string | string[]>): Response {
-  const baseUrl = Deno.env.get("SITE_URL") || "https://policy-palace-97.lovable.app";
+  const baseUrl = Deno.env.get("SITE_URL") || "https://it.realthingks.com";
   const url = new URL("/confirmation-result", baseUrl);
   for (const [k, v] of Object.entries(params)) {
     if (Array.isArray(v)) {

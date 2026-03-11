@@ -351,10 +351,12 @@ const App = () => {
                   {/* Catch-all */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
-              </Suspense>
-              </AppErrorBoundary>
-            </SystemSettingsProvider>
-          </AuthProvider>
+                </AppErrorBoundary>
+              </SystemSettingsProvider>
+            </AuthProvider>
+              } />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
