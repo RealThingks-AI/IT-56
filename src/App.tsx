@@ -175,11 +175,18 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AuthProvider>
-            <SystemSettingsProvider>
-              <AppErrorBoundary>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Fully public standalone routes - NO auth, NO sidebar */}
+              <Route path="/confirm-assets/:token" element={<ConfirmAssets />} />
+              <Route path="/confirmation-result" element={<ConfirmationResult />} />
+
+              {/* Everything else goes through auth */}
+              <Route path="/*" element={
+                <AuthProvider>
+                  <SystemSettingsProvider>
+                    <AppErrorBoundary>
+                    <Routes>
                   {/* Auth routes */}
                   <Route path="/login" element={<Login />} />
                   <Route path="/auth" element={<Navigate to="/login" replace />} />
@@ -188,8 +195,6 @@ const App = () => {
                   <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
                   <Route path="/access-denied" element={<AccessDenied />} />
                   <Route path="/status" element={<Status />} />
-                  <Route path="/confirm-assets/:token" element={<ConfirmAssets />} />
-                  <Route path="/confirmation-result" element={<ConfirmationResult />} />
                   <Route path="/profile" element={<Navigate to="/account" replace />} />
                   <Route path="/notifications" element={<Notifications />} />
 
@@ -346,10 +351,12 @@ const App = () => {
                   {/* Catch-all */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
-              </Suspense>
-              </AppErrorBoundary>
-            </SystemSettingsProvider>
-          </AuthProvider>
+                </AppErrorBoundary>
+              </SystemSettingsProvider>
+            </AuthProvider>
+              } />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
