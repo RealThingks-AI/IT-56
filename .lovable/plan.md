@@ -1,31 +1,40 @@
 
 
-# Asset Module Deep Audit — Bugs & Improvements
+# Fix: Edge Function URL Parsing + SITE_URL Secret
 
-## Status: ✅ Completed
+## Root Cause
 
-## Changes Made
+The `SITE_URL` Supabase secret is set to `it.realthingks.com` (without `https://`). The `new URL("/confirmation-result", "it.realthingks.com")` call throws `TypeError: Invalid URL` because the URL constructor requires a protocol scheme.
 
-### B1 + B9: Dispose sets `is_active: false` (Critical)
-- `dispose.tsx` — added `is_active: false` to the dispose mutation
-- `AssetsList.tsx` — bulk dispose now sets `is_active: false` and clears assignment fields
-- `DisposeAssetDialog.tsx` — detail-page dispose also sets `is_active: false`
+The edge function crashes and returns `{"error":"An error occurred..."}` instead of redirecting to the confirmation result page.
 
-### B10: Dashboard disposed count fixed
-- `dashboard.tsx` — `disposedCount` now uses a separate `count-only` query instead of being capped at the feed's `.limit(15)`
+## Fix (2 changes)
 
-### B3 + U1: Add Asset name field
-- `add.tsx` — added `asset_name` to zod schema, form defaults, edit-mode reset, and insert/update payloads
-- Added "Asset Name" form field in the UI after "Model"
+### 1. Edge function: Add protocol normalization (belt-and-suspenders)
+**File:** `supabase/functions/asset-confirmation/index.ts` (line 18-20)
 
-### B4: CheckOutDialog history already had asset_tag
-- Verified `CheckOutDialog.tsx` already fetches and includes `asset_tag` in history insert (no change needed)
+Add `https://` prefix if missing from `SITE_URL`:
 
-### B5: Purchase Orders query limit
-- `purchase-orders/index.tsx` — added `.limit(5000)` to PO query
+```typescript
+function redirectToResult(params: Record<string, string | string[]>): Response {
+  let baseUrl = Deno.env.get("SITE_URL") || "https://it.realthingks.com";
+  if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+    baseUrl = "https://" + baseUrl;
+  }
+  const url = new URL("/confirmation-result", baseUrl);
+  // ... rest unchanged
+}
+```
 
-### B6: Alerts page column selection
-- `alerts/index.tsx` — replaced `select("*")` with specific columns
+### 2. Update `SITE_URL` secret to include protocol
+Set the `SITE_URL` secret value to `https://it.realthingks.com` (with `https://`).
 
-### B7: Repair number generation
-- `repairs/create.tsx` — replaced `Math.random()` with sequential numbering based on last repair number from DB
+### 3. Redeploy the edge function
+After both changes, redeploy `asset-confirmation`.
+
+## Files to modify
+| File | Change |
+|------|--------|
+| `supabase/functions/asset-confirmation/index.ts` | Add protocol normalization to `redirectToResult` |
+| Supabase secret `SITE_URL` | Update value to `https://it.realthingks.com` |
+
