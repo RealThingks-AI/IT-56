@@ -21,6 +21,8 @@ interface AssetRow {
   model?: string;
   serial_number?: string;
   photo_url?: string | null;
+  confirm_url?: string;
+  deny_url?: string;
 }
 
 function createSupabaseAdmin() {
@@ -145,56 +147,72 @@ async function sendEmailViaGraph(
 function replacePlaceholders(text: string, variables: Record<string, string>): string {
   let result = text;
   for (const [key, value] of Object.entries(variables)) {
-    result = result.replace(new RegExp(`{{${key}}}`, "g"), value || "N/A");
+    if (key === "confirm_all_url" && value) {
+      const btn = `<a href="${value}" style="display:inline-block;padding:10px 24px;background:#16a34a;color:#ffffff;font-weight:600;font-size:13px;text-decoration:none;border-radius:6px;margin:4px 8px 4px 0;">&#9989; Confirm All</a>`;
+      result = result.replace(new RegExp(`{{${key}}}`, "g"), btn);
+    } else if (key === "deny_all_url" && value) {
+      const btn = `<a href="${value}" style="display:inline-block;padding:10px 24px;background:#ffffff;color:#dc2626;font-weight:600;font-size:13px;text-decoration:none;border-radius:6px;border:2px solid #dc2626;margin:4px 8px 4px 0;">&#10060; Deny All</a>`;
+      result = result.replace(new RegExp(`{{${key}}}`, "g"), btn);
+    } else {
+      result = result.replace(new RegExp(`{{${key}}}`, "g"), value || "N/A");
+    }
   }
   return result;
 }
 
 function buildAssetTableHtml(assets: AssetRow[]): string {
-  const thStyle = `padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; border: 1px solid #d4a843;`;
-  const headerBg = `background: #4a4a3a; color: #d4a843;`;
+  const hasActions = assets.some(a => a.confirm_url || a.deny_url);
+  const thStyle = `padding:8px 10px;text-align:left;font-size:12px;font-weight:600;color:#374151;border-bottom:2px solid #d1d5db;`;
 
-  const headerRow = `<tr style="${headerBg}">
-    <th style="${thStyle}">Asset Tag ID</th>
+  const headerRow = `<tr style="background:#f3f4f6;">
+    <th style="${thStyle}">Asset Tag</th>
     <th style="${thStyle}">Description</th>
     <th style="${thStyle}">Brand</th>
     <th style="${thStyle}">Model</th>
     <th style="${thStyle}">Serial No</th>
-    <th style="${thStyle} text-align: center;">Photo</th>
+    <th style="${thStyle}text-align:center;">Photo</th>
+    ${hasActions ? `<th style="${thStyle}text-align:center;">Action</th>` : ""}
   </tr>`;
 
   const bodyRows = assets.map((a, i) => {
-    const bgColor = i % 2 === 0 ? "#3a3a2a" : "#4a4a3a";
-    const tdStyle = `padding: 10px 12px; font-size: 12px; border: 1px solid #d4a843; color: #e5e7eb; background: ${bgColor};`;
+    const bgColor = i % 2 === 0 ? "#ffffff" : "#f9fafb";
+    const tdStyle = `padding:8px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#374151;background:${bgColor};`;
     const photoCell = a.photo_url
-      ? `<img src="${a.photo_url}" alt="Asset" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #d4a843;" />`
-      : `<span style="color: #9ca3af; font-size: 11px;">No photo</span>`;
+      ? `<img src="${a.photo_url}" alt="Asset" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #d1d5db;" />`
+      : `<span style="color:#9ca3af;font-size:11px;">—</span>`;
+
+    let actionCell = "";
+    if (hasActions) {
+      const confirmBtn = a.confirm_url
+        ? `<a href="${a.confirm_url}" style="display:inline-block;padding:4px 10px;background:#16a34a;color:#fff;font-size:11px;font-weight:600;text-decoration:none;border-radius:4px;margin:2px;">&#10003;</a>`
+        : "";
+      const denyBtn = a.deny_url
+        ? `<a href="${a.deny_url}" style="display:inline-block;padding:4px 10px;background:#dc2626;color:#fff;font-size:11px;font-weight:600;text-decoration:none;border-radius:4px;margin:2px;">&#10007;</a>`
+        : "";
+      actionCell = `<td style="${tdStyle}text-align:center;white-space:nowrap;">${confirmBtn}${denyBtn}</td>`;
+    }
+
     return `<tr>
       <td style="${tdStyle}"><strong>${a.asset_tag || "N/A"}</strong></td>
       <td style="${tdStyle}">${a.description || "N/A"}</td>
       <td style="${tdStyle}">${a.brand || "N/A"}</td>
       <td style="${tdStyle}">${a.model || "N/A"}</td>
-      <td style="${tdStyle}">${a.serial_number ? `S/N: ${a.serial_number}` : "N/A"}</td>
-      <td style="${tdStyle} text-align: center;">${photoCell}</td>
+      <td style="${tdStyle}">${a.serial_number || "N/A"}</td>
+      <td style="${tdStyle}text-align:center;">${photoCell}</td>
+      ${actionCell}
     </tr>`;
   }).join("");
 
-  return `<table style="border-collapse: collapse; width: 100%; margin: 16px 0; border: 1px solid #d4a843; border-radius: 8px; overflow: hidden;">
+  return `<table style="border-collapse:collapse;width:100%;margin:16px 0;border:1px solid #d1d5db;border-radius:6px;overflow:hidden;">
     <thead>${headerRow}</thead>
     <tbody>${bodyRows}</tbody>
   </table>`;
 }
 
-/**
- * Build structured email HTML.
- * Table is injected right after the action line, before "Notes:".
- * Order: Hello + intro → [ASSET TABLE] → Notes → Thank you → Best regards
- */
 function wrapInHtmlLayout(body: string, senderName: string, assetTableHtml?: string): string {
   let contentParts: string[];
 
   if (assetTableHtml) {
-    // Split at "Notes:" to inject table before it
     const notesMatch = body.match(/\n\s*Notes:/i);
     if (notesMatch && notesMatch.index !== undefined) {
       const beforeNotes = body.substring(0, notesMatch.index);
@@ -203,7 +221,6 @@ function wrapInHtmlLayout(body: string, senderName: string, assetTableHtml?: str
       const afterHtml = notesAndAfter.replace(/\n/g, "<br />");
       contentParts = [introHtml, assetTableHtml, afterHtml];
     } else {
-      // Fallback: split at sign-off patterns
       let beforeSignoff = body;
       let signoffPart = "";
       const signoffPatterns = [/\n\s*Best regards/i, /\n\s*Thank you/i, /\n\s*Thanks/i];
@@ -226,20 +243,22 @@ function wrapInHtmlLayout(body: string, senderName: string, assetTableHtml?: str
   return `<!DOCTYPE html>
 <html>
 <head>
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-    .content { background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; font-size: 14px; }
-    .footer { margin-top: 20px; font-size: 12px; color: #9ca3af; text-align: center; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f3f4f6; }
+  .container { width: 100%; max-width: 800px; margin: 0 auto; padding: 20px; }
+  .header { background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; }
+  .content { background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; font-size: 14px; }
+  .footer { margin-top: 16px; font-size: 12px; color: #9ca3af; text-align: center; padding: 8px; }
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="header"><h1 style="margin: 0; font-size: 20px;">📧 ${senderName}</h1></div>
-    <div class="content">${contentHtml}</div>
-    <div class="footer">This is an automated message from RT-IT-Hub. Please do not reply directly.</div>
-  </div>
+<div class="container">
+  <div class="header"><h1 style="margin:0;font-size:18px;">&#128231; ${senderName}</h1></div>
+  <div class="content">${contentHtml}</div>
+  <div class="footer">This is an automated message from RT-IT-Hub. Please do not reply directly.</div>
+</div>
 </body>
 </html>`;
 }
@@ -269,6 +288,27 @@ serve(async (req) => {
   console.log("=== send-asset-email: Request received ===");
 
   try {
+    // Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(
+      authHeader.replace("Bearer ", "")
+    );
+    if (claimsErr || !claimsData?.claims) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { templateId, recipientEmail, assetId, assets: assetsInput, variables = {}, testMode } = await req.json();
 
     const creds = await resolveAzureCredentials();
@@ -334,6 +374,21 @@ serve(async (req) => {
         body: "Hello {{user_name}},\n\nThis is a confirmation email. The following items have been returned:\n\nNotes: {{notes}}\n\nThank you.\n\nBest regards,\nIT Team",
         enabled: true,
       },
+      asset_confirmation: {
+        subject: "Asset Confirmation Required \u2014 {{asset_count}} asset(s)",
+        body: "Hello {{user_name}},\n\nYour IT department requires you to confirm the assets currently assigned to you.\n\nPlease review the list below and use the buttons to confirm or deny each asset individually, or use the bulk action buttons:\n\n{{confirm_all_url}} {{deny_all_url}}\n\nNotes: This link will expire in 7 days.\n\nThank you.\n\nBest regards,\nIT Team",
+        enabled: true,
+      },
+      reassign_from: {
+        subject: "Asset Reassigned From You: {{asset_tag}}",
+        body: "Hello {{user_name}},\n\nThe following asset(s) previously assigned to you have been reassigned to {{new_assignee}}.\n\nNotes: {{notes}}\n\nIf you believe this is an error, please contact your IT department.\n\nBest regards,\nIT Team",
+        enabled: true,
+      },
+      reassign_to: {
+        subject: "Asset Assigned To You: {{asset_tag}}",
+        body: "Hello {{user_name}},\n\nThe following asset(s) have been assigned to you (previously assigned to {{old_assignee}}).\n\nNotes: {{notes}}\n\nPlease ensure you have received the asset(s) listed above.\n\nBest regards,\nIT Team",
+        enabled: true,
+      },
     };
 
     const template = templateConfig?.config_value as any || defaultTemplates[templateId];
@@ -382,10 +437,21 @@ serve(async (req) => {
       }
     }
 
+    // Safety net: auto-generate confirm/deny URLs from token if missing
+    if (templateId === "asset_confirmation" && variables.token) {
+      const baseUrl = Deno.env.get("SUPABASE_URL") + "/functions/v1/asset-confirmation";
+      if (!variables.confirm_all_url) {
+        variables.confirm_all_url = `${baseUrl}?action=confirm_all&token=${variables.token}`;
+      }
+      if (!variables.deny_all_url) {
+        variables.deny_all_url = `${baseUrl}?action=deny_all&token=${variables.token}`;
+      }
+    }
+
     const assetTableHtml = assetRows.length > 0 ? buildAssetTableHtml(assetRows) : undefined;
 
     const allVars = { ...assetVars, ...variables };
-    if (!allVars.notes) allVars.notes = "—";
+    if (!allVars.notes) allVars.notes = "\u2014";
 
     const subject = replacePlaceholders(template.subject, allVars);
     const body = replacePlaceholders(template.body, allVars);

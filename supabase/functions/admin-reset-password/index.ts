@@ -24,13 +24,32 @@ Deno.serve(async (req) => {
       }
     )
 
-    // Verify the requesting user is a super admin
-    const authHeader = req.headers.get('Authorization')!
+    // Verify the requesting user via JWT claims
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
-
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    )
+    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token)
+    if (claimsErr || !claimsData?.claims) {
+      console.error('Auth error:', claimsErr)
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+    const userId_caller = claimsData.claims.sub as string
+    // Also fetch full user for email info
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId_caller)
     if (authError || !user) {
-      console.error('Auth error:', authError)
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
@@ -66,10 +85,16 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Validate password strength
-    if (newPassword.length < 6) {
+    // Validate password strength (must match client-side requirements)
+    if (newPassword.length < 8) {
       return new Response(
-        JSON.stringify({ error: 'Password must be at least 6 characters' }),
+        JSON.stringify({ error: 'Password must be at least 8 characters' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return new Response(
+        JSON.stringify({ error: 'Password must contain uppercase, lowercase, and a number' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }

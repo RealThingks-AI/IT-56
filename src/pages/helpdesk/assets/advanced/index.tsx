@@ -23,300 +23,29 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SortableTableHeader, SortConfig } from "@/components/helpdesk/SortableTableHeader";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeSearchInput } from "@/lib/utils";
 import { format, differenceInDays, isPast } from "date-fns";
 import { toast } from "sonner";
-import { useAssetSetupConfig } from "@/hooks/useAssetSetupConfig";
+import { useAssetSetupConfig } from "@/hooks/assets/useAssetSetupConfig";
+import { useSystemSettings } from "@/contexts/SystemSettingsContext";
 import { EmailsTab } from "@/components/helpdesk/assets/setup/EmailsTab";
 import AssetReports from "@/pages/helpdesk/assets/reports";
 import AssetLogsPage from "@/pages/helpdesk/assets/AssetLogsPage";
 
-import LicensesIndex from "@/pages/helpdesk/assets/licenses/index";
+
 import DepreciationDashboard from "@/pages/helpdesk/assets/depreciation/index";
 
+import DisposePage from "@/pages/helpdesk/assets/dispose";
+import AlertsPage from "@/pages/helpdesk/assets/alerts/index";
+import ImportExportPage from "@/pages/helpdesk/assets/import-export";
 
-// ─── Inline Documents Components ───────────────────────────────────────────────
-// Photo gallery rendered inline (not as a dialog trigger card)
-const InlinePhotoGallery = () => {
-  const queryClient = useQueryClient();
-  const [deletePhotoConfirm, setDeletePhotoConfirm] = useState<any>(null);
 
-  const { data: assetPhotos, isLoading } = useQuery({
-    queryKey: ["asset-photos-storage"],
-    queryFn: async () => {
-      const { data: assets } = await supabase
-        .from("itam_assets")
-        .select("custom_fields")
-        .eq("is_active", true)
-        .not("custom_fields->>photo_url", "is", null)
-        .limit(1000);
-      const seenUrls = new Set<string>();
-      const dbPhotos: { id: string; name: string; path: string; photo_url: string; created_at: string | null }[] = [];
-      if (assets) {
-        for (const asset of assets) {
-          const photoUrl = (asset.custom_fields as Record<string, unknown>)?.photo_url as string | undefined;
-          if (!photoUrl || seenUrls.has(photoUrl)) continue;
-          if (!photoUrl.includes("supabase") && !photoUrl.includes("storage")) continue;
-          seenUrls.add(photoUrl);
-          const parts = photoUrl.split("/");
-          const name = parts[parts.length - 1] || "unknown";
-          const bucketIdx = photoUrl.indexOf("/asset-photos/");
-          const path = bucketIdx >= 0 ? photoUrl.substring(bucketIdx + "/asset-photos/".length) : `migrated/${name}`;
-          dbPhotos.push({ id: photoUrl, name: decodeURIComponent(name), path, photo_url: photoUrl, created_at: null });
-        }
-      }
-      return dbPhotos;
-    },
-  });
-
-  const deletePhotoMutation = useMutation({
-    mutationFn: async (photo: any) => {
-      const { error: storageError } = await supabase.storage.from("asset-photos").remove([photo.path]);
-      if (storageError) throw storageError;
-      const { data: affectedAssets } = await supabase.from("itam_assets").select("id, custom_fields").eq("is_active", true).not("custom_fields->>photo_url", "is", null);
-      if (affectedAssets) {
-        for (const asset of affectedAssets) {
-          const cf = asset.custom_fields as Record<string, unknown> | null;
-          if (cf?.photo_url === photo.photo_url) {
-            const updatedCf = { ...cf } as Record<string, unknown>;
-            delete updatedCf.photo_url;
-            await supabase.from("itam_assets").update({ custom_fields: updatedCf as any }).eq("id", asset.id);
-          }
-        }
-      }
-    },
-    onSuccess: () => {
-      toast.success("Photo deleted");
-      queryClient.invalidateQueries({ queryKey: ["asset-photos-storage"] });
-    },
-    onError: () => toast.error("Failed to delete photo"),
-  });
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Image className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Photos</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {[...Array(6)].map((_, i) => <Skeleton key={i} className="aspect-square rounded-lg" />)}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardContent className="pt-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Image className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Photos</span>
-          <span className="text-xs text-muted-foreground">({assetPhotos?.length || 0})</span>
-        </div>
-        {(!assetPhotos || assetPhotos.length === 0) ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <Image className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No photos linked to any assets yet.</p>
-            <p className="text-xs mt-1">Add photos from the asset detail view.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {assetPhotos.map((photo) => (
-              <div key={photo.photo_url} className="relative group">
-                <div className="aspect-square rounded-lg overflow-hidden bg-muted">
-                  <img src={photo.photo_url} alt={photo.name} className="w-full h-full object-cover hover:scale-105 transition-transform" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3ENo Image%3C/text%3E%3C/svg%3E'; }} />
-                </div>
-                <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setDeletePhotoConfirm(photo)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-                <p className="text-[10px] mt-1 truncate text-muted-foreground" title={photo.name}>{photo.name}</p>
-              </div>
-            ))}
-          </div>
-        )}
-        {/* Photo delete confirm dialog */}
-        <ConfirmDialog
-          open={!!deletePhotoConfirm}
-          onOpenChange={(open) => { if (!open) setDeletePhotoConfirm(null); }}
-          onConfirm={() => { if (deletePhotoConfirm) deletePhotoMutation.mutate(deletePhotoConfirm); setDeletePhotoConfirm(null); }}
-          title="Delete Photo"
-          description="Delete this photo? This cannot be undone."
-          confirmText="Delete"
-          variant="destructive"
-        />
-      </CardContent>
-    </Card>
-  );
-};
-
-// Documents list rendered inline
-const InlineDocumentsList = () => {
-  const queryClient = useQueryClient();
-  const [deleteDocConfirm, setDeleteDocConfirm] = useState<any>(null);
-  const { data: documents, isLoading } = useQuery({
-    queryKey: ["asset-documents-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("itam_asset_documents").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const deleteDocMutation = useMutation({
-    mutationFn: async (doc: any) => {
-      const urlParts = doc.file_path.split("/");
-      const fileName = urlParts[urlParts.length - 1];
-      await supabase.storage.from("asset-documents").remove([fileName]);
-      const { error: dbError } = await supabase.from("itam_asset_documents").delete().eq("id", doc.id);
-      if (dbError) throw dbError;
-    },
-    onSuccess: () => { toast.success("Document deleted"); queryClient.invalidateQueries({ queryKey: ["asset-documents-all"] }); },
-    onError: () => toast.error("Failed to delete document"),
-  });
-
-  const getDocIcon = (mimeType: string | null) => {
-    if (!mimeType) return FileText;
-    if (mimeType.includes("image")) return Image;
-    return FileText;
-  };
-
-  const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return "—";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-2 mb-3">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Documents</span>
-          </div>
-          <div className="space-y-2">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 rounded-md" />)}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardContent className="pt-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Documents</span>
-          <span className="text-xs text-muted-foreground">({documents?.length || 0})</span>
-          <p className="ml-auto text-[10px] text-muted-foreground">Add documents from the asset detail Docs tab</p>
-        </div>
-        {(!documents || documents.length === 0) ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No documents available.</p>
-          </div>
-        ) : (
-          <div className="divide-y rounded-md border">
-            {documents.map((doc: any) => {
-              const DocIcon = getDocIcon(doc.mime_type);
-              return (
-                <div key={doc.id} className="flex items-center gap-3 p-2.5 hover:bg-muted/50 transition-colors">
-                  <div className="w-8 h-8 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                    <DocIcon className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{doc.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{formatFileSize(doc.file_size)} • {doc.created_at ? format(new Date(doc.created_at), "MMM dd, yyyy") : "—"}</p>
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => window.open(doc.file_path, "_blank")}>
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteDocConfirm(doc)}>
-                     <Trash2 className="h-3.5 w-3.5" />
-                   </Button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <ConfirmDialog
-          open={!!deleteDocConfirm}
-          onOpenChange={(open) => { if (!open) setDeleteDocConfirm(null); }}
-          onConfirm={() => { if (deleteDocConfirm) deleteDocMutation.mutate(deleteDocConfirm); setDeleteDocConfirm(null); }}
-          title="Delete Document"
-          description="Delete this document? This cannot be undone."
-          confirmText="Delete"
-          variant="destructive"
-        />
-      </CardContent>
-    </Card>
-  );
-};
-
-// Documents stats with loading skeleton
-const DocumentsStats = () => {
-  const { data: docCount = 0, isLoading: loadingDocs } = useQuery({
-    queryKey: ["itam-docs-count"],
-    queryFn: async () => {
-      const { count, error } = await supabase.from("itam_asset_documents").select("*", { count: "exact", head: true });
-      if (error) throw error;
-      return count || 0;
-    },
-  });
-
-  const { data: photoCount = 0, isLoading: loadingPhotos } = useQuery({
-    queryKey: ["itam-photos-count"],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from("itam_assets")
-        .select("*", { count: "exact", head: true })
-        .not("custom_fields->>photo_url", "is", null)
-        .neq("custom_fields->>photo_url", "");
-      if (error) return 0;
-      return count || 0;
-    },
-  });
-
-  const { data: assetsWithMedia = 0, isLoading: loadingMedia } = useQuery({
-    queryKey: ["itam-assets-with-media"],
-    queryFn: async () => {
-      const { data: docAssets } = await supabase.from("itam_asset_documents").select("asset_id");
-      const docSet = new Set((docAssets || []).map(d => d.asset_id).filter(id => id && id !== "00000000-0000-0000-0000-000000000000"));
-      const { data: photoAssets } = await supabase
-        .from("itam_assets")
-        .select("id")
-        .not("custom_fields->>photo_url", "is", null)
-        .neq("custom_fields->>photo_url", "");
-      (photoAssets || []).forEach(a => docSet.add(a.id));
-      return docSet.size;
-    },
-  });
-
-  const isLoading = loadingDocs || loadingPhotos || loadingMedia;
-
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-[68px] rounded-lg" />)}
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-      <StatCard icon={Image} value={photoCount} label="Total Photos" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
-      <StatCard icon={FileText} value={docCount} label="Total Documents" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
-      <StatCard icon={Package} value={assetsWithMedia} label="Assets with Media" colorClass="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" />
-    </div>
-  );
-};
+// Extracted components
+import { InlinePhotoGallery } from "@/components/helpdesk/assets/InlinePhotoGallery";
+import { InlineDocumentsList } from "@/components/helpdesk/assets/InlineDocumentsList";
+import { DocumentsStats } from "@/components/helpdesk/assets/DocumentsStats";
 
 // Wrapper components to embed existing pages without their own headers/padding
-const LicensesContent = () => <LicensesIndex embedded />;
 const DepreciationContent = () => <DepreciationDashboard embedded />;
 
 
@@ -334,102 +63,31 @@ type SetupTabId = typeof SETUP_TABS[number]["id"];
 
 const ITEMS_PER_PAGE = 50;
 
-// Reusable stat card component — compact, no hover shadow per design philosophy
-// Re-export shared StatCard for backward compatibility
 import { StatCard } from "@/components/helpdesk/assets/StatCard";
-export { StatCard };
 
-// Deterministic avatar color based on name hash
-const AVATAR_COLORS = [
-  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
-  "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
-  "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-];
 
-const getAvatarColor = (name: string) => {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-};
-
-// Status dot indicator
-const StatusDot = ({ status, label }: { status: "active" | "inactive" | "pending" | "in_progress" | "completed" | "cancelled" | "expired" | "expiring"; label: string }) => {
-  const dotColor = {
-    active: "bg-green-500",
-    inactive: "bg-red-500",
-    pending: "bg-yellow-500",
-    in_progress: "bg-blue-500",
-    completed: "bg-green-500",
-    cancelled: "bg-red-500",
-    expired: "bg-red-500",
-    expiring: "bg-yellow-500",
-  }[status] || "bg-muted-foreground";
-
-  return (
-    <span className="inline-flex items-center gap-1.5 text-sm">
-      <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-      {label}
-    </span>
-  );
-};
-
-// Pagination component
-const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage, onPageChange }: { currentPage: number; totalPages: number; totalItems: number; itemsPerPage: number; onPageChange: (page: number) => void }) => {
-  if (totalPages <= 1) return null;
-  const start = (currentPage - 1) * itemsPerPage + 1;
-  const end = Math.min(currentPage * itemsPerPage, totalItems);
-  return (
-    <div className="flex items-center justify-between pt-3 px-1">
-      <p className="text-xs text-muted-foreground">
-        Showing {start}–{end} of {totalItems}
-      </p>
-      <div className="flex items-center gap-1">
-        <Button variant="outline" size="icon" className="h-7 w-7" disabled={currentPage <= 1} onClick={() => onPageChange(currentPage - 1)}>
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </Button>
-        <span className="text-xs text-muted-foreground px-2">Page {currentPage} of {totalPages}</span>
-        <Button variant="outline" size="icon" className="h-7 w-7" disabled={currentPage >= totalPages} onClick={() => onPageChange(currentPage + 1)}>
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
-};
+// Shared utilities
+import { getAvatarColor } from "@/lib/avatarUtils";
+import { StatusDot } from "@/components/helpdesk/assets/StatusDot";
+import { PaginationControls } from "@/components/helpdesk/assets/PaginationControls";
 
 // CSV export utility
-const exportCSV = (rows: Record<string, string | number>[], filename: string) => {
-  if (rows.length === 0) { toast.info("No data to export"); return; }
-  const headers = Object.keys(rows[0]);
-  const csvContent = [
-    headers.join(","),
-    ...rows.map(row => headers.map(h => `"${String(row[h] ?? "").replace(/"/g, '""')}"`).join(","))
-  ].join("\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${filename}_${new Date().toISOString().split("T")[0]}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-  toast.success(`Exported ${rows.length} records`);
-};
+import { exportCSV } from "@/lib/assets/csvExportUtils";
 
-const VALID_TABS = ["licenses", "repairs", "warranties", "depreciation", "documents", "emails", "reports", "logs", "setup"] as const;
+const VALID_TABS = ["repairs", "warranties", "depreciation", "documents", "emails", "reports", "logs", "dispose", "alerts", "import-export", "setup"] as const;
 
 export default function AdvancedPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { settings } = useSystemSettings();
+  const currencySymbols: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
+  const currencySymbol = currencySymbols[settings?.currency] || "$";
   
   // ─── URL-synced tab state (Phase 1: B4, B5, Phase 3: F20) ─────────────────
   const urlTab = searchParams.get("tab");
   const urlSection = searchParams.get("section");
-  const activeTab = urlTab && (VALID_TABS as readonly string[]).includes(urlTab) ? urlTab : "licenses";
+  const activeTab = urlTab && (VALID_TABS as readonly string[]).includes(urlTab) ? urlTab : "repairs";
   const setupSubTab: SetupTabId = (urlSection && SETUP_TABS.some(t => t.id === urlSection) ? urlSection : "sites") as SetupTabId;
 
   const setActiveTab = useCallback((tab: string) => {
@@ -512,7 +170,7 @@ export default function AdvancedPage() {
   const { data: setupAssetCounts = { category: {}, department: {}, location: {}, make: {} } } = useQuery({
     queryKey: ["setup-asset-counts"],
     queryFn: async () => {
-      const { data } = await supabase.from("itam_assets").select("category_id, department_id, location_id, make_id").eq("is_active", true);
+      const { data } = await supabase.from("itam_assets").select("category_id, department_id, location_id, make_id").eq("is_active", true).eq("is_hidden", false);
       const counts = { category: {} as Record<string, number>, department: {} as Record<string, number>, location: {} as Record<string, number>, make: {} as Record<string, number> };
       (data || []).forEach(a => {
         if (a.category_id) counts.category[a.category_id] = (counts.category[a.category_id] || 0) + 1;
@@ -615,6 +273,7 @@ export default function AdvancedPage() {
         .from("itam_assets")
         .select("*, category:itam_categories(name), make:itam_makes(name)")
         .eq("is_active", true)
+        .eq("is_hidden", false)
         .not("warranty_expiry", "is", null)
         .order("warranty_expiry", { ascending: true });
       return data || [];
@@ -643,6 +302,7 @@ export default function AdvancedPage() {
         .from("itam_assets")
         .select("vendor_id")
         .eq("is_active", true)
+        .eq("is_hidden", false)
         .not("vendor_id", "is", null);
       const counts: Record<string, number> = {};
       data?.forEach((a) => {
@@ -656,12 +316,12 @@ export default function AdvancedPage() {
 
   // Filter & sort vendors
   const filteredVendors = vendors
-    .filter((vendor) =>
-      vendorSearch
-        ? vendor.name.toLowerCase().includes(vendorSearch.toLowerCase()) ||
-          vendor.contact_email?.toLowerCase().includes(vendorSearch.toLowerCase())
-        : true
-    )
+    .filter((vendor) => {
+      if (!vendorSearch) return true;
+      const s = sanitizeSearchInput(vendorSearch).toLowerCase();
+      return vendor.name.toLowerCase().includes(s) ||
+        vendor.contact_email?.toLowerCase().includes(s);
+    })
     .sort((a, b) => {
       const { column, direction } = vendorSort;
       if (!direction) return 0;
@@ -682,7 +342,7 @@ export default function AdvancedPage() {
   const filteredMaintenances = maintenances.filter(m => {
     if (maintenanceStatusFilter !== "all" && m.status !== maintenanceStatusFilter) return false;
     if (!maintenanceSearch) return true;
-    const searchLower = maintenanceSearch.toLowerCase();
+    const searchLower = sanitizeSearchInput(maintenanceSearch).toLowerCase();
     return (
       m.asset?.name?.toLowerCase().includes(searchLower) ||
       m.asset?.asset_tag?.toLowerCase().includes(searchLower) ||
@@ -720,7 +380,7 @@ export default function AdvancedPage() {
       if (warrantyInfo.status !== warrantyStatusFilter) return false;
     }
     if (warrantySearch) {
-      const searchLower = warrantySearch.toLowerCase();
+      const searchLower = sanitizeSearchInput(warrantySearch).toLowerCase();
       const matchesSearch = 
         asset.name?.toLowerCase().includes(searchLower) ||
         asset.asset_tag?.toLowerCase().includes(searchLower) ||
@@ -812,24 +472,33 @@ export default function AdvancedPage() {
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+      
+      // S1: Input validation - trim and enforce length limits
+      const trimmedValue = inputValue.trim();
+      if (!trimmedValue || trimmedValue.length === 0) throw new Error("Name is required");
+      if (trimmedValue.length > 100) throw new Error("Name must be 100 characters or less");
+      
       const tableName = getTableName(dialogType);
       if (dialogMode === "add") {
         if (dialogType === "category") {
           const { data: existing } = await supabase
             .from("itam_categories")
-            .select("id, name")
-            .eq("is_active", true)
-            .ilike("name", inputValue.trim());
+            .select("id, name, is_active")
+            .ilike("name", trimmedValue);
           if (existing && existing.length > 0) {
-            throw new Error(`A category named "${existing[0].name}" already exists`);
+            const activeMatch = existing.find(e => e.is_active);
+            if (activeMatch) {
+              throw new Error(`A category named "${activeMatch.name}" already exists`);
+            }
+            throw new Error(`A category named "${existing[0].name}" exists but is inactive. Please reactivate it instead of creating a duplicate.`);
           }
         }
-        const insertData: Record<string, unknown> = { name: inputValue.trim() };
+        const insertData: Record<string, unknown> = { name: trimmedValue };
         if (dialogType === "location" && selectedSiteId) insertData.site_id = selectedSiteId;
         const { error } = await supabase.from(tableName as any).insert(insertData);
         if (error) throw error;
       } else {
-        const updateData: Record<string, unknown> = { name: inputValue.trim() };
+        const updateData: Record<string, unknown> = { name: trimmedValue };
         if (dialogType === "location") updateData.site_id = selectedSiteId || null;
         const { error } = await supabase.from(tableName as any).update(updateData).eq("id", selectedItem.id);
         if (error) throw error;
@@ -916,7 +585,7 @@ export default function AdvancedPage() {
 
   const renderSetupTable = (items: any[], type: string) => (
     <Table>
-      <TableHeader className="bg-muted/50">
+      <TableHeader className="bg-muted">
         <TableRow>
           <TableHead className="font-medium text-xs uppercase text-muted-foreground">Name</TableHead>
           {type === "location" && <TableHead className="font-medium text-xs uppercase text-muted-foreground">Site</TableHead>}
@@ -928,20 +597,20 @@ export default function AdvancedPage() {
       <TableBody>
         {items.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={type === "location" ? 5 : 4} className="text-center py-8 text-muted-foreground">
+            <TableCell colSpan={type === "location" ? 5 : 4} className="text-center py-10 text-muted-foreground">
               No {type}s found. Click "Add {type}" to create one.
             </TableCell>
           </TableRow>
         ) : (
           items.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="font-medium">{item.name}</TableCell>
+            <TableRow key={item.id} className="hover:bg-muted/50 transition-colors">
+              <TableCell className="font-medium text-xs">{item.name}</TableCell>
               {type === "location" && (
-                <TableCell>
+                <TableCell className="text-xs">
                   {item.site_id ? (sites.find(s => s.id === item.site_id)?.name || "-") : <span className="text-muted-foreground">-</span>}
                 </TableCell>
               )}
-              <TableCell className="text-sm text-muted-foreground">{getSetupItemAssetCount(type, item.id)}</TableCell>
+              <TableCell className="text-xs text-muted-foreground">{getSetupItemAssetCount(type, item.id)}</TableCell>
               <TableCell><StatusDot status="active" label="Active" /></TableCell>
               <TableCell className="text-right">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(type, item)}>
@@ -964,15 +633,22 @@ export default function AdvancedPage() {
         <CardContent className="pt-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-muted-foreground">Manage asset categories and tag format prefixes</span>
-            <div className="ml-auto">
-              <Button size="sm" onClick={() => openAddDialog("category")}>
-                <Plus className="h-3 w-3 mr-2" />
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => exportCSV(categories.map(cat => {
+                const tf = getTagFormatForCategory(cat.id);
+                return { Category: cat.name, Prefix: tf?.prefix || "—", Padding: tf?.zero_padding || "—", Assets: getSetupItemAssetCount("category", cat.id) };
+              }), "categories")}>
+                <FileDown className="h-3.5 w-3.5 mr-1" />
+                Export
+              </Button>
+              <Button size="sm" className="h-7 text-xs" onClick={() => openAddDialog("category")}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Add Category
               </Button>
             </div>
           </div>
           <Table>
-            <TableHeader className="bg-muted/50">
+            <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Category</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Prefix</TableHead>
@@ -986,7 +662,7 @@ export default function AdvancedPage() {
             <TableBody>
               {categories.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                     No categories found. Click "Add Category" to create one.
                   </TableCell>
                 </TableRow>
@@ -994,12 +670,12 @@ export default function AdvancedPage() {
                 categories.map((cat) => {
                   const tf = getTagFormatForCategory(cat.id);
                   return (
-                    <TableRow key={cat.id}>
-                      <TableCell className="font-medium">{cat.name}</TableCell>
-                      <TableCell>
-                        {tf ? <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{tf.prefix}</code> : <span className="text-muted-foreground text-sm">—</span>}
+                    <TableRow key={cat.id} className="hover:bg-muted/50 transition-colors">
+                      <TableCell className="font-medium text-xs">{cat.name}</TableCell>
+                      <TableCell className="text-xs">
+                        {tf ? <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{tf.prefix}</code> : <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell>{tf ? tf.zero_padding : "—"}</TableCell>
+                      <TableCell className="text-xs">{tf ? tf.zero_padding : "—"}</TableCell>
                       <TableCell>
                         {tf ? (
                           <code className="text-xs bg-muted px-2 py-1 rounded">
@@ -1009,7 +685,7 @@ export default function AdvancedPage() {
                           <span className="text-muted-foreground text-sm">Not configured</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{getSetupItemAssetCount("category", cat.id)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{getSetupItemAssetCount("category", cat.id)}</TableCell>
                       <TableCell><StatusDot status="active" label="Active" /></TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog("category", cat)} title="Edit name">
@@ -1090,18 +766,28 @@ export default function AdvancedPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-muted-foreground">Manage sites and locations</span>
             <div className="ml-auto flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => openAddDialog("location")}>
-                <Plus className="h-3 w-3 mr-2" />
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                type UnifiedRow = { name: string; type: string; parentSite: string; assets: number };
+                const exportRows: UnifiedRow[] = [];
+                sites.forEach(s => exportRows.push({ name: s.name, type: "Site", parentSite: "—", assets: getSetupItemAssetCount("site", s.id) }));
+                locations.forEach(l => exportRows.push({ name: l.name, type: "Location", parentSite: l.site_id ? (sites.find(s => s.id === l.site_id)?.name || "—") : "—", assets: getSetupItemAssetCount("location", l.id) }));
+                exportCSV(exportRows.map(r => ({ Name: r.name, Type: r.type, "Parent Site": r.parentSite, Assets: r.assets })), "sites-locations");
+              }}>
+                <FileDown className="h-3.5 w-3.5 mr-1" />
+                Export
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openAddDialog("location")}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Add Location
               </Button>
-              <Button size="sm" onClick={() => openAddDialog("site")}>
-                <Plus className="h-3 w-3 mr-2" />
+              <Button size="sm" className="h-7 text-xs" onClick={() => openAddDialog("site")}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Add Site
               </Button>
             </div>
           </div>
           <Table>
-            <TableHeader className="bg-muted/50">
+             <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Name</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Type</TableHead>
@@ -1114,16 +800,16 @@ export default function AdvancedPage() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                     No sites or locations found. Add a site or location to get started.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={`${row.rowType}-${row.id}`}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="font-medium text-xs">{row.name}</TableCell>
                     <TableCell>
-                      <span className="text-sm capitalize">{row.rowType}</span>
+                      <span className="text-xs capitalize">{row.rowType}</span>
                     </TableCell>
                     <TableCell>
                       {row.rowType === "location" && row.parentSiteName ? (
@@ -1132,7 +818,7 @@ export default function AdvancedPage() {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{getSetupItemAssetCount(row.rowType, row.id)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{getSetupItemAssetCount(row.rowType, row.id)}</TableCell>
                     <TableCell><StatusDot status="active" label="Active" /></TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -1190,16 +876,16 @@ export default function AdvancedPage() {
           </div>
         </div>
         <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search vendors..." value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} className="pl-9 pr-8 h-8" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input placeholder="Search vendors..." value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} className="pl-7 pr-8 h-7 text-xs" />
           {vendorSearch && (
             <button onClick={() => setVendorSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
         <Table>
-          <TableHeader className="bg-muted/50">
+           <TableHeader className="bg-muted">
             <TableRow>
               <SortableTableHeader column="name" label="Vendor Name" sortConfig={vendorSort} onSort={handleVendorSort} />
               <SortableTableHeader column="contact_name" label="Contact Person" sortConfig={vendorSort} onSort={handleVendorSort} />
@@ -1213,7 +899,7 @@ export default function AdvancedPage() {
           <TableBody>
             {loadingVendors ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-10">
                   <div className="flex flex-col items-center justify-center">
                     <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
                     <p className="text-sm text-muted-foreground">Loading vendors...</p>
@@ -1222,7 +908,7 @@ export default function AdvancedPage() {
               </TableRow>
             ) : paginatedVendors.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-10">
                   <div className="flex flex-col items-center justify-center">
                     <Building2 className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
                     <p className="text-sm text-muted-foreground">No vendors found</p>
@@ -1232,40 +918,42 @@ export default function AdvancedPage() {
             ) : (
               paginatedVendors.map((vendor) => (
                 <TableRow key={vendor.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate(`/assets/vendors/detail/${vendor.id}`)}>
-                  <TableCell className="font-medium">
+                  <TableCell className="font-medium text-xs">
                     <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                       {vendor.name}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm">{vendor.contact_name || "—"}</TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="text-xs">{vendor.contact_name || "—"}</TableCell>
+                  <TableCell className="text-xs">
                     {vendor.contact_email ? (
                       <div className="flex items-center gap-1.5">
-                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Mail className="h-3 w-3 text-muted-foreground" />
                         {vendor.contact_email}
                       </div>
                     ) : "—"}
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="text-xs">
                     {vendor.contact_phone ? (
                       <div className="flex items-center gap-1.5">
-                        <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Phone className="h-3 w-3 text-muted-foreground" />
                         {vendor.contact_phone}
                       </div>
                     ) : "—"}
                   </TableCell>
-                  <TableCell className="text-sm">
-                    {vendor.website ? (
+                  <TableCell className="text-xs">
+                    {vendor.website && (vendor.website.startsWith("http://") || vendor.website.startsWith("https://")) ? (
                       <a href={vendor.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
-                        <Globe className="h-3.5 w-3.5" />
+                        <Globe className="h-3 w-3" />
                         Visit
                       </a>
+                    ) : vendor.website ? (
+                      <span className="text-xs text-muted-foreground">{vendor.website}</span>
                     ) : "—"}
                   </TableCell>
-                  <TableCell className="text-sm font-medium">
+                  <TableCell className="text-xs font-medium">
                     <div className="flex items-center gap-1.5">
-                      <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Package className="h-3 w-3 text-muted-foreground" />
                       {vendorAssetCounts[vendor.id] || 0}
                     </div>
                   </TableCell>
@@ -1315,9 +1003,15 @@ export default function AdvancedPage() {
         <CardContent className="pt-4 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-medium text-muted-foreground">Manage {tabConfig?.label.toLowerCase()}</span>
-            <div className="ml-auto">
-              <Button size="sm" onClick={() => openAddDialog(type)}>
-                <Plus className="h-3 w-3 mr-2" />
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => exportCSV(items.map(item => ({
+                Name: item.name, Assets: getSetupItemAssetCount(type, item.id),
+              })), type + "s")}>
+                <FileDown className="h-3.5 w-3.5 mr-1" />
+                Export
+              </Button>
+              <Button size="sm" className="h-7 text-xs" onClick={() => openAddDialog(type)}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Add {type.charAt(0).toUpperCase() + type.slice(1)}
               </Button>
             </div>
@@ -1332,10 +1026,9 @@ export default function AdvancedPage() {
     <div className="h-full flex flex-col bg-background">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
         {/* Sticky tabs with scroll fade indicator */}
-        <div className="sticky top-0 z-30 bg-background border-b px-4 py-2">
+        <div className="sticky top-0 z-30 bg-background border-b px-3 py-2">
           <div className="relative">
             <TabsList className="h-9 bg-muted rounded-lg p-1 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden scrollbar-none">
-              <TabsTrigger value="licenses" className="text-xs flex-shrink-0">Licenses</TabsTrigger>
               <TabsTrigger value="repairs" className="text-xs flex-shrink-0">Repairs</TabsTrigger>
               <TabsTrigger value="warranties" className="text-xs flex-shrink-0">Warranties</TabsTrigger>
               <TabsTrigger value="depreciation" className="text-xs flex-shrink-0">Depreciation</TabsTrigger>
@@ -1343,6 +1036,10 @@ export default function AdvancedPage() {
               <TabsTrigger value="emails" className="text-xs flex-shrink-0">Emails</TabsTrigger>
               <TabsTrigger value="reports" className="text-xs flex-shrink-0">Reports</TabsTrigger>
               <TabsTrigger value="logs" className="text-xs flex-shrink-0">Logs</TabsTrigger>
+              
+              <TabsTrigger value="dispose" className="text-xs flex-shrink-0">Dispose</TabsTrigger>
+              <TabsTrigger value="alerts" className="text-xs flex-shrink-0">Alerts</TabsTrigger>
+              <TabsTrigger value="import-export" className="text-xs flex-shrink-0">Import/Export</TabsTrigger>
               <TabsTrigger value="setup" className="text-xs flex-shrink-0">Setup</TabsTrigger>
             </TabsList>
             {/* Fade gradient for scroll indicator */}
@@ -1352,7 +1049,7 @@ export default function AdvancedPage() {
 
         {/* Secondary Navigation for Setup Tab */}
         {activeTab === "setup" && (
-          <div className="border-b px-4 py-2 flex flex-wrap gap-1.5 bg-background">
+          <div className="border-b px-3 py-2 flex flex-wrap gap-1.5 bg-background">
             {SETUP_TABS.map((tab) => {
               const isActive = setupSubTab === tab.id;
               const countMap: Record<string, number> = {
@@ -1367,7 +1064,7 @@ export default function AdvancedPage() {
                 <button
                   key={tab.id}
                   onClick={() => setSetupSubTab(tab.id)}
-                  className={`h-7 px-3 rounded-md text-xs font-medium transition-colors ${
+                  className={`h-7 px-3 rounded-md text-xs font-medium transition-all duration-150 ${
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
@@ -1381,43 +1078,62 @@ export default function AdvancedPage() {
         )}
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-3">
           {/* Logs Tab */}
           <TabsContent value="logs" className="mt-0 animate-in fade-in-0 duration-200">
             <AssetLogsPage />
           </TabsContent>
 
-          {/* Licenses Tab */}
-          <TabsContent value="licenses" className="mt-0 animate-in fade-in-0 duration-200">
-            <LicensesContent />
+
+          {/* Dispose Tab */}
+          <TabsContent value="dispose" className="mt-0 animate-in fade-in-0 duration-200 -mx-3 -mb-3">
+            <DisposePage />
           </TabsContent>
 
+          {/* Alerts Tab */}
+          <TabsContent value="alerts" className="mt-0 animate-in fade-in-0 duration-200">
+            <AlertsPage />
+          </TabsContent>
+
+          {/* Import/Export Tab */}
+          <TabsContent value="import-export" className="mt-0 animate-in fade-in-0 duration-200">
+            <ImportExportPage embedded />
+          </TabsContent>
+
+
           {/* Repairs Tab */}
-          <TabsContent value="repairs" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <StatCard icon={Wrench} value={maintenancePending} label="Pending" colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" />
-              <StatCard icon={Settings} value={maintenanceInProgress} label="In Progress" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
-              <StatCard icon={CheckCircle} value={maintenanceCompleted} label="Completed" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
+          <TabsContent value="repairs" className="mt-0 space-y-2.5 animate-in fade-in-0 duration-200">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+              <StatCard icon={Wrench} value={maintenancePending} label="Pending" colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
+                onClick={() => { setMaintenanceStatusFilter(maintenanceStatusFilter === "pending" ? "all" : "pending"); setMaintenancePage(1); }}
+                active={maintenanceStatusFilter === "pending" || maintenanceStatusFilter === "open"} />
+              <StatCard icon={Settings} value={maintenanceInProgress} label="In Progress" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                onClick={() => { setMaintenanceStatusFilter(maintenanceStatusFilter === "in_progress" ? "all" : "in_progress"); setMaintenancePage(1); }}
+                active={maintenanceStatusFilter === "in_progress"} />
+              <StatCard icon={CheckCircle} value={maintenanceCompleted} label="Completed" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                onClick={() => { setMaintenanceStatusFilter(maintenanceStatusFilter === "completed" ? "all" : "completed"); setMaintenancePage(1); }}
+                active={maintenanceStatusFilter === "completed"} />
             </div>
 
             <Card>
-              <CardContent className="pt-4 space-y-4">
+              <CardContent className="pt-3 space-y-2.5">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <div className="relative flex-1 max-w-sm min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search repairs..." value={maintenanceSearch} onChange={(e) => setMaintenanceSearch(e.target.value)} className="pl-9 pr-8 h-8" />
+                   <div className="relative flex-1 max-w-sm min-w-[200px]">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input placeholder="Search repairs..." value={maintenanceSearch} onChange={(e) => setMaintenanceSearch(e.target.value)} className="pl-7 pr-8 h-7 text-xs" />
                     {maintenanceSearch && (
                       <button onClick={() => setMaintenanceSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
-                  <Select value={maintenanceStatusFilter} onValueChange={setMaintenanceStatusFilter}>
-                    <SelectTrigger className="w-[140px] h-8">
+                  <Select value={maintenanceStatusFilter} onValueChange={v => { setMaintenanceStatusFilter(v); setMaintenancePage(1); }}>
+                    <SelectTrigger className="w-[140px] h-7 text-xs">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
                       <SelectItem value="open">Open</SelectItem>
                       <SelectItem value="in_progress">In Progress</SelectItem>
                       <SelectItem value="completed">Completed</SelectItem>
@@ -1425,7 +1141,7 @@ export default function AdvancedPage() {
                     </SelectContent>
                   </Select>
                   <div className="ml-auto flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => exportCSV(filteredMaintenances.map(m => ({
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => exportCSV(filteredMaintenances.map(m => ({
                       "Repair #": m.repair_number || "",
                       Asset: m.asset?.name || "",
                       "Asset Tag": m.asset?.asset_tag || "",
@@ -1439,18 +1155,18 @@ export default function AdvancedPage() {
                         ? differenceInDays(new Date(), new Date(m.created_at))
                         : "",
                     })), "repairs")}>
-                      <FileDown className="h-4 w-4 mr-1" />
+                      <FileDown className="h-3.5 w-3.5 mr-1" />
                       Export
                     </Button>
-                    <Button size="sm" onClick={() => navigate("/assets/repairs/create")}>
-                      <Plus className="h-4 w-4 mr-1" />
+                    <Button size="sm" className="h-7 text-xs" onClick={() => navigate("/assets/repairs/create")}>
+                      <Plus className="h-3.5 w-3.5 mr-1" />
                       New Record
                     </Button>
                   </div>
                 </div>
 
                 <Table>
-                  <TableHeader className="bg-muted/50">
+                  <TableHeader className="bg-muted">
                     <TableRow>
                       <SortableTableHeader column="repair_number" label="Repair #" sortConfig={repairSort} onSort={handleRepairSort} />
                       <SortableTableHeader column="asset" label="Asset" sortConfig={repairSort} onSort={handleRepairSort} />
@@ -1465,17 +1181,22 @@ export default function AdvancedPage() {
                   </TableHeader>
                   <TableBody>
                     {loadingMaintenances ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12">
-                          <div className="flex flex-col items-center justify-center">
-                            <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
-                            <p className="text-sm text-muted-foreground">Loading repair records...</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <TableRow key={`skel-repair-${i}`}>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                          <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                          <TableCell><Skeleton className="h-6 w-6 rounded" /></TableCell>
+                        </TableRow>
+                      ))
                     ) : paginatedMaintenances.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12">
+                        <TableCell colSpan={9} className="text-center py-10">
                           <div className="flex flex-col items-center justify-center">
                             <Wrench className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
                             <p className="text-sm text-muted-foreground">No repair records found</p>
@@ -1489,21 +1210,21 @@ export default function AdvancedPage() {
                           : null;
                         return (
                           <TableRow key={maintenance.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => navigate(`/assets/repairs/detail/${maintenance.id}`)}>
-                            <TableCell className="font-medium text-sm">{maintenance.repair_number || `R-${maintenance.id}`}</TableCell>
+                            <TableCell className="font-medium text-xs">{maintenance.repair_number || "RPR-UNKNOWN"}</TableCell>
                             <TableCell>
                               <div>
-                                <p className="text-sm font-medium">{maintenance.asset?.name || '—'}</p>
-                                <p className="text-xs text-muted-foreground">{maintenance.asset?.asset_tag || ''}</p>
+                                <p className="text-xs font-medium">{maintenance.asset?.name || '—'}</p>
+                                <p className="text-[11px] text-muted-foreground">{maintenance.asset?.asset_tag || ''}</p>
                               </div>
                             </TableCell>
-                            <TableCell className="max-w-[200px] truncate text-sm">{maintenance.issue_description || '-'}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">{(maintenance as any).vendor?.name || '—'}</TableCell>
-                            <TableCell className="text-sm">{maintenance.cost ? `₹${Number(maintenance.cost).toLocaleString()}` : '—'}</TableCell>
+                            <TableCell className="max-w-[200px] truncate text-xs">{maintenance.issue_description || '-'}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{(maintenance as any).vendor?.name || '—'}</TableCell>
+                            <TableCell className="text-xs">{maintenance.cost ? `${currencySymbol}${Number(maintenance.cost).toLocaleString()}` : '—'}</TableCell>
                             <TableCell>{getMaintenanceStatusDot(maintenance.status)}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className="text-xs text-muted-foreground">
                               {maintenance.created_at ? format(new Date(maintenance.created_at), 'MMM d, yyyy') : '-'}
                             </TableCell>
-                            <TableCell className="text-sm">
+                            <TableCell className="text-xs">
                               {daysOpen !== null ? (
                                 <span className={daysOpen > 14 ? "text-destructive font-medium" : daysOpen > 7 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
                                   {daysOpen}d
@@ -1536,27 +1257,33 @@ export default function AdvancedPage() {
           </TabsContent>
 
           {/* Warranties Tab */}
-          <TabsContent value="warranties" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <StatCard icon={CheckCircle} value={warrantyActive} label="Active" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
-              <StatCard icon={Shield} value={warrantyExpiring} label="Expiring Soon" colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" />
-              <StatCard icon={Shield} value={warrantyExpired} label="Expired" colorClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" />
+          <TabsContent value="warranties" className="mt-0 space-y-2.5 animate-in fade-in-0 duration-200">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+              <StatCard icon={CheckCircle} value={warrantyActive} label="Active" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                onClick={() => { setWarrantyStatusFilter(warrantyStatusFilter === "active" ? "all" : "active"); setWarrantyPage(1); }}
+                active={warrantyStatusFilter === "active"} />
+              <StatCard icon={Shield} value={warrantyExpiring} label="Expiring Soon" colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
+                onClick={() => { setWarrantyStatusFilter(warrantyStatusFilter === "expiring" ? "all" : "expiring"); setWarrantyPage(1); }}
+                active={warrantyStatusFilter === "expiring"} />
+              <StatCard icon={Shield} value={warrantyExpired} label="Expired" colorClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                onClick={() => { setWarrantyStatusFilter(warrantyStatusFilter === "expired" ? "all" : "expired"); setWarrantyPage(1); }}
+                active={warrantyStatusFilter === "expired"} />
             </div>
 
             <Card>
-              <CardContent className="pt-4 space-y-4">
+              <CardContent className="pt-3 space-y-2.5">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <div className="relative flex-1 max-w-sm min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search warranties..." value={warrantySearch} onChange={(e) => setWarrantySearch(e.target.value)} className="pl-9 pr-8 h-8" />
+                   <div className="relative flex-1 max-w-sm min-w-[200px]">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input placeholder="Search warranties..." value={warrantySearch} onChange={(e) => setWarrantySearch(e.target.value)} className="pl-7 pr-8 h-7 text-xs" />
                     {warrantySearch && (
                       <button onClick={() => setWarrantySearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
-                  <Select value={warrantyStatusFilter} onValueChange={setWarrantyStatusFilter}>
-                    <SelectTrigger className="w-[140px] h-8">
+                  <Select value={warrantyStatusFilter} onValueChange={v => { setWarrantyStatusFilter(v); setWarrantyPage(1); }}>
+                    <SelectTrigger className="w-[140px] h-7 text-xs">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1567,20 +1294,20 @@ export default function AdvancedPage() {
                     </SelectContent>
                   </Select>
                   <div className="ml-auto">
-                    <Button size="sm" variant="outline" onClick={() => exportCSV(filteredWarranties.map(a => ({
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => exportCSV(filteredWarranties.map(a => ({
                       Asset: a.name, Tag: a.asset_tag || "", Category: (a as any).category?.name || "",
                       Make: (a as any).make?.name || "", Model: a.model || "",
                       "Expiry Date": a.warranty_expiry ? format(new Date(a.warranty_expiry), "yyyy-MM-dd") : "",
                       Status: getWarrantyStatus(a.warranty_expiry).label
                     })), "warranties")}>
-                      <FileDown className="h-4 w-4 mr-1" />
+                      <FileDown className="h-3.5 w-3.5 mr-1" />
                       Export
                     </Button>
                   </div>
                 </div>
 
                 <Table>
-                  <TableHeader className="bg-muted/50">
+                  <TableHeader className="bg-muted">
                     <TableRow>
                       <SortableTableHeader column="name" label="Asset" sortConfig={warrantySort} onSort={handleWarrantySort} />
                       <TableHead className="font-medium text-xs uppercase text-muted-foreground">Make / Model</TableHead>
@@ -1593,17 +1320,20 @@ export default function AdvancedPage() {
                   </TableHeader>
                   <TableBody>
                     {loadingWarranties ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12">
-                          <div className="flex flex-col items-center justify-center">
-                            <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
-                            <p className="text-sm text-muted-foreground">Loading warranty records...</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <TableRow key={`skel-warranty-${i}`}>
+                          <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                          <TableCell><Skeleton className="h-6 w-14 rounded" /></TableCell>
+                        </TableRow>
+                      ))
                     ) : paginatedWarranties.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12">
+                        <TableCell colSpan={7} className="text-center py-10">
                           <div className="flex flex-col items-center justify-center">
                             <Shield className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
                             <p className="text-sm text-muted-foreground">No warranty records found</p>
@@ -1619,27 +1349,27 @@ export default function AdvancedPage() {
                           ? "bg-amber-100/30 hover:bg-amber-100/50 dark:bg-amber-900/10 dark:hover:bg-amber-900/20"
                           : "";
                         return (
-                          <TableRow key={asset.id} className={`${rowClass} cursor-pointer transition-colors`} onClick={() => navigate(`/assets/detail/${asset.id}`)}>
+                          <TableRow key={asset.id} className={`${rowClass} cursor-pointer transition-colors`} onClick={() => navigate(`/assets/detail/${asset.asset_tag || asset.id}`)}>
                             <TableCell className="font-medium">
                               <div>
-                                <p className="text-sm">{asset.name}</p>
-                                <p className="text-xs text-muted-foreground">{asset.asset_tag}</p>
+                                <p className="text-xs">{asset.name}</p>
+                                <p className="text-[11px] text-muted-foreground">{asset.asset_tag}</p>
                               </div>
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className="text-xs text-muted-foreground">
                               {(asset as any).make?.name || "—"}
                               {asset.model ? ` • ${asset.model}` : ""}
                             </TableCell>
-                            <TableCell>{(asset as any).category?.name || '—'}</TableCell>
-                            <TableCell>{format(new Date(asset.warranty_expiry), 'MMM dd, yyyy')}</TableCell>
+                            <TableCell className="text-xs">{(asset as any).category?.name || '—'}</TableCell>
+                            <TableCell className="text-xs">{format(new Date(asset.warranty_expiry), 'MMM dd, yyyy')}</TableCell>
                             <TableCell>
                               <StatusDot status={warrantyInfo.status as any} label={warrantyInfo.label} />
                             </TableCell>
-                            <TableCell className="text-sm">
+                            <TableCell className="text-xs">
                               {warrantyInfo.status === "expired" ? `${warrantyInfo.days} days ago` : `${warrantyInfo.days} days left`}
                             </TableCell>
                             <TableCell>
-                              <Button variant="ghost" size="sm" className="h-7" onClick={() => navigate(`/assets/detail/${asset.id}`)}>
+                              <Button variant="ghost" size="sm" className="h-7" onClick={() => navigate(`/assets/detail/${asset.asset_tag || asset.id}`)}>
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </Button>
                             </TableCell>
@@ -1660,7 +1390,7 @@ export default function AdvancedPage() {
           </TabsContent>
 
           {/* Documents Tab */}
-          <TabsContent value="documents" className="mt-0 space-y-4 animate-in fade-in-0 duration-200">
+          <TabsContent value="documents" className="mt-0 space-y-2.5 animate-in fade-in-0 duration-200">
             <DocumentsStats />
             <InlinePhotoGallery />
             <InlineDocumentsList />
@@ -1723,24 +1453,16 @@ export default function AdvancedPage() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Deactivate {itemToDelete?.type}</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to deactivate "{itemToDelete?.name}"? It will be hidden from all dropdowns and lists but can be reactivated later.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => { if (itemToDelete) deleteMutation.mutate({ type: itemToDelete.type, id: itemToDelete.id }); }} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? "Deactivating..." : "Deactivate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title={`Deactivate ${itemToDelete?.type}`}
+        description={`Are you sure you want to deactivate "${itemToDelete?.name}"? It will be hidden from all dropdowns and lists but can be reactivated later.`}
+        confirmText={deleteMutation.isPending ? "Deactivating..." : "Deactivate"}
+        variant="destructive"
+        onConfirm={() => { if (itemToDelete) deleteMutation.mutate({ type: itemToDelete.type, id: itemToDelete.id }); }}
+      />
 
-      {/* Delete Confirmation Dialog */}
     </div>
   );
 }

@@ -14,8 +14,8 @@ import AccessDenied from "./pages/AccessDenied";
 import Login from "./pages/Login";
 
 const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-background">
-    <div className="animate-pulse text-muted-foreground">Loading...</div>
+  <div className="h-screen flex items-center justify-center">
+    <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
@@ -33,11 +33,15 @@ import ModuleLauncher from "./pages/ModuleLauncher";
 import TicketsLayout from "./layouts/TicketsLayout";
 import AssetsLayout from "./layouts/AssetsLayout";
 import SubscriptionLayout from "./layouts/SubscriptionLayout";
-import SystemUpdatesLayout from "./layouts/SystemUpdatesLayout";
-import AdminLayout from "./layouts/AdminLayout";
 
-// Legacy layout kept for standalone routes
-import HelpdeskLayout from "./pages/helpdesk/layout";
+import AdminLayout from "./layouts/AdminLayout";
+import ITTasksLayout from "./layouts/ITTasksLayout";
+import NetworkMonitoringLayout from "./layouts/NetworkMonitoringLayout";
+import EndpointSecurityLayout from "./layouts/EndpointSecurityLayout";
+import OnOffBoardingLayout from "./layouts/OnOffBoardingLayout";
+
+// MonitoringLayout replaces the legacy HelpdeskLayout
+import MonitoringLayout from "./layouts/MonitoringLayout";
 
 // Tickets pages
 const TicketsDashboard = lazy(() => import("./pages/helpdesk/tickets/dashboard"));
@@ -52,29 +56,27 @@ const HelpdeskProblemDetail = lazy(() => import("./pages/helpdesk/problems/[id]"
 const AssignmentRules = lazy(() => import("./pages/helpdesk/tickets/assignment-rules"));
 const LinkedProblems = lazy(() => import("./pages/helpdesk/tickets/linked-problems"));
 
-// Assets pages (eagerly loaded for perf)
+// Assets pages — primary workflow pages eagerly loaded for instant navigation
 import AllAssets from "./pages/helpdesk/assets/allassets";
 import AssetDashboard from "./pages/helpdesk/assets/dashboard";
-import AssetAdvancedPage from "./pages/helpdesk/assets/advanced/index";
-import AssetEmployeesPage from "./pages/helpdesk/assets/employees";
+import AssetCheckout from "./pages/helpdesk/assets/checkout";
+import AssetCheckin from "./pages/helpdesk/assets/checkin";
+import AssetDispose from "./pages/helpdesk/assets/dispose";
 
+import AssetEmployeesPage from "./pages/helpdesk/assets/employees";
+import AssetVerification from "./pages/helpdesk/assets/verification/index";
+
+// Assets pages — secondary, lazy-loaded
+const AssetAdvancedPage = lazy(() => import("./pages/helpdesk/assets/advanced/index"));
 const AssetDetail = lazy(() => import("./pages/helpdesk/assets/detail/[assetId]"));
 const AssetReports = lazy(() => import("./pages/helpdesk/assets/reports"));
 const AssetAlerts = lazy(() => import("./pages/helpdesk/assets/alerts/index"));
-const AssetCheckout = lazy(() => import("./pages/helpdesk/assets/checkout"));
-const AssetCheckin = lazy(() => import("./pages/helpdesk/assets/checkin"));
-const AssetDispose = lazy(() => import("./pages/helpdesk/assets/dispose"));
-const AssetReserve = lazy(() => import("./pages/helpdesk/assets/reserve"));
 const AddAsset = lazy(() => import("./pages/helpdesk/assets/add"));
 const DepreciationDashboard = lazy(() => import("./pages/helpdesk/assets/depreciation/index"));
-const VendorsList = lazy(() => import("./pages/helpdesk/assets/vendors/index"));
+
 const AddVendor = lazy(() => import("./pages/helpdesk/assets/vendors/add-vendor"));
 const VendorDetail = lazy(() => import("./pages/helpdesk/assets/vendors/detail/[vendorId]"));
-const LicensesList = lazy(() => import("./pages/helpdesk/assets/licenses/index"));
-const LicenseDetail = lazy(() => import("./pages/helpdesk/assets/licenses/detail/[licenseId]"));
-const AddLicense = lazy(() => import("./pages/helpdesk/assets/licenses/add-license"));
-const AllocateLicense = lazy(() => import("./pages/helpdesk/assets/licenses/allocate"));
-const RepairsList = lazy(() => import("./pages/helpdesk/assets/repairs/index"));
+
 const CreateRepair = lazy(() => import("./pages/helpdesk/assets/repairs/create"));
 const RepairDetail = lazy(() => import("./pages/helpdesk/assets/repairs/detail/[repairId]"));
 
@@ -88,15 +90,10 @@ const PODetail = lazy(() => import("./pages/helpdesk/assets/purchase-orders/po-d
 // Subscription pages
 const HelpdeskSubscriptionDashboard = lazy(() => import("./pages/helpdesk/subscription/dashboard"));
 const HelpdeskSubscriptionTools = lazy(() => import("./pages/helpdesk/subscription/tools"));
-const HelpdeskSubscriptionVendors = lazy(() => import("./pages/helpdesk/subscription/vendors"));
-const HelpdeskSubscriptionLicenses = lazy(() => import("./pages/helpdesk/subscription/licenses"));
-const HelpdeskSubscriptionPayments = lazy(() => import("./pages/helpdesk/subscription/payments"));
 
-// System Updates pages
-const HelpdeskSystemUpdates = lazy(() => import("./pages/helpdesk/system-updates"));
-const SystemUpdatesSettings = lazy(() => import("./pages/helpdesk/system-updates/settings"));
-const SystemUpdatesDevices = lazy(() => import("./pages/helpdesk/system-updates/devices"));
-const SystemUpdatesUpdates = lazy(() => import("./pages/helpdesk/system-updates/updates"));
+const SubscriptionAdvanced = lazy(() => import("./pages/helpdesk/subscription/advanced"));
+const SubscriptionDetail = lazy(() => import("./pages/helpdesk/subscription/detail/[subscriptionId]"));
+
 
 // Lazy loaded - Other Modules
 const HelpdeskChanges = lazy(() => import("./pages/helpdesk/changes"));
@@ -114,17 +111,56 @@ const AdminBackupPage = lazy(() => import("./pages/admin/backup"));
 const AdminReportsPage = lazy(() => import("./pages/admin/reports"));
 const AdminEmailPage = lazy(() => import("./pages/admin/email"));
 
+// IT Tasks pages
+const ITTasksDashboard = lazy(() => import("./pages/helpdesk/it-tasks/dashboard"));
+const ITTasksAll = lazy(() => import("./pages/helpdesk/it-tasks/all-tasks"));
+const ITTasksMy = lazy(() => import("./pages/helpdesk/it-tasks/my-tasks"));
+const ITTasksKanban = lazy(() => import("./pages/helpdesk/it-tasks/kanban"));
+const ITTasksReports = lazy(() => import("./pages/helpdesk/it-tasks/reports"));
+const ITTasksActivity = lazy(() => import("./pages/helpdesk/it-tasks/activity"));
+const ITTaskDetail = lazy(() => import("./pages/helpdesk/it-tasks/detail/[taskId]"));
+
+// Network Monitoring pages
+const NetworkDashboard = lazy(() => import("./pages/helpdesk/network-monitoring/dashboard"));
+const NetworkDevices = lazy(() => import("./pages/helpdesk/network-monitoring/devices"));
+const NetworkDeviceDetail = lazy(() => import("./pages/helpdesk/network-monitoring/device-detail/[deviceId]"));
+const NetworkAlerts = lazy(() => import("./pages/helpdesk/network-monitoring/alerts"));
+const NetworkPingLogs = lazy(() => import("./pages/helpdesk/network-monitoring/ping-logs"));
+const NetworkReports = lazy(() => import("./pages/helpdesk/network-monitoring/reports"));
+
+// Endpoint Security pages
+const EndpointSecurityDashboard = lazy(() => import("./pages/helpdesk/endpoint-security/dashboard"));
+const EndpointsList = lazy(() => import("./pages/helpdesk/endpoint-security/endpoints"));
+const EndpointDetail = lazy(() => import("./pages/helpdesk/endpoint-security/endpoint-detail/[endpointId]"));
+const EndpointCompliance = lazy(() => import("./pages/helpdesk/endpoint-security/compliance"));
+const EndpointAlerts = lazy(() => import("./pages/helpdesk/endpoint-security/alerts"));
+const EndpointScans = lazy(() => import("./pages/helpdesk/endpoint-security/scans"));
+const EndpointReports = lazy(() => import("./pages/helpdesk/endpoint-security/reports"));
+const PatchingDevices = lazy(() => import("./pages/helpdesk/endpoint-security/patching-devices"));
+const PatchingUpdates = lazy(() => import("./pages/helpdesk/endpoint-security/patching-updates"));
+
+// Onboarding/Offboarding pages
+const OnOffDashboard = lazy(() => import("./pages/helpdesk/onoff-boarding/dashboard"));
+const OnboardingPage = lazy(() => import("./pages/helpdesk/onoff-boarding/onboarding"));
+const OffboardingPage = lazy(() => import("./pages/helpdesk/onoff-boarding/offboarding"));
+const OnOffKanban = lazy(() => import("./pages/helpdesk/onoff-boarding/kanban"));
+const WorkflowDetail = lazy(() => import("./pages/helpdesk/onoff-boarding/workflow-detail/[workflowId]"));
+const WorkflowTemplates = lazy(() => import("./pages/helpdesk/onoff-boarding/templates"));
+const OnOffReports = lazy(() => import("./pages/helpdesk/onoff-boarding/reports"));
+
 // Auth
 const AuthConfirm = lazy(() => import("./pages/AuthConfirm"));
 const PasswordReset = lazy(() => import("./pages/PasswordReset"));
 const ResetPasswordConfirm = lazy(() => import("./pages/ResetPasswordConfirm"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const Status = lazy(() => import("./pages/Status"));
+const ConfirmAssets = lazy(() => import("./pages/ConfirmAssets"));
+const ConfirmationResult = lazy(() => import("./pages/ConfirmationResult"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,
+      staleTime: 2 * 60 * 1000,
       gcTime: 10 * 60 * 1000,
       refetchOnWindowFocus: false,
       retry: 1,
@@ -152,6 +188,8 @@ const App = () => {
                   <Route path="/reset-password-confirm" element={<ResetPasswordConfirm />} />
                   <Route path="/access-denied" element={<AccessDenied />} />
                   <Route path="/status" element={<Status />} />
+                  <Route path="/confirm-assets/:token" element={<ConfirmAssets />} />
+                  <Route path="/confirmation-result" element={<ConfirmationResult />} />
                   <Route path="/profile" element={<Navigate to="/account" replace />} />
                   <Route path="/notifications" element={<Notifications />} />
 
@@ -180,8 +218,8 @@ const App = () => {
                   </Route>
 
                   {/* Monitoring (standalone module) */}
-                  <Route path="/monitoring" element={<HelpdeskLayout />}>
-                    <Route index element={<HelpdeskMonitoring />} />
+                  <Route element={<MonitoringLayout />}>
+                    <Route path="/monitoring" element={<HelpdeskMonitoring />} />
                   </Route>
 
                   {/* ===== ASSETS MODULE ===== */}
@@ -193,22 +231,19 @@ const App = () => {
                     <Route path="/assets/checkout" element={<AssetCheckout />} />
                     <Route path="/assets/checkin" element={<AssetCheckin />} />
                     <Route path="/assets/dispose" element={<AssetDispose />} />
-                    <Route path="/assets/reserve" element={<AssetReserve />} />
+                    
                     <Route path="/assets/alerts" element={<AssetAlerts />} />
                     <Route path="/assets/advanced" element={<AssetAdvancedPage />} />
+                    <Route path="/assets/verification" element={<AssetVerification />} />
                     <Route path="/assets/employees" element={<AssetEmployeesPage />} />
                     <Route path="/assets/detail/:assetId" element={<AssetDetail />} />
                     <Route path="/assets/reports" element={<AssetReports />} />
-                    <Route path="/assets/import-export" element={<AssetsImportExport />} />
+                    <Route path="/assets/import-export" element={<Navigate to="/assets/advanced?tab=import-export" replace />} />
                     <Route path="/assets/depreciation" element={<DepreciationDashboard />} />
-                    <Route path="/assets/vendors" element={<VendorsList />} />
+                    <Route path="/assets/vendors" element={<Navigate to="/assets/advanced?tab=vendors" replace />} />
                     <Route path="/assets/vendors/add-vendor" element={<AddVendor />} />
                     <Route path="/assets/vendors/detail/:vendorId" element={<VendorDetail />} />
-                    <Route path="/assets/licenses" element={<LicensesList />} />
-                    <Route path="/assets/licenses/add-license" element={<AddLicense />} />
-                    <Route path="/assets/licenses/allocate" element={<AllocateLicense />} />
-                    <Route path="/assets/licenses/detail/:licenseId" element={<LicenseDetail />} />
-                    <Route path="/assets/repairs" element={<RepairsList />} />
+                    <Route path="/assets/repairs" element={<Navigate to="/assets/advanced?tab=repairs" replace />} />
                     <Route path="/assets/repairs/create" element={<CreateRepair />} />
                     <Route path="/assets/repairs/detail/:repairId" element={<RepairDetail />} />
                     <Route path="/assets/purchase-orders" element={<PurchaseOrdersList />} />
@@ -231,20 +266,19 @@ const App = () => {
                   <Route element={<SubscriptionLayout />}>
                     <Route path="/subscription" element={<HelpdeskSubscriptionDashboard />} />
                     <Route path="/subscription/tools" element={<HelpdeskSubscriptionTools />} />
-                    <Route path="/subscription/vendors" element={<HelpdeskSubscriptionVendors />} />
-                    <Route path="/subscription/licenses" element={<HelpdeskSubscriptionLicenses />} />
-                    <Route path="/subscription/payments" element={<HelpdeskSubscriptionPayments />} />
-                    
+                    <Route path="/subscription/new" element={<Navigate to="/subscription/tools" replace />} />
+                    <Route path="/subscription/advanced" element={<SubscriptionAdvanced />} />
+                    <Route path="/subscription/detail/:subscriptionId" element={<SubscriptionDetail />} />
+                    {/* Legacy redirects */}
+                    <Route path="/subscription/licenses" element={<Navigate to="/subscription/advanced?tab=licenses" replace />} />
+                    <Route path="/subscription/payments" element={<Navigate to="/subscription/advanced?tab=payments" replace />} />
+                    <Route path="/subscription/vendors" element={<Navigate to="/subscription/advanced?tab=vendors" replace />} />
+                    <Route path="/subscription/import-export" element={<Navigate to="/subscription/advanced?tab=import-export" replace />} />
                   </Route>
 
-                  {/* ===== SYSTEM UPDATES MODULE ===== */}
-                  <Route element={<SystemUpdatesLayout />}>
-                    <Route path="/system-updates" element={<HelpdeskSystemUpdates />} />
-                    <Route path="/system-updates/settings" element={<SystemUpdatesSettings />} />
-                    <Route path="/system-updates/devices" element={<SystemUpdatesDevices />} />
-                    <Route path="/system-updates/updates" element={<SystemUpdatesUpdates />} />
-                    
-                  </Route>
+                  {/* System Updates redirects → Endpoint Security */}
+                  <Route path="/system-updates" element={<Navigate to="/endpoint-security" replace />} />
+                  <Route path="/system-updates/*" element={<Navigate to="/endpoint-security" replace />} />
 
                   {/* ===== ADMIN MODULE ===== */}
                   <Route element={<AdminLayout />}>
@@ -256,6 +290,51 @@ const App = () => {
                     <Route path="/admin/reports" element={<AdminReportsPage />} />
                     <Route path="/admin/email" element={<AdminEmailPage />} />
                     
+                  </Route>
+
+                  {/* ===== IT TASKS MODULE ===== */}
+                  <Route element={<ITTasksLayout />}>
+                    <Route path="/it-tasks" element={<ITTasksDashboard />} />
+                    <Route path="/it-tasks/all" element={<ITTasksAll />} />
+                    <Route path="/it-tasks/my-tasks" element={<ITTasksMy />} />
+                    <Route path="/it-tasks/kanban" element={<ITTasksKanban />} />
+                    <Route path="/it-tasks/reports" element={<ITTasksReports />} />
+                    <Route path="/it-tasks/activity" element={<ITTasksActivity />} />
+                    <Route path="/it-tasks/:taskId" element={<ITTaskDetail />} />
+                  </Route>
+
+                  {/* ===== NETWORK MONITORING MODULE ===== */}
+                  <Route element={<NetworkMonitoringLayout />}>
+                    <Route path="/network-monitoring" element={<NetworkDashboard />} />
+                    <Route path="/network-monitoring/devices" element={<NetworkDevices />} />
+                    <Route path="/network-monitoring/device-detail/:deviceId" element={<NetworkDeviceDetail />} />
+                    <Route path="/network-monitoring/alerts" element={<NetworkAlerts />} />
+                    <Route path="/network-monitoring/ping-logs" element={<NetworkPingLogs />} />
+                    <Route path="/network-monitoring/reports" element={<NetworkReports />} />
+                  </Route>
+
+                  {/* ===== ENDPOINT SECURITY MODULE ===== */}
+                  <Route element={<EndpointSecurityLayout />}>
+                    <Route path="/endpoint-security" element={<EndpointSecurityDashboard />} />
+                    <Route path="/endpoint-security/endpoints" element={<EndpointsList />} />
+                    <Route path="/endpoint-security/endpoint-detail/:endpointId" element={<EndpointDetail />} />
+                    <Route path="/endpoint-security/compliance" element={<EndpointCompliance />} />
+                    <Route path="/endpoint-security/alerts" element={<EndpointAlerts />} />
+                    <Route path="/endpoint-security/scans" element={<EndpointScans />} />
+                    <Route path="/endpoint-security/reports" element={<EndpointReports />} />
+                    <Route path="/endpoint-security/patching/devices" element={<PatchingDevices />} />
+                    <Route path="/endpoint-security/patching/updates" element={<PatchingUpdates />} />
+                  </Route>
+
+                  {/* ===== ONBOARDING / OFFBOARDING MODULE ===== */}
+                  <Route element={<OnOffBoardingLayout />}>
+                    <Route path="/onoff-boarding" element={<OnOffDashboard />} />
+                    <Route path="/onoff-boarding/onboarding" element={<OnboardingPage />} />
+                    <Route path="/onoff-boarding/offboarding" element={<OffboardingPage />} />
+                    <Route path="/onoff-boarding/kanban" element={<OnOffKanban />} />
+                    <Route path="/onoff-boarding/workflow-detail/:workflowId" element={<WorkflowDetail />} />
+                    <Route path="/onoff-boarding/templates" element={<WorkflowTemplates />} />
+                    <Route path="/onoff-boarding/reports" element={<OnOffReports />} />
                   </Route>
 
                   {/* Legacy settings redirect to admin */}

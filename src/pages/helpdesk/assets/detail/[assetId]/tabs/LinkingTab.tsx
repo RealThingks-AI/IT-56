@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Link2, Plus, Trash2, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { sanitizeSearchInput } from "@/lib/utils";
 
 interface LinkingTabProps {
@@ -30,12 +32,9 @@ interface AssetLink {
 }
 
 const LINK_TYPES = [
-  { value: "component_of", label: "Component Of" },
-  { value: "related_to", label: "Related To" },
-  { value: "replaced_by", label: "Replaced By" },
-  { value: "replaces", label: "Replaces" },
-  { value: "accessory_of", label: "Accessory Of" },
-  { value: "parent_of", label: "Parent Of" },
+  { value: "parent_child", label: "Parent / Child" },
+  { value: "related", label: "Related" },
+  { value: "accessory", label: "Accessory" },
 ];
 
 export const LinkingTab = ({ assetId }: LinkingTabProps) => {
@@ -46,6 +45,7 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [linkType, setLinkType] = useState("related_to");
   const [notes, setNotes] = useState("");
+  const [deleteLinkId, setDeleteLinkId] = useState<string | null>(null);
 
   // Fetch linked assets
   const { data: links = [], isLoading } = useQuery({
@@ -152,7 +152,7 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex items-center justify-center">
+      <div className="p-3 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -216,7 +216,7 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-6 w-6"
                         onClick={() => navigate(`/assets/detail/${linkedAsset.asset_tag || linkedAsset.id}`)}
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -224,8 +224,8 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive"
-                        onClick={() => deleteLink.mutate(link.id)}
+                        className="h-6 w-6 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteLinkId(link.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -238,7 +238,7 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
         </div>
 
         {/* Link Asset Dialog */}
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Link Asset</DialogTitle>
@@ -316,6 +316,16 @@ export const LinkingTab = ({ assetId }: LinkingTabProps) => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ConfirmDialog
+          open={!!deleteLinkId}
+          onOpenChange={(open) => { if (!open) setDeleteLinkId(null); }}
+          onConfirm={() => { if (deleteLinkId) { deleteLink.mutate(deleteLinkId); setDeleteLinkId(null); } }}
+          title="Remove Asset Link"
+          description="Are you sure you want to remove this link? This action cannot be undone."
+          confirmText="Remove"
+          variant="destructive"
+        />
     </div>
   );
 };

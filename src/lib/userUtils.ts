@@ -3,7 +3,8 @@
  * Handles cases where the database name field might contain an email address.
  */
 
-export type AppRole = "admin" | "manager" | "user" | "viewer";
+import type { AppRole } from "@/hooks/useUserRole";
+export type { AppRole };
 
 export type UserLike = {
   name?: string | null;

@@ -34,7 +34,7 @@ interface ModuleSidebarProps {
   items: SidebarItem[];
 }
 
-const ICON_CONTAINER = "w-[60px] flex items-center justify-center flex-shrink-0";
+const ICON_CONTAINER = "w-[50px] flex items-center justify-center flex-shrink-0";
 
 export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: ModuleSidebarProps) {
   const location = useLocation();
@@ -47,12 +47,12 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
   const storeName = useSessionStore(s => s.name);
 
   const { data: userProfile } = useQuery({
-    queryKey: ["sidebar-user-profile", user?.id],
+    queryKey: ["user-profile", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from("users")
-        .select("name, avatar_url")
+        .select("name, email, avatar_url")
         .eq("auth_user_id", user.id)
         .single();
       if (error) return null;
@@ -85,7 +85,13 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
     });
   }, [location.pathname]);
 
-  const isActive = (url: string) => location.pathname === url || location.pathname.startsWith(url + "/");
+  const isActive = (url: string) => {
+    const [urlPath, urlSearch] = url.split("?");
+    if (urlSearch) {
+      return location.pathname === urlPath && location.search === `?${urlSearch}`;
+    }
+    return location.pathname === url || location.pathname.startsWith(url + "/");
+  };
 
   const toggleSection = (title: string) => {
     setExpandedSections(prev => prev.includes(title) ? prev.filter(s => s !== title) : [...prev, title]);
@@ -107,7 +113,7 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
 
     const baseStyles = cn(
       "flex items-center h-9 rounded-lg transition-all duration-200 text-sm w-full overflow-hidden whitespace-nowrap",
-      active ? "text-primary bg-accent" : "text-foreground hover:text-primary hover:bg-accent/40"
+      active ? "text-primary bg-primary/10 font-medium" : "text-foreground hover:text-primary hover:bg-accent/50"
     );
 
     if (!hasChildren) {
@@ -116,7 +122,7 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
           <div className={ICON_CONTAINER}>
             <item.icon className="h-4 w-4" />
           </div>
-          <span className="truncate">{item.title}</span>
+          {!collapsed && <span className="truncate">{item.title}</span>}
         </NavLink>
       );
 
@@ -144,11 +150,11 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
                   <div className={ICON_CONTAINER}>
                     <item.icon className="h-4 w-4" />
                   </div>
-                  <span className="flex-1 text-left truncate">{item.title}</span>
-                  <ChevronRight className={cn(
+                  {!collapsed && <span className="flex-1 text-left truncate">{item.title}</span>}
+                  {!collapsed && <ChevronRight className={cn(
                     "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 flex-shrink-0 mr-2",
                     isExpanded && "rotate-90"
-                  )} />
+                  )} />}
                 </button>
               </CollapsibleTrigger>
             </TooltipTrigger>
@@ -183,7 +189,7 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
       <div className={ICON_CONTAINER}>
         <ChevronLeft className={cn("w-4 h-4 transition-transform duration-300", collapsed && "rotate-180")} />
       </div>
-      <span>Collapse</span>
+      {!collapsed && <span>Collapse</span>}
     </button>
   );
 
@@ -197,13 +203,13 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
           </AvatarFallback>
         </Avatar>
       </div>
-      <span className="truncate text-foreground font-medium">{userName}</span>
+      {!collapsed && <span className="truncate text-foreground font-medium">{userName}</span>}
     </button>
   );
 
   return (
     <aside className="h-screen flex flex-col bg-background transition-all duration-300 ease-in-out border-r border-border shrink-0"
-      style={{ width: collapsed ? "60px" : "180px", minWidth: collapsed ? "60px" : "180px", maxWidth: collapsed ? "60px" : "180px" }}>
+      style={{ width: collapsed ? "50px" : "180px", minWidth: collapsed ? "50px" : "180px", maxWidth: collapsed ? "50px" : "180px" }}>
       
       {/* Header */}
       <div 
@@ -213,7 +219,7 @@ export function ModuleSidebar({ moduleName, moduleIcon: ModuleIcon, items }: Mod
         <div className={ICON_CONTAINER}>
           <img src={appLogo} alt="RealThingks" className="h-8 w-8 object-contain" />
         </div>
-        <span className="text-sm font-semibold text-primary whitespace-nowrap">{moduleName}</span>
+        {!collapsed && <span className="text-sm font-semibold text-primary whitespace-nowrap">{moduleName}</span>}
       </div>
 
       {/* Navigation */}

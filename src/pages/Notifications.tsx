@@ -1,176 +1,146 @@
-import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Bell, Check, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useEffect, useRef } from "react";
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
+  read_at: string | null;
+}
 
 const Notifications = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  useEffect(() => {
-    fetchNotifications();
+  const queryKey = ["notifications-page", user?.id];
 
-    // Set up real-time subscription
-    const setupSubscription = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
-      const channel = supabase
-        .channel('notifications-realtime')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${authUser.id}`
-          },
-          () => {
-            fetchNotifications();
-          }
-        )
-        .subscribe();
-
-      return channel;
-    };
-
-    const channelPromise = setupSubscription();
-
-    return () => {
-      channelPromise.then(channel => {
-        if (channel) supabase.removeChannel(channel);
-      });
-    };
-  }, []);
-
-  const fetchNotifications = async () => {
-    setLoading(true);
-    try {
-      // Get current auth user
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      
-      if (!authUser) {
-        console.log("No authenticated user");
-        setNotifications([]);
-        setLoading(false);
-        return;
-      }
-
-      console.log("Fetching notifications for user:", authUser.id);
-      
+  const { data: notifications = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: async (): Promise<Notification[]> => {
+      if (!user?.id) return [];
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", authUser.id)
+        .eq("user_id", user.id)
         .order("is_read", { ascending: true })
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+    staleTime: 30 * 1000,
+  });
 
-      if (error) {
-        console.error("Error fetching notifications:", error);
-        throw error;
+  // Real-time subscription
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`notifications-page-rt-${user.id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        queryClient.invalidateQueries({ queryKey });
+      })
+      .subscribe();
+    channelRef.current = channel;
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
-      
-      console.log("Fetched notifications:", data);
-      setNotifications(data || []);
-    } catch (error: any) {
-      console.error("Error fetching notifications:", error);
-      toast.error("Failed to load notifications");
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+  }, [user?.id, queryClient]);
 
-  const markAsRead = async (notificationId: string) => {
-    // Optimistic update
-    setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)
-    );
-
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
+  const markAsRead = useMutation({
+    mutationFn: async (notificationId: string) => {
       const { error } = await supabase
         .from("notifications")
         .update({ is_read: true, read_at: new Date().toISOString() })
         .eq("id", notificationId)
-        .eq("user_id", authUser.id);
-
+        .eq("user_id", user!.id);
       if (error) throw error;
-      
-      toast.success("Marked as read");
-    } catch (error: any) {
-      // Rollback on error
-      fetchNotifications();
+    },
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<Notification[]>(queryKey);
+      queryClient.setQueryData<Notification[]>(queryKey, (old) =>
+        old?.map((n) => (n.id === notificationId ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)) ?? []
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(queryKey, context?.previous);
       toast.error("Failed to mark as read");
-    }
-  };
+    },
+    onSuccess: () => toast.success("Marked as read"),
+  });
 
-  const markAllAsRead = async () => {
-    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
-    
-    if (unreadIds.length === 0) return;
-
-    // Optimistic update
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })));
-
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-      
+  const markAllAsRead = useMutation({
+    mutationFn: async () => {
+      const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
+      if (unreadIds.length === 0) return;
       const { error } = await supabase
         .from("notifications")
         .update({ is_read: true, read_at: new Date().toISOString() })
         .in("id", unreadIds)
-        .eq("user_id", authUser.id);
-
+        .eq("user_id", user!.id);
       if (error) throw error;
-      
-      toast.success("All notifications marked as read");
-    } catch (error: any) {
-      // Rollback on error
-      fetchNotifications();
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<Notification[]>(queryKey);
+      queryClient.setQueryData<Notification[]>(queryKey, (old) =>
+        old?.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() })) ?? []
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(queryKey, context?.previous);
       toast.error("Failed to mark all as read");
-    }
-  };
+    },
+    onSuccess: () => toast.success("All notifications marked as read"),
+  });
 
-  const deleteNotification = async (notificationId: string) => {
-    // Optimistic update
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-
+  const deleteNotification = useMutation({
+    mutationFn: async (notificationId: string) => {
       const { error } = await supabase
         .from("notifications")
         .delete()
         .eq("id", notificationId)
-        .eq("user_id", authUser.id);
-
+        .eq("user_id", user!.id);
       if (error) throw error;
-      
-      toast.success("Notification deleted");
-    } catch (error: any) {
-      // Rollback on error
-      fetchNotifications();
+    },
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<Notification[]>(queryKey);
+      queryClient.setQueryData<Notification[]>(queryKey, (old) => old?.filter((n) => n.id !== notificationId) ?? []);
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      queryClient.setQueryData(queryKey, context?.previous);
       toast.error("Failed to delete notification");
-    }
-  };
+    },
+    onSuccess: () => toast.success("Notification deleted"),
+  });
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
-
-  const getNotificationIcon = (type: string) => {
-    return <Bell className="h-5 w-5" />;
-  };
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -182,11 +152,11 @@ const Notifications = () => {
           <div className="flex-1">
             <h1 className="text-3xl font-bold">Notifications</h1>
             <p className="text-muted-foreground">
-              {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}` : "All caught up!"}
+              {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? "s" : ""}` : "All caught up!"}
             </p>
           </div>
           {unreadCount > 0 && (
-            <Button variant="outline" onClick={markAllAsRead}>
+            <Button variant="outline" onClick={() => markAllAsRead.mutate()}>
               <Check className="h-4 w-4 mr-2" />
               Mark all as read
             </Button>
@@ -194,7 +164,7 @@ const Notifications = () => {
         </div>
 
         <div className="space-y-4">
-          {loading ? (
+          {isLoading ? (
             <Card>
               <CardContent className="py-8">
                 <p className="text-center text-muted-foreground">Loading notifications...</p>
@@ -212,15 +182,15 @@ const Notifications = () => {
             </Card>
           ) : (
             notifications.map((notification) => (
-              <Card 
-                key={notification.id} 
-                className={`transition-all ${!notification.is_read ? 'border-primary/50 bg-primary/5' : ''}`}
+              <Card
+                key={notification.id}
+                className={`transition-all ${!notification.is_read ? "border-primary/50 bg-primary/5" : ""}`}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
                       <div className="mt-1">
-                        {getNotificationIcon(notification.type)}
+                        <Bell className="h-5 w-5" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -237,19 +207,11 @@ const Notifications = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       {!notification.is_read && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => markAsRead(notification.id)}
-                        >
+                        <Button variant="ghost" size="icon" onClick={() => markAsRead.mutate(notification.id)}>
                           <Check className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => deleteNotification(notification.id)}
-                      >
+                      <Button variant="ghost" size="icon" onClick={() => deleteNotification.mutate(notification.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>

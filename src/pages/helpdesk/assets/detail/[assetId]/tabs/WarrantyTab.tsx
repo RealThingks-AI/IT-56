@@ -46,11 +46,11 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
   const leaseExpiryWarning = getExpiryWarning(leaseExpiry);
 
   return (
-    <div className="space-y-4 h-full">
+    <div className="space-y-3 h-full">
       {/* Warranty Information */}
       <Card>
-        <CardContent className="p-4">
-          <div className="space-y-4">
+        <CardContent className="p-3">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-primary" />
@@ -98,7 +98,7 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               <div>
                 <p className="text-xs text-muted-foreground">Warranty Expiry</p>
                 <div className="flex items-center gap-2">
@@ -121,7 +121,16 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Vendor</p>
-                <p className="text-sm font-medium">{asset.vendor?.name || customFields?.vendor || "Not set"}</p>
+                {asset.vendor?.id ? (
+                  <p
+                    className="text-sm font-medium text-primary hover:underline cursor-pointer"
+                    onClick={() => navigate(`/assets/vendors/detail/${asset.vendor.id}`)}
+                  >
+                    {asset.vendor.name}
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium">{customFields?.vendor || "Not set"}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Serial Number</p>
@@ -130,7 +139,7 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
             </div>
 
             {!warrantyExpiry && (
-              <div className="text-center py-4 text-sm text-muted-foreground border rounded-lg bg-muted/50">
+              <div className="text-center py-3 text-sm text-muted-foreground border rounded-lg bg-muted/50">
                 No warranty information available. Click "Edit Warranty" to add details.
               </div>
             )}
@@ -140,14 +149,14 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
 
       {/* Lease Information */}
       <Card>
-        <CardContent className="p-4">
-          <div className="space-y-4">
+        <CardContent className="p-3">
+          <div className="space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" />
               Lease Information
             </h3>
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
               <div>
                 <p className="text-xs text-muted-foreground">Lease Start Date</p>
                 <p className="text-sm font-medium">
@@ -171,7 +180,7 @@ export const WarrantyTab = ({ asset }: WarrantyTabProps) => {
             </div>
 
             {!leaseStartDate && !leaseExpiry && (
-              <div className="text-center py-4 text-sm text-muted-foreground border rounded-lg bg-muted/50">
+              <div className="text-center py-3 text-sm text-muted-foreground border rounded-lg bg-muted/50">
                 No lease information available. Update the asset to add lease details.
               </div>
             )}

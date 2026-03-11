@@ -82,8 +82,8 @@ export function AssetPhotoSelector({
       toast.error("Please upload a JPG, PNG, GIF, or WebP image");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image size must be less than 5MB");
+    if (file.size > 1 * 1024 * 1024) {
+      toast.error("Image size must be less than 1MB");
       return;
     }
     setIsUploading(true);
@@ -134,7 +134,7 @@ export function AssetPhotoSelector({
             <ImageIcon className="h-3.5 w-3.5" />
             {selectedUrl ? "Change Image" : "Select Image"}
           </Button>
-          <p className="text-xs text-muted-foreground">JPG, PNG, GIF, WebP - max 5MB</p>
+          
         </div>
       </div>
 

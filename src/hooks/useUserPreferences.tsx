@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSessionStore } from "@/stores/useSessionStore";
 import { toast } from "sonner";
 
 export interface UserPreferences {
@@ -44,54 +44,41 @@ const defaultPreferences: Omit<UserPreferences, "user_id"> = {
 };
 
 export function useUserPreferences() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-
-  // Get user's internal ID
-  const { data: userProfile } = useQuery({
-    queryKey: ["user-profile-for-prefs", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data, error } = await supabase
-        .from("users")
-        .select("id")
-        .eq("auth_user_id", user.id)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+  // Use session store's internal user ID directly — no waterfall query
+  const internalUserId = useSessionStore((s) => s.internalUserId);
 
   const { data: preferences, isLoading } = useQuery({
-    queryKey: ["user-preferences", userProfile?.id],
+    queryKey: ["user-preferences", internalUserId],
     queryFn: async () => {
-      if (!userProfile?.id) return null;
+      if (!internalUserId) return null;
       
       const { data, error } = await supabase
         .from("user_preferences")
         .select("*")
-        .eq("user_id", userProfile.id)
+        .eq("user_id", internalUserId)
         .maybeSingle();
       
       if (error) throw error;
       
       // If no preferences exist, return defaults with user_id
       if (!data) {
-        return { ...defaultPreferences, user_id: userProfile.id } as UserPreferences;
+        return { ...defaultPreferences, user_id: internalUserId } as UserPreferences;
       }
       
       return data as UserPreferences;
     },
-    enabled: !!userProfile?.id,
+    enabled: !!internalUserId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
   });
 
   const updatePreferences = useMutation({
     mutationFn: async (newPrefs: Partial<UserPreferences>) => {
-      if (!userProfile?.id) throw new Error("User not found");
+      if (!internalUserId) throw new Error("User not found");
 
       const dataToUpsert = {
-        user_id: userProfile.id,
+        user_id: internalUserId,
         ...newPrefs,
       };
 
@@ -111,12 +98,12 @@ export function useUserPreferences() {
 
   const updateLastPasswordChange = useMutation({
     mutationFn: async () => {
-      if (!userProfile?.id) throw new Error("User not found");
+      if (!internalUserId) throw new Error("User not found");
 
       const { error } = await supabase
         .from("user_preferences")
         .upsert(
-          { user_id: userProfile.id, last_password_change: new Date().toISOString() },
+          { user_id: internalUserId, last_password_change: new Date().toISOString() },
           { onConflict: "user_id" }
         );
 
@@ -128,7 +115,7 @@ export function useUserPreferences() {
   });
 
   return {
-    preferences: preferences || { ...defaultPreferences, user_id: userProfile?.id || "" },
+    preferences: preferences || { ...defaultPreferences, user_id: internalUserId || "" },
     isLoading,
     updatePreferences,
     updateLastPasswordChange,

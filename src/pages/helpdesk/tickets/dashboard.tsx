@@ -16,12 +16,12 @@ import {
 } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useUnifiedRequestsStats, useUnifiedRequests } from "@/hooks/useUnifiedRequests";
+import { useUnifiedRequestsStats, useUnifiedRequests } from "@/hooks/tickets/useUnifiedRequests";
 import { CreateTicketDialog } from "@/components/helpdesk/CreateTicketDialog";
 import { CreateProblemDialog } from "@/components/helpdesk/CreateProblemDialog";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { getStatusColor, getPriorityColor, formatStatus } from "@/lib/ticketUtils";
+import { getStatusColor, getPriorityColor, formatStatus } from "@/lib/tickets/ticketUtils";
 
 interface StatCardProps {
   title: string;
@@ -83,6 +83,7 @@ export default function TicketsDashboard() {
 
   const { data: allProblems } = useQuery({
     queryKey: ['helpdesk-problems-count'],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('helpdesk_problems')

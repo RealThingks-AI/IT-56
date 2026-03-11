@@ -14,10 +14,11 @@ export default function AssignmentRules() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedRule, setSelectedRule] = useState<any>(null);
+  const [selectedRule, setSelectedRule] = useState<Record<string, unknown> | null>(null);
 
   const { data: rules, isLoading } = useQuery({
     queryKey: ["assignment-rules"],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("helpdesk_automation_rules")

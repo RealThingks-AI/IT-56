@@ -71,7 +71,7 @@ serve(async (req) => {
     const prefix = tagFormat.prefix;
     const paddingLength = tagFormat.zero_padding || 2;
 
-    // Fetch all existing asset tags for this prefix to find gaps
+    // Fetch ALL asset tags for this prefix (active + inactive) to find the highest number
     const { data: existingAssets, error: queryError } = await supabaseClient
       .from('itam_assets')
       .select('asset_tag')
@@ -85,48 +85,25 @@ serve(async (req) => {
       );
     }
 
-    // Extract all used numbers into a Set
-    const usedNumbers = new Set<number>();
+    // Find the highest used number across ALL assets (active and inactive)
+    let maxNumber = 0;
     if (existingAssets && existingAssets.length > 0) {
       for (const asset of existingAssets) {
         const tag = asset.asset_tag;
         if (tag && tag.startsWith(prefix)) {
           const numPart = tag.substring(prefix.length);
           const num = parseInt(numPart, 10);
-          if (!isNaN(num) && num > 0) {
-            usedNumbers.add(num);
+          if (!isNaN(num) && num > maxNumber) {
+            maxNumber = num;
           }
         }
       }
     }
 
-    // Find the first available gap starting from 1
-    let nextNumber = 1;
-    while (usedNumbers.has(nextNumber)) {
-      nextNumber++;
-    }
-
+    // Always use highest number + 1 (no gap filling, no tag reuse)
+    const nextNumber = maxNumber + 1;
     const paddedNumber = nextNumber.toString().padStart(paddingLength, '0');
     const nextAssetId = `${prefix}${paddedNumber}`;
-
-    // Final uniqueness check
-    const { data: duplicate } = await supabaseClient
-      .from('itam_assets')
-      .select('id')
-      .eq('asset_tag', nextAssetId)
-      .maybeSingle();
-
-    if (duplicate) {
-      // If somehow still a duplicate, increment once more
-      const fallbackNumber = nextNumber + 1;
-      const fallbackPadded = fallbackNumber.toString().padStart(paddingLength, '0');
-      const fallbackId = `${prefix}${fallbackPadded}`;
-
-      return new Response(
-        JSON.stringify({ assetId: fallbackId }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     return new Response(
       JSON.stringify({ assetId: nextAssetId }),

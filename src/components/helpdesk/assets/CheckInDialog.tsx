@@ -20,8 +20,8 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ASSET_STATUS } from "@/lib/assetStatusUtils";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { ASSET_STATUS } from "@/lib/assets/assetStatusUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
 
 interface CheckInDialogProps {
   open: boolean;
@@ -124,11 +124,12 @@ export function CheckInDialog({ open, onOpenChange, assetId, assetName, onSucces
         asset_id: assetId,
         action: "checked_in",
         old_value: previousUserName,
-        new_value: "Available",
+        new_value: "In Stock",
         asset_tag: currentAssetData?.asset_tag || null,
         details: { 
           returned_at: now,
           returned_from: previousUserName,
+          user_id: prevUserId || null,
           notes,
         },
         performed_by: currentUser?.id,
@@ -195,11 +196,29 @@ export function CheckInDialog({ open, onOpenChange, assetId, assetName, onSucces
   });
 
   const handleSubmit = () => {
+    if (notes.length > 1000) {
+      toast.error("Notes must be under 1000 characters");
+      return;
+    }
+    if (sendEmail && emailAddress && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
     checkInMutation.mutate();
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setCheckInDate(new Date());
+      setNotes("");
+      setSendEmail(true);
+      setEmailAddress("");
+    }
+    onOpenChange(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Check In Asset</DialogTitle>
@@ -240,10 +259,12 @@ export function CheckInDialog({ open, onOpenChange, assetId, assetName, onSucces
             <Textarea
               id="notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => setNotes(e.target.value.slice(0, 1000))}
               placeholder="Add any notes about the condition or return..."
               rows={3}
+              maxLength={1000}
             />
+            {notes.length > 900 && <p className="text-[10px] text-muted-foreground text-right">{notes.length}/1000</p>}
           </div>
 
           {/* Send Email */}
@@ -260,13 +281,20 @@ export function CheckInDialog({ open, onOpenChange, assetId, assetName, onSucces
               </Label>
             </div>
             {sendEmail && (
-              <Input
-                type="email"
-                value={emailAddress}
-                onChange={(e) => setEmailAddress(e.target.value)}
-                placeholder="Email address"
-                className="h-8 text-sm"
-              />
+              <>
+                {emailAddress && (
+                  <p className="text-[11px] text-muted-foreground pl-5">
+                    To: {emailAddress}
+                  </p>
+                )}
+                <Input
+                  type="email"
+                  value={emailAddress}
+                  onChange={(e) => setEmailAddress(e.target.value)}
+                  placeholder="Email address"
+                  className="h-8 text-sm ml-5"
+                />
+              </>
             )}
           </div>
         </div>

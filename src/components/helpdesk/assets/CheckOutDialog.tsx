@@ -23,11 +23,11 @@ import { CalendarIcon, Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ASSET_STATUS } from "@/lib/assetStatusUtils";
-import { useAssetSetupConfig } from "@/hooks/useAssetSetupConfig";
+import { ASSET_STATUS } from "@/lib/assets/assetStatusUtils";
+import { useAssetSetupConfig } from "@/hooks/assets/useAssetSetupConfig";
 import { useUsers } from "@/hooks/useUsers";
 import { getUserDisplayName } from "@/lib/userUtils";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
 
 interface CheckOutDialogProps {
   open: boolean;
@@ -144,6 +144,9 @@ export function CheckOutDialog({ open, onOpenChange, assetId, assetName, onSucce
       if (checkoutTo === "person") {
         updateData.assigned_to = userId;
         updateData.checked_out_to = userId;
+      } else if (checkoutTo === "location") {
+        updateData.assigned_to = null;
+        updateData.checked_out_to = null;
       } else {
         updateData.assigned_to = null;
         updateData.checked_out_to = null;
@@ -205,7 +208,7 @@ export function CheckOutDialog({ open, onOpenChange, assetId, assetName, onSucce
         asset_id: assetId,
         action: "checked_out",
         details: historyDetails,
-        old_value: "Available",
+        old_value: "In Stock",
         new_value: checkoutTo === "person" ? (selectedUser?.name || selectedUser?.email) : "Location",
         performed_by: currentUser?.id,
         asset_tag: assetRecord?.asset_tag || null,
@@ -266,10 +269,27 @@ export function CheckOutDialog({ open, onOpenChange, assetId, assetName, onSucce
   });
 
   const handleSubmit = () => {
+    // Validate required fields
+    if (checkoutTo === "person" && !userId) {
+      toast.error("Please select a person to assign to");
+      return;
+    }
+    if (notes.length > 1000) {
+      toast.error("Notes must be under 1000 characters");
+      return;
+    }
+    if (sendEmail && emailAddress && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    if (dueDate && dueDate < checkoutDate) {
+      toast.error("Due date cannot be before check-out date");
+      return;
+    }
     checkOutMutation.mutate();
   };
 
-  const isSubmitDisabled = checkoutTo === "person" ? !userId : false;
+  const isSubmitDisabled = (checkoutTo === "person" ? !userId : false) || checkOutMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -428,21 +448,31 @@ export function CheckOutDialog({ open, onOpenChange, assetId, assetName, onSucce
           {/* Notes */}
           <div className="space-y-1">
             <Label className="text-xs">Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..." rows={2} className="min-h-[40px] resize-none text-sm" />
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value.slice(0, 1000))} placeholder="Optional notes..." rows={2} className="min-h-[40px] resize-none text-sm" maxLength={1000} />
+            {notes.length > 900 && <p className="text-[10px] text-muted-foreground text-right">{notes.length}/1000</p>}
           </div>
 
           {/* Send Email */}
-          <div className="flex items-center gap-2">
-            <Checkbox id="sendEmail" checked={sendEmail} onCheckedChange={(checked) => handleSendEmailChange(checked === true)} className="h-3.5 w-3.5" />
-            <Label htmlFor="sendEmail" className="text-xs font-normal cursor-pointer">Send email notification</Label>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Checkbox id="sendEmail" checked={sendEmail} onCheckedChange={(checked) => handleSendEmailChange(checked === true)} className="h-3.5 w-3.5" />
+              <Label htmlFor="sendEmail" className="text-xs font-normal cursor-pointer">Send email notification</Label>
+            </div>
             {sendEmail && (
-              <Input
-                type="email"
-                value={emailAddress}
-                onChange={(e) => setEmailAddress(e.target.value)}
-                placeholder="Email address"
-                className="h-7 text-xs flex-1 ml-1"
-              />
+              <>
+                {emailAddress && (
+                  <p className="text-[11px] text-muted-foreground pl-5">
+                    To: {emailAddress}
+                  </p>
+                )}
+                <Input
+                  type="email"
+                  value={emailAddress}
+                  onChange={(e) => setEmailAddress(e.target.value)}
+                  placeholder="Email address"
+                  className="h-7 text-xs flex-1 ml-5"
+                />
+              </>
             )}
           </div>
         </div>

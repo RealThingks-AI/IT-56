@@ -25,7 +25,7 @@ export function HeaderUserSection() {
   const storeName = useSessionStore(s => s.name);
 
   const { data: userProfile } = useQuery({
-    queryKey: ["header-user-profile", user?.id],
+    queryKey: ["user-profile", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
       const { data, error } = await supabase
@@ -54,6 +54,18 @@ export function HeaderUserSection() {
   return (
     <div className="flex items-center gap-1">
       <NotificationPanel />
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+          onClick={() => navigate("/admin/users")}
+          title="Admin Panel"
+        >
+          <Shield className="h-4 w-4" />
+          <span className="hidden sm:inline text-xs font-semibold">Admin Panel</span>
+        </Button>
+      )}
       <Separator orientation="vertical" className="h-5 mx-1" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

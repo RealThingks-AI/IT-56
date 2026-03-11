@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Ticket, Clock, CheckCircle2, AlertTriangle, TrendingUp, AlertCircle } from "lucide-react";
-import { useHelpdeskStats } from "@/hooks/useHelpdeskStats";
+import { useHelpdeskStats } from "@/hooks/tickets/useHelpdeskStats";
 
 export const TicketStatsCards = () => {
   const { data: stats, isLoading } = useHelpdeskStats();

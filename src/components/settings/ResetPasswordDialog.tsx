@@ -27,8 +27,12 @@ import { Loader2, KeyRound, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 
 const resetPasswordSchema = z.object({
-  newPassword: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+  newPassword: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Must contain an uppercase letter")
+    .regex(/[a-z]/, "Must contain a lowercase letter")
+    .regex(/\d/, "Must contain a number"),
+  confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
@@ -145,7 +149,7 @@ export function ResetPasswordDialog({ open, onOpenChange, user }: ResetPasswordD
                     </div>
                   </FormControl>
                   <FormDescription>
-                    Minimum 6 characters
+                    Min 8 chars, uppercase, lowercase, number
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

@@ -3,13 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import type { AppRole } from "@/hooks/useUserRole";
 
 const CACHE_KEY = "session-store-cache";
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface CachedSession {
   role: AppRole;
   name: string | null;
   email: string | null;
   userId: string;
+  internalUserId: string | null;
   uiSettings: Record<string, any> | null;
   timestamp: number;
 }
@@ -18,10 +19,12 @@ interface SessionState {
   role: AppRole | null;
   name: string | null;
   email: string | null;
+  internalUserId: string | null;
   uiSettings: Record<string, any> | null;
   status: "idle" | "loading" | "ready";
   retries: number;
   bootstrap: () => Promise<void>;
+  forceRefresh: () => Promise<void>;
   clear: () => void;
 }
 
@@ -53,6 +56,7 @@ function hydrateFromCache(): Partial<SessionState> {
       role: cached.role,
       name: cached.name,
       email: cached.email,
+      internalUserId: cached.internalUserId || null,
       uiSettings: cached.uiSettings,
       status: "ready" as const,
     };
@@ -67,6 +71,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   role: hydrated.role ?? null,
   name: hydrated.name ?? null,
   email: hydrated.email ?? null,
+  internalUserId: hydrated.internalUserId ?? null,
   uiSettings: hydrated.uiSettings ?? null,
   status: hydrated.status ?? "idle",
   retries: 0,
@@ -93,13 +98,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         return;
       }
 
-      const result = data as { role: string | null; permissions: Record<string, boolean>; name: string | null; email: string | null; ui_settings: Record<string, any> | null } | null;
+      const result = data as { role: string | null; permissions: Record<string, boolean>; name: string | null; email: string | null; ui_settings: Record<string, any> | null; internal_user_id: string | null } | null;
 
       if (result && result.role) {
         set({
           role: (result.role as AppRole),
           name: result.name || null,
           email: result.email || null,
+          internalUserId: result.internal_user_id || null,
           uiSettings: result.ui_settings || null,
           status: "ready",
           retries: 0,
@@ -111,6 +117,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             role: result.role,
             name: result.name,
             email: result.email,
+            internalUserId: result.internal_user_id,
             uiSettings: result.ui_settings,
             userId: session.user.id,
             timestamp: Date.now(),
@@ -126,8 +133,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
+  forceRefresh: async () => {
+    set({ status: "idle", retries: 0 });
+    try { localStorage.removeItem(CACHE_KEY); } catch { /* ignore */ }
+    await get().bootstrap();
+  },
+
   clear: () => {
-    set({ role: null, name: null, email: null, uiSettings: null, status: "idle", retries: 0 });
+    set({ role: null, name: null, email: null, internalUserId: null, uiSettings: null, status: "idle", retries: 0 });
     try {
       localStorage.removeItem(CACHE_KEY);
     } catch { /* ignore */ }

@@ -139,30 +139,24 @@ export function BulkImportUsersDialog({ open, onOpenChange }: Props) {
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
-      const response = await fetch(
-        `https://iarndwlbrmjbsjvugqvr.supabase.co/functions/v1/bulk-create-users`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${sessionData.session?.access_token}`,
-          },
-          body: JSON.stringify({
-            users: parsedUsers.map((u) => ({
-              email: u.email,
-              name: u.name,
-              password: u.password,
-              role: defaultRole,
-            })),
-            defaultRole,
-          }),
-        }
-      );
+      const response = await supabase.functions.invoke("bulk-create-users", {
+        body: {
+          users: parsedUsers.map((u) => ({
+            email: u.email,
+            name: u.name,
+            password: u.password,
+            role: defaultRole,
+          })),
+          defaultRole,
+        },
+        headers: { Authorization: `Bearer ${sessionData.session?.access_token}` },
+      });
 
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || "Import failed");
+      if (response.error) {
+        throw new Error(response.error.message || "Import failed");
       }
+
+      const result = response.data;
 
       setImportResults(result.results);
       setSummary({ created: result.created, skipped: result.skipped, errored: result.errored });

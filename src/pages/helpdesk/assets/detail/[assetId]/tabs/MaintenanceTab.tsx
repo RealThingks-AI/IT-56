@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Wrench, Plus, Calendar, CheckCircle, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface MaintenanceTabProps {
   assetId: string;
@@ -32,6 +33,7 @@ interface MaintenanceSchedule {
 export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -71,7 +73,7 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance", assetId] });
-      toast.success("Maintenance schedule created");
+      toast.success("Repair schedule created");
       setDialogOpen(false);
       setFormData({ title: "", description: "", frequency: "monthly", next_due_date: "" });
     },
@@ -90,7 +92,7 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance", assetId] });
-      toast.success("Maintenance schedule deleted");
+      toast.success("Repair schedule deleted");
     },
     onError: () => {
       toast.error("Failed to delete schedule");
@@ -136,7 +138,7 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["asset-maintenance", assetId] });
-      toast.success("Maintenance marked as complete");
+      toast.success("Repair marked as complete");
     },
   });
 
@@ -168,7 +170,7 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex items-center justify-center">
+      <div className="p-3 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -181,12 +183,12 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="w-full">
                 <Plus className="h-4 w-4 mr-2" />
-                Add Maintenance Schedule
+                Add Repair Schedule
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Create Maintenance Schedule</DialogTitle>
+                <DialogTitle>Create Repair Schedule</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -231,7 +233,7 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
                   <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
-                    placeholder="Maintenance details..."
+                    placeholder="Repair details..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={2}
@@ -252,8 +254,8 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
           {schedules.length === 0 ? (
             <div className="text-center py-6">
               <Wrench className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">No maintenance schedules</p>
-              <p className="text-xs text-muted-foreground mt-1">Set up recurring maintenance tasks</p>
+              <p className="text-sm text-muted-foreground">No repair schedules</p>
+              <p className="text-xs text-muted-foreground mt-1">Set up recurring repair tasks</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -292,17 +294,17 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                      className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
                       onClick={() => markComplete.mutate(schedule)}
                     >
-                      <CheckCircle className="h-4 w-4 mr-1" />
+                      <CheckCircle className="h-3.5 w-3.5 mr-1" />
                       Complete
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteSchedule.mutate(schedule.id)}
+                      className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setDeleteConfirmId(schedule.id)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -312,6 +314,21 @@ export const MaintenanceTab = ({ assetId }: MaintenanceTabProps) => {
             </div>
           )}
         </div>
+
+        <ConfirmDialog
+          open={!!deleteConfirmId}
+          onOpenChange={(open) => !open && setDeleteConfirmId(null)}
+          onConfirm={() => {
+            if (deleteConfirmId) {
+              deleteSchedule.mutate(deleteConfirmId);
+              setDeleteConfirmId(null);
+            }
+          }}
+          title="Delete Repair Schedule"
+          description="Are you sure you want to delete this repair schedule? This action cannot be undone."
+          confirmText="Delete"
+          variant="destructive"
+        />
     </div>
   );
 };

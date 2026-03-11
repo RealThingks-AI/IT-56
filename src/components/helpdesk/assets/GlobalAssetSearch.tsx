@@ -12,7 +12,7 @@ import {
   CommandItem,
   CommandSeparator,
 } from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeSearchInput } from "@/lib/utils";
 
 interface SearchResults {
   assets: any[] | null;
@@ -69,7 +69,8 @@ export function GlobalAssetSearch({ className }: { className?: string }) {
     }
 
     setIsSearching(true);
-    const search = `%${debouncedQuery}%`;
+    const sanitized = sanitizeSearchInput(debouncedQuery);
+    const search = `%${sanitized}%`;
 
     Promise.all([
       supabase

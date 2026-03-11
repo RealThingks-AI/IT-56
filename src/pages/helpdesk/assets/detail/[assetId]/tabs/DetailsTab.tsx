@@ -23,8 +23,17 @@ export const DetailsTab = ({ asset }: DetailsTabProps) => {
 
   // Resolve user: prefer checked_out_user, fallback to assigned_user
   const activeUser = asset.checked_out_user || asset.assigned_user;
-  const userName = activeUser ? (getUserDisplayName(activeUser) || activeUser.email || 'Unknown') : null;
+  const userName = activeUser
+    ? (getUserDisplayName(activeUser) || activeUser.email || 'Unknown')
+    : (asset.checked_out_to || asset.assigned_to)
+      ? (asset.custom_fields?.assigned_to_name as string || 'Unknown user')
+      : null;
   const userId = activeUser?.id;
+
+  // For location-only checkouts, show location name
+  const locationCheckoutLabel = !userName && asset.status === 'in_use' && asset.location
+    ? (asset.location.site?.name ? `${asset.location.name} (${asset.location.site.name})` : asset.location.name)
+    : null;
 
   const handleUserClick = () => {
     if (userId) {
@@ -52,14 +61,14 @@ export const DetailsTab = ({ asset }: DetailsTabProps) => {
 
   return (
     <Card className="h-full">
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="p-3 space-y-2.5">
         {/* General */}
         <div>
-          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-md bg-muted/50">
+          <div className="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-md bg-muted/50">
             <Info className="h-3.5 w-3.5 text-primary" />
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">General</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
             <div className="flex justify-between text-sm py-1 border-b border-dashed border-muted">
               <span className="text-muted-foreground">Vendor</span>
               <span
@@ -96,25 +105,37 @@ export const DetailsTab = ({ asset }: DetailsTabProps) => {
             <div className="flex justify-between text-sm py-1 border-b border-dashed border-muted">
               <span className="text-muted-foreground">Checked Out To</span>
               <span className="font-medium flex items-center gap-1.5">
-                <span className={`inline-block w-2 h-2 rounded-full ${userName ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
-                <span
-                  className={userName ? 'text-primary hover:underline cursor-pointer' : ''}
-                  onClick={handleUserClick}
-                >
-                  {userName || 'Not checked out'}
-                </span>
+                <span className={`inline-block w-2 h-2 rounded-full ${(userName || locationCheckoutLabel) ? 'bg-green-500' : 'bg-muted-foreground/30'}`} />
+                {userName ? (
+                  <span
+                    className="text-primary hover:underline cursor-pointer"
+                    onClick={handleUserClick}
+                  >
+                    {userName}
+                  </span>
+                ) : locationCheckoutLabel ? (
+                  <span className="text-muted-foreground italic">📍 {locationCheckoutLabel}</span>
+                ) : (
+                  <span>Not checked out</span>
+                )}
               </span>
             </div>
+            {asset.custom_fields?.asset_configuration && (
+              <div className="flex justify-between text-sm py-1 border-b border-dashed border-muted md:col-span-2">
+                <span className="text-muted-foreground">Asset Configuration</span>
+                <span className="max-w-[60%] text-right">{String(asset.custom_fields.asset_configuration)}</span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Financial & Depreciation */}
         <div>
-          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-md bg-muted/50">
+          <div className="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-md bg-muted/50">
             <DollarSign className="h-3.5 w-3.5 text-primary" />
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financial & Depreciation</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
             <div className="flex justify-between text-sm py-1 border-b border-dashed border-muted">
               <span className="text-muted-foreground">Purchase Price</span>
               <span className="font-medium">{sym}{price.toLocaleString()}</span>
@@ -146,11 +167,11 @@ export const DetailsTab = ({ asset }: DetailsTabProps) => {
 
         {/* Dates */}
         <div>
-          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-md bg-muted/50">
+          <div className="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-md bg-muted/50">
             <Calendar className="h-3.5 w-3.5 text-primary" />
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Key Dates</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
             <div className="flex justify-between text-sm py-1 border-b border-dashed border-muted">
               <span className="text-muted-foreground">Purchase Date</span>
               <span>{asset.purchase_date ? <FormattedDate date={asset.purchase_date} format="short" /> : '—'}</span>
@@ -180,7 +201,7 @@ export const DetailsTab = ({ asset }: DetailsTabProps) => {
           <p className={`text-sm px-1 whitespace-pre-wrap ${asset.notes || asset.description ? 'text-foreground' : 'text-muted-foreground italic'}`}>
             {asset.notes || asset.description || 'No description provided.'}
           </p>
-          <div className="flex gap-4 mt-3 px-1 text-[11px] text-muted-foreground">
+          <div className="flex gap-4 mt-2 px-1 text-[11px] text-muted-foreground">
             <span>Created: <FormattedDate date={asset.created_at} /></span>
             <span>Updated: <FormattedDate date={asset.updated_at} /></span>
           </div>

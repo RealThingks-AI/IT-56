@@ -40,6 +40,7 @@ export default function TicketReports() {
 
   const { data: ticketStats, isLoading } = useQuery({
     queryKey: ["ticket-reports", dateRange],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const { data: tickets, error } = await supabase
         .from("helpdesk_tickets")

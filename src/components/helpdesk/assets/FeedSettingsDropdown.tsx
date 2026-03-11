@@ -17,7 +17,6 @@ export interface FeedFilters {
   checkedIn: boolean;
   underRepair: boolean;
   disposed: boolean;
-  lost: boolean;
 }
 
 const DEFAULT_FILTERS: FeedFilters = {
@@ -26,7 +25,6 @@ const DEFAULT_FILTERS: FeedFilters = {
   checkedIn: true,
   underRepair: true,
   disposed: false,
-  lost: false,
 };
 
 interface FeedSettingsDropdownProps {
@@ -52,7 +50,7 @@ export function FeedSettingsDropdown({
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7">
-                <SlidersHorizontal className="h-4 w-4" />
+                <SlidersHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
@@ -88,7 +86,7 @@ export function FeedSettingsDropdown({
           onCheckedChange={() => toggleFilter("underRepair")}
           className="text-xs"
         >
-          Under Repair
+          Repair
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={filters.disposed}
@@ -96,13 +94,6 @@ export function FeedSettingsDropdown({
           className="text-xs"
         >
           Disposed
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={filters.lost}
-          onCheckedChange={() => toggleFilter("lost")}
-          className="text-xs"
-        >
-          Lost
         </DropdownMenuCheckboxItem>
       </DropdownMenuContent>
     </DropdownMenu>

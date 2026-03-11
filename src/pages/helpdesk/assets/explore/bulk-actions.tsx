@@ -8,13 +8,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { Package, UserCheck, Trash2, Wrench } from "lucide-react";
+import { getStatusLabel } from "@/lib/assets/assetStatusUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
+
+type BulkAction = "checkin" | "dispose" | "repair";
 
 export default function BulkActionsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
+  const [confirmAction, setConfirmAction] = useState<BulkAction | null>(null);
 
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ["assets-bulk"],
@@ -32,16 +38,49 @@ export default function BulkActionsPage() {
   });
 
   const bulkUpdateMutation = useMutation({
-    mutationFn: async ({ status }: { status: string }) => {
+    mutationFn: async ({ action }: { action: BulkAction }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Get current statuses for history
+      const selectedAssetData = assets.filter((a) => selectedAssets.includes(a.id));
+
+      const targetStatus = action === "checkin" ? "available" : action === "dispose" ? "disposed" : "maintenance";
+
+      // Build update payload — clear assignment fields on check-in
+      const updateData: Record<string, any> = { status: targetStatus };
+      if (action === "checkin") {
+        updateData.checked_out_to = null;
+        updateData.assigned_to = null;
+        updateData.checked_out_at = null;
+        updateData.expected_return_date = null;
+      }
+
       const { error } = await supabase
         .from("itam_assets")
-        .update({ status })
+        .update(updateData)
         .in("id", selectedAssets);
 
       if (error) throw error;
+
+      // Insert history records for each asset
+      const actionLabel = action === "checkin" ? "Checked In" : action === "dispose" ? "Disposed" : "Sent to Repair";
+      const historyEntries = selectedAssetData.map((asset) => ({
+        asset_id: asset.id,
+        action: actionLabel,
+        field_name: "status",
+        old_value: getStatusLabel(asset.status),
+        new_value: getStatusLabel(targetStatus),
+        changed_by: user.id,
+        changed_at: new Date().toISOString(),
+      }));
+
+      if (historyEntries.length > 0) {
+        await supabase.from("itam_asset_history").insert(historyEntries);
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assets-bulk"] });
+      invalidateAllAssetQueries(queryClient);
       toast.success("Assets updated successfully");
       setSelectedAssets([]);
     },
@@ -64,13 +103,33 @@ export default function BulkActionsPage() {
     }
   };
 
+  const handleBulkAction = (action: BulkAction) => {
+    if (action === "checkin") {
+      bulkUpdateMutation.mutate({ action });
+    } else {
+      setConfirmAction(action);
+    }
+  };
+
+  const confirmLabels: Record<BulkAction, { title: string; description: string }> = {
+    checkin: { title: "", description: "" },
+    dispose: {
+      title: `Dispose ${selectedAssets.length} asset(s)?`,
+      description: "This will mark the selected assets as Disposed. This action is recorded in the asset history.",
+    },
+    repair: {
+      title: `Send ${selectedAssets.length} asset(s) to Repair?`,
+      description: "This will change the status of the selected assets to Repair.",
+    },
+  };
+
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-7xl mx-auto space-y-4">
-        <div className="flex items-center gap-4">
+    <div className="h-full overflow-auto bg-background p-3">
+      <div className="max-w-7xl mx-auto space-y-2.5">
+        <div className="flex items-center gap-3">
           <BackButton />
           <div>
-            <h1 className="text-2xl font-bold">Bulk Actions</h1>
+            <h1 className="text-lg font-semibold">Bulk Actions</h1>
             <p className="text-sm text-muted-foreground">
               {selectedAssets.length} asset(s) selected
             </p>
@@ -85,16 +144,15 @@ export default function BulkActionsPage() {
             <CardContent className="flex gap-2">
               <Button
                 size="sm"
-                onClick={() => bulkUpdateMutation.mutate({ status: "in_use" })}
-                disabled={bulkUpdateMutation.isPending}
+                onClick={() => navigate(`/assets/checkout`)}
               >
                 <UserCheck className="h-4 w-4 mr-2" />
-                Bulk Check Out
+                Go to Check Out
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => bulkUpdateMutation.mutate({ status: "available" })}
+                onClick={() => handleBulkAction("checkin")}
                 disabled={bulkUpdateMutation.isPending}
               >
                 <Package className="h-4 w-4 mr-2" />
@@ -103,7 +161,7 @@ export default function BulkActionsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => bulkUpdateMutation.mutate({ status: "disposed" })}
+                onClick={() => handleBulkAction("dispose")}
                 disabled={bulkUpdateMutation.isPending}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
@@ -112,11 +170,11 @@ export default function BulkActionsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => bulkUpdateMutation.mutate({ status: "maintenance" })}
+                onClick={() => handleBulkAction("repair")}
                 disabled={bulkUpdateMutation.isPending}
               >
                 <Wrench className="h-4 w-4 mr-2" />
-                Bulk Maintenance
+                Bulk Repair
               </Button>
             </CardContent>
           </Card>
@@ -158,7 +216,7 @@ export default function BulkActionsPage() {
                         onCheckedChange={() => toggleAsset(asset.id)}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">{asset.asset_id || "—"}</TableCell>
+                    <TableCell>{asset.asset_id ? <span className="text-primary hover:underline cursor-pointer font-mono text-xs font-medium" onClick={() => navigate(`/assets/detail/${asset.asset_id || asset.id}`)}>{asset.asset_id}</span> : <span className="font-medium">—</span>}</TableCell>
                     <TableCell>{asset.make?.name || "—"}</TableCell>
                     <TableCell>{asset.model || "—"}</TableCell>
                     <TableCell>
@@ -166,7 +224,7 @@ export default function BulkActionsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={asset.status === "available" ? "default" : "secondary"}>
-                        {asset.status || "available"}
+                        {getStatusLabel(asset.status || "available")}
                       </Badge>
                     </TableCell>
                   </TableRow>
@@ -176,6 +234,21 @@ export default function BulkActionsPage() {
           </Table>
         </div>
       </div>
+
+      {confirmAction && (
+        <ConfirmDialog
+          open={!!confirmAction}
+          onOpenChange={(open) => { if (!open) setConfirmAction(null); }}
+          onConfirm={() => {
+            bulkUpdateMutation.mutate({ action: confirmAction });
+            setConfirmAction(null);
+          }}
+          title={confirmLabels[confirmAction].title}
+          description={confirmLabels[confirmAction].description}
+          confirmText={confirmAction === "dispose" ? "Dispose" : "Send to Repair"}
+          variant="destructive"
+        />
+      )}
     </div>
   );
 }

@@ -1,25 +1,7 @@
 project_id = "iarndwlbrmjbsjvugqvr"
 
-[functions.keep-alive]
+[functions.asset-confirmation]
 verify_jwt = false
 
-[functions.bulk-create-users]
-verify_jwt = false
-
-[functions.migrate-asset-photos]
-verify_jwt = false
-
-[functions.admin-reset-password]
-verify_jwt = false
-
-[functions.create-backup]
-verify_jwt = false
-
-[functions.restore-backup]
-verify_jwt = false
-
-[functions.deduplicate-asset-photos]
-verify_jwt = false
-
-[functions.send-asset-email]
+[functions.ob-notifications]
 verify_jwt = false

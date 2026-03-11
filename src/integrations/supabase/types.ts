@@ -1604,6 +1604,177 @@ export type Database = {
           },
         ]
       }
+      it_task_activity: {
+        Row: {
+          action: string
+          created_at: string
+          detail: string | null
+          id: number
+          task_id: number | null
+          task_title: string
+          user_name: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          detail?: string | null
+          id?: number
+          task_id?: number | null
+          task_title?: string
+          user_name?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          detail?: string | null
+          id?: number
+          task_id?: number | null
+          task_title?: string
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_task_activity_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "it_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_task_attachments: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_size: number
+          file_url: string
+          id: number
+          task_id: number
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_size?: number
+          file_url: string
+          id?: number
+          task_id: number
+          uploaded_by?: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_size?: number
+          file_url?: string
+          id?: number
+          task_id?: number
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_task_attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "it_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_task_comments: {
+        Row: {
+          comment: string
+          created_at: string
+          id: number
+          is_internal: boolean
+          task_id: number
+          user_id: string | null
+          user_name: string
+        }
+        Insert: {
+          comment: string
+          created_at?: string
+          id?: number
+          is_internal?: boolean
+          task_id: number
+          user_id?: string | null
+          user_name?: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string
+          id?: number
+          is_internal?: boolean
+          task_id?: number
+          user_id?: string | null
+          user_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_task_comments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "it_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_task_comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_tasks: {
+        Row: {
+          assignee: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          id: number
+          priority: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assignee?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: number
+          priority?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assignee?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: number
+          priority?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       itam_asset_assignments: {
         Row: {
           asset_id: string
@@ -1651,6 +1822,95 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      itam_asset_confirmation_items: {
+        Row: {
+          asset_id: string
+          asset_name: string | null
+          asset_tag: string | null
+          confirmation_id: string
+          deny_reason: string | null
+          id: string
+          responded_at: string | null
+          response: string | null
+        }
+        Insert: {
+          asset_id: string
+          asset_name?: string | null
+          asset_tag?: string | null
+          confirmation_id: string
+          deny_reason?: string | null
+          id?: string
+          responded_at?: string | null
+          response?: string | null
+        }
+        Update: {
+          asset_id?: string
+          asset_name?: string | null
+          asset_tag?: string | null
+          confirmation_id?: string
+          deny_reason?: string | null
+          id?: string
+          responded_at?: string | null
+          response?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "itam_asset_confirmation_items_confirmation_id_fkey"
+            columns: ["confirmation_id"]
+            isOneToOne: false
+            referencedRelation: "itam_asset_confirmations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      itam_asset_confirmations: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          requested_at: string
+          requested_by: string | null
+          status: string
+          token: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+          token?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+          token?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "itam_asset_confirmations_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "itam_asset_confirmations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1867,6 +2127,7 @@ export type Database = {
           check_out_notes: string | null
           checked_out_at: string | null
           checked_out_to: string | null
+          confirmation_status: string | null
           created_at: string | null
           created_by: string | null
           custom_fields: Json | null
@@ -1876,6 +2137,8 @@ export type Database = {
           expected_return_date: string | null
           id: string
           is_active: boolean | null
+          is_hidden: boolean
+          last_confirmed_at: string | null
           location_id: string | null
           make_id: string | null
           model: string | null
@@ -1902,6 +2165,7 @@ export type Database = {
           check_out_notes?: string | null
           checked_out_at?: string | null
           checked_out_to?: string | null
+          confirmation_status?: string | null
           created_at?: string | null
           created_by?: string | null
           custom_fields?: Json | null
@@ -1911,6 +2175,8 @@ export type Database = {
           expected_return_date?: string | null
           id?: string
           is_active?: boolean | null
+          is_hidden?: boolean
+          last_confirmed_at?: string | null
           location_id?: string | null
           make_id?: string | null
           model?: string | null
@@ -1937,6 +2203,7 @@ export type Database = {
           check_out_notes?: string | null
           checked_out_at?: string | null
           checked_out_to?: string | null
+          confirmation_status?: string | null
           created_at?: string | null
           created_by?: string | null
           custom_fields?: Json | null
@@ -1946,6 +2213,8 @@ export type Database = {
           expected_return_date?: string | null
           id?: string
           is_active?: boolean | null
+          is_hidden?: boolean
+          last_confirmed_at?: string | null
           location_id?: string | null
           make_id?: string | null
           model?: string | null
@@ -3184,6 +3453,155 @@ export type Database = {
         }
         Relationships: []
       }
+      ob_templates: {
+        Row: {
+          created_at: string
+          default_tasks: Json | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_tasks?: Json | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_tasks?: Json | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ob_workflow_tasks: {
+        Row: {
+          assigned_to: string | null
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          is_completed: boolean
+          sort_order: number
+          title: string
+          workflow_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_completed?: boolean
+          sort_order?: number
+          title: string
+          workflow_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_completed?: boolean
+          sort_order?: number
+          title?: string
+          workflow_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ob_workflow_tasks_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "ob_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ob_workflows: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          created_by: string | null
+          department: string | null
+          employee_email: string | null
+          employee_name: string
+          id: string
+          last_day: string | null
+          reason: string | null
+          start_date: string | null
+          status: string
+          template_id: string | null
+          type: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string | null
+          department?: string | null
+          employee_email?: string | null
+          employee_name: string
+          id?: string
+          last_day?: string | null
+          reason?: string | null
+          start_date?: string | null
+          status?: string
+          template_id?: string | null
+          type?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string | null
+          department?: string | null
+          employee_email?: string | null
+          employee_name?: string
+          id?: string
+          last_day?: string | null
+          reason?: string | null
+          start_date?: string | null
+          status?: string
+          template_id?: string | null
+          type?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ob_workflows_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "ob_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ob_workflows_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_access_control: {
         Row: {
           admin_access: boolean | null
@@ -3557,64 +3975,100 @@ export type Database = {
       }
       subscriptions_tools: {
         Row: {
-          billing_cycle: string | null
+          auto_renew: boolean | null
           category: string | null
           contract_end_date: string | null
+          contract_number: string | null
           contract_start_date: string | null
           cost_per_license: number | null
           created_at: string | null
-          description: string | null
+          currency: string | null
+          department: string | null
           id: string
           is_active: boolean | null
           license_count: number | null
+          next_payment_date: string | null
           notes: string | null
+          owner_email: string | null
+          owner_name: string | null
+          payment_terms: string | null
+          purchase_date: string | null
+          quantity: number | null
+          region: string | null
+          renewal_alert_days: number | null
           renewal_date: string | null
           status: string | null
+          subscription_type: string | null
           tenant_id: number | null
           tool_name: string
           total_cost: number | null
+          unit_cost: number | null
           updated_at: string | null
           vendor_id: string | null
           website_url: string | null
         }
         Insert: {
-          billing_cycle?: string | null
+          auto_renew?: boolean | null
           category?: string | null
           contract_end_date?: string | null
+          contract_number?: string | null
           contract_start_date?: string | null
           cost_per_license?: number | null
           created_at?: string | null
-          description?: string | null
+          currency?: string | null
+          department?: string | null
           id?: string
           is_active?: boolean | null
           license_count?: number | null
+          next_payment_date?: string | null
           notes?: string | null
+          owner_email?: string | null
+          owner_name?: string | null
+          payment_terms?: string | null
+          purchase_date?: string | null
+          quantity?: number | null
+          region?: string | null
+          renewal_alert_days?: number | null
           renewal_date?: string | null
           status?: string | null
+          subscription_type?: string | null
           tenant_id?: number | null
           tool_name: string
           total_cost?: number | null
+          unit_cost?: number | null
           updated_at?: string | null
           vendor_id?: string | null
           website_url?: string | null
         }
         Update: {
-          billing_cycle?: string | null
+          auto_renew?: boolean | null
           category?: string | null
           contract_end_date?: string | null
+          contract_number?: string | null
           contract_start_date?: string | null
           cost_per_license?: number | null
           created_at?: string | null
-          description?: string | null
+          currency?: string | null
+          department?: string | null
           id?: string
           is_active?: boolean | null
           license_count?: number | null
+          next_payment_date?: string | null
           notes?: string | null
+          owner_email?: string | null
+          owner_name?: string | null
+          payment_terms?: string | null
+          purchase_date?: string | null
+          quantity?: number | null
+          region?: string | null
+          renewal_alert_days?: number | null
           renewal_date?: string | null
           status?: string | null
+          subscription_type?: string | null
           tenant_id?: number | null
           tool_name?: string
           total_cost?: number | null
+          unit_cost?: number | null
           updated_at?: string | null
           vendor_id?: string | null
           website_url?: string | null
@@ -4531,6 +4985,7 @@ export type Database = {
         }
         Returns: string
       }
+      get_app_user_id: { Args: never; Returns: string }
       get_appmaster_admin_details: {
         Args: never
         Returns: {

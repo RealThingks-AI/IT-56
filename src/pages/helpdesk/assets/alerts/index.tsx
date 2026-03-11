@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { AssetModuleTopBar } from "@/components/helpdesk/assets/AssetModuleTopBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatCard } from "@/components/helpdesk/assets/StatCard";
 import { 
   AlertTriangle, 
   Wrench, 
@@ -17,6 +17,7 @@ import {
   Bell,
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
+import { useUsersLookup } from "@/hooks/useUsersLookup";
 
 const AlertsPage = () => {
   const [searchParams] = useSearchParams();
@@ -31,7 +32,7 @@ const AlertsPage = () => {
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
       const { data } = await supabase
         .from("itam_assets")
-        .select("*")
+        .select("id, asset_id, asset_tag, name, status, warranty_expiry, purchase_date, model, serial_number, assigned_to, category:itam_categories(name)")
         .eq("is_active", true)
         .not("warranty_expiry", "is", null)
         .lte("warranty_expiry", thirtyDaysFromNow.toISOString())
@@ -39,6 +40,8 @@ const AlertsPage = () => {
         .order("warranty_expiry", { ascending: true });
       return data || [];
     },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   // Fetch maintenance due
@@ -52,6 +55,8 @@ const AlertsPage = () => {
         .order("created_at", { ascending: true });
       return data || [];
     },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   // Fetch overdue check-ins - properly filtered by expected_return_date
@@ -68,20 +73,14 @@ const AlertsPage = () => {
         .order("expected_return_date", { ascending: true });
       return data || [];
     },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Fetch user names for overdue assignments
-  const { data: users = [] } = useQuery({
-    queryKey: ["users-for-alerts"],
-    queryFn: async () => {
-      const { data } = await supabase.from("users").select("id, full_name, email");
-      return data || [];
-    },
-  });
+  const { resolveUserName } = useUsersLookup();
 
   const getUserName = (userId: string) => {
-    const user = users.find((u: any) => u.id === userId);
-    return user ? (user as any).full_name || (user as any).email || "Unknown" : "Unknown";
+    return resolveUserName(userId) || "Unknown";
   };
 
   // Fetch expiring licenses - with .gte to exclude already-expired
@@ -100,6 +99,8 @@ const AlertsPage = () => {
         .order("expiry_date", { ascending: true });
       return data || [];
     },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const getDaysUntil = (date: string) => {
@@ -128,71 +129,30 @@ const AlertsPage = () => {
   const totalAlerts = Object.values(alertCounts).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="min-h-screen bg-background">
-      <AssetModuleTopBar />
-      
-      <div className="p-4 space-y-4">
-        {/* Summary Cards - clickable */}
+    <div className="h-full flex flex-col bg-background overflow-auto">
+      <div className="p-3 space-y-3">
+        {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card 
-            className={`cursor-pointer transition-all hover:shadow-sm ${activeTab === "warranty" ? "ring-2 ring-primary" : ""}`}
-            onClick={() => setActiveTab("warranty")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50">
-                <Calendar className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <p className="text-xl font-bold">{alertCounts.warranty}</p>
-                <p className="text-xs text-muted-foreground">Warranty Expiring</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className={`cursor-pointer transition-all hover:shadow-sm ${activeTab === "maintenance" ? "ring-2 ring-primary" : ""}`}
-            onClick={() => setActiveTab("maintenance")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/50">
-                <Wrench className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-              </div>
-              <div>
-                <p className="text-xl font-bold">{alertCounts.maintenance}</p>
-                <p className="text-xs text-muted-foreground">Maintenance Due</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className={`cursor-pointer transition-all hover:shadow-sm ${activeTab === "overdue" ? "ring-2 ring-primary" : ""}`}
-            onClick={() => setActiveTab("overdue")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/50">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <p className="text-xl font-bold">{alertCounts.overdue}</p>
-                <p className="text-xs text-muted-foreground">Assets Overdue</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            className={`cursor-pointer transition-all hover:shadow-sm ${activeTab === "licenses" ? "ring-2 ring-primary" : ""}`}
-            onClick={() => setActiveTab("licenses")}
-          >
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-                <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="text-xl font-bold">{alertCounts.licenses}</p>
-                <p className="text-xs text-muted-foreground">Licenses Expiring</p>
-              </div>
-            </CardContent>
-          </Card>
+          <StatCard
+            icon={Calendar} value={alertCounts.warranty} label="Warranty Expiring"
+            colorClass="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
+            onClick={() => setActiveTab("warranty")} active={activeTab === "warranty"}
+          />
+          <StatCard
+            icon={Wrench} value={alertCounts.maintenance} label="Repair Due"
+            colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
+            onClick={() => setActiveTab("maintenance")} active={activeTab === "maintenance"}
+          />
+          <StatCard
+            icon={AlertTriangle} value={alertCounts.overdue} label="Assets Overdue"
+            colorClass="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+            onClick={() => setActiveTab("overdue")} active={activeTab === "overdue"}
+          />
+          <StatCard
+            icon={FileText} value={alertCounts.licenses} label="Licenses Expiring"
+            colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+            onClick={() => setActiveTab("licenses")} active={activeTab === "licenses"}
+          />
         </div>
 
         {/* Alert Details - controlled tabs */}
@@ -212,7 +172,7 @@ const AlertsPage = () => {
                   Warranty ({alertCounts.warranty})
                 </TabsTrigger>
                 <TabsTrigger value="maintenance" className="text-xs data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-                  Maintenance ({alertCounts.maintenance})
+                  Repair ({alertCounts.maintenance})
                 </TabsTrigger>
                 <TabsTrigger value="overdue" className="text-xs data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
                   Overdue ({alertCounts.overdue})
@@ -222,9 +182,9 @@ const AlertsPage = () => {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="warranty" className="mt-0">
+              <TabsContent value="warranty" className="mt-0 animate-in fade-in-0 duration-200">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead>Asset</TableHead>
                       <TableHead>Asset Tag</TableHead>
@@ -239,7 +199,7 @@ const AlertsPage = () => {
                       return (
                         <TableRow key={asset.id}>
                           <TableCell className="font-medium">{asset.name}</TableCell>
-                          <TableCell>{asset.asset_tag || asset.asset_id}</TableCell>
+                          <TableCell><span className="text-primary hover:underline cursor-pointer font-mono text-xs" onClick={() => navigate(`/assets/detail/${asset.asset_tag || asset.asset_id || asset.id}`)}>{asset.asset_tag || asset.asset_id}</span></TableCell>
                           <TableCell>{format(new Date(asset.warranty_expiry), 'MMM dd, yyyy')}</TableCell>
                           <TableCell>
                             <Badge variant={daysInfo.variant}>{daysInfo.text}</Badge>
@@ -267,9 +227,9 @@ const AlertsPage = () => {
                 </Table>
               </TabsContent>
 
-              <TabsContent value="maintenance" className="mt-0">
+              <TabsContent value="maintenance" className="mt-0 animate-in fade-in-0 duration-200">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead>Asset</TableHead>
                       <TableHead>Issue</TableHead>
@@ -303,7 +263,7 @@ const AlertsPage = () => {
                     {maintenanceDue.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          No pending maintenance
+                          No pending repairs
                         </TableCell>
                       </TableRow>
                     )}
@@ -311,9 +271,9 @@ const AlertsPage = () => {
                 </Table>
               </TabsContent>
 
-              <TabsContent value="overdue" className="mt-0">
+              <TabsContent value="overdue" className="mt-0 animate-in fade-in-0 duration-200">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead>Asset</TableHead>
                       <TableHead>Assigned To</TableHead>
@@ -361,9 +321,9 @@ const AlertsPage = () => {
                 </Table>
               </TabsContent>
 
-              <TabsContent value="licenses" className="mt-0">
+              <TabsContent value="licenses" className="mt-0 animate-in fade-in-0 duration-200">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/50">
                     <TableRow>
                       <TableHead>License Name</TableHead>
                       <TableHead>Type</TableHead>

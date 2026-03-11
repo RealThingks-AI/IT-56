@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
@@ -111,6 +112,9 @@ export function AdminLogs() {
   // Fetch total count
   const { data: totalCount } = useQuery({
     queryKey: ["admin-audit-logs-count", dateRange, actionFilter, moduleFilter, showSessionActivity],
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       let query = supabase
         .from("audit_logs")
@@ -142,6 +146,9 @@ export function AdminLogs() {
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["admin-audit-logs", dateRange, actionFilter, moduleFilter, showSessionActivity, page, perPage],
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       let query = supabase
         .from("audit_logs")
@@ -313,7 +320,7 @@ export function AdminLogs() {
       <div className="flex flex-col gap-2 w-full">
         {/* Compact Toolbar */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <div className="relative w-52">
+          <div className="relative w-56">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               placeholder="Search logs..."
@@ -323,7 +330,7 @@ export function AdminLogs() {
             />
           </div>
           <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[110px] h-8 text-xs">
+            <SelectTrigger className={cn("w-[150px] h-8 text-xs", dateRange !== "all" && "bg-primary/15 border-primary/40 font-medium")}>
               <SelectValue placeholder="Date range" />
             </SelectTrigger>
             <SelectContent>
@@ -335,7 +342,7 @@ export function AdminLogs() {
             </SelectContent>
           </Select>
           <Select value={actionFilter} onValueChange={setActionFilter}>
-            <SelectTrigger className="w-[110px] h-8 text-xs">
+            <SelectTrigger className={cn("w-[150px] h-8 text-xs", actionFilter !== "all" && "bg-primary/15 border-primary/40 font-medium")}>
               <SelectValue placeholder="Action" />
             </SelectTrigger>
             <SelectContent>
@@ -348,7 +355,7 @@ export function AdminLogs() {
             </SelectContent>
           </Select>
           <Select value={moduleFilter} onValueChange={setModuleFilter}>
-            <SelectTrigger className="w-[110px] h-8 text-xs">
+            <SelectTrigger className={cn("w-[150px] h-8 text-xs", moduleFilter !== "all" && "bg-primary/15 border-primary/40 font-medium")}>
               <SelectValue placeholder="Module" />
             </SelectTrigger>
             <SelectContent>
@@ -388,7 +395,7 @@ export function AdminLogs() {
         {/* Table */}
         <div className="overflow-auto rounded-lg border flex-1">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
+            <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
               <TableRow>
                 <TableHead className="w-[130px] text-xs">Timestamp</TableHead>
                 <TableHead className="w-[130px] text-xs">User</TableHead>

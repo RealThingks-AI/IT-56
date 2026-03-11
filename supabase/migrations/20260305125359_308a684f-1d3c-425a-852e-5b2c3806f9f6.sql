@@ -1,0 +1,1 @@
+ALTER TABLE public.subscriptions_tools ADD COLUMN IF NOT EXISTS purchase_date date;

@@ -11,19 +11,21 @@ interface LookupUser {
 
 /**
  * Shared hook for user name resolution across asset detail tabs.
- * Fetches once and exposes a resolver that matches both `users.id` and `users.auth_user_id`.
+ * Uses the same query key as AssetsLayout prefetch for instant cache hits.
  */
 export function useUsersLookup() {
   const { data: users = [] } = useQuery({
-    queryKey: ["users-lookup"],
+    queryKey: ["users-list"],
     queryFn: async () => {
       const { data } = await supabase
         .from("users")
-        .select("id, auth_user_id, name, email");
-      return (data || []) as LookupUser[];
+        .select("id, auth_user_id, name, email, status, avatar_url")
+        .order("name");
+      return (data || []) as (LookupUser & { status?: string; avatar_url?: string })[];
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
   });
 
   const resolveUserName = useCallback(

@@ -1,10 +1,10 @@
 import { useState, useDeferredValue, useMemo, useCallback, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,9 +13,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ASSET_STATUS } from "@/lib/assets/assetStatusUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ImagePreviewDialog } from "@/components/helpdesk/assets/ImagePreviewDialog";
+import { EmptyState } from "@/components/helpdesk/assets/EmptyState";
+import { AssetSearchBar } from "@/components/helpdesk/assets/AssetSearchBar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,77 +34,70 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   CalendarIcon,
-  Search,
   UserCheck,
   X,
-  PackageOpen,
   CheckCircle2,
-  SearchX,
   Loader2,
   AlertCircle,
   History,
   ChevronsUpDown,
-  Check,
 } from "lucide-react";
-import { cn, sanitizeSearchInput } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useUsers } from "@/hooks/useUsers";
+import { useAvailableAssets } from "@/hooks/assets/useAvailableAssets";
+import { useAssetSelection } from "@/hooks/assets/useAssetSelection";
+import { useSortableAssets } from "@/hooks/assets/useSortableAssets";
+import { PaginationControls } from "@/components/helpdesk/assets/PaginationControls";
 import { getUserDisplayName } from "@/lib/userUtils";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
-import { useUISettings } from "@/hooks/useUISettings";
-import { SortableTableHeader, type SortConfig } from "@/components/helpdesk/SortableTableHeader";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
+
+import { SortableTableHeader } from "@/components/helpdesk/SortableTableHeader";
 import { useUsersLookup } from "@/hooks/useUsersLookup";
 import { formatRelativeTime } from "@/lib/dateUtils";
 
-interface CachedAsset {
-  id: string;
-  name: string;
-  asset_tag: string | null;
-  asset_id: string;
-  photo_url?: string | null;
-}
+import { FALLBACK_NAV, getPhotoUrl, useAssetPageShortcuts } from "@/lib/assets/assetHelpers";
+import { AssetThumbnail } from "@/components/helpdesk/assets/AssetThumbnail";
 
-const FALLBACK_NAV = "/assets/allassets";
-
-const AssetThumbnail = ({ url, name, onClick }: { url?: string | null; name?: string; onClick?: () => void }) => {
-  const [error, setError] = useState(false);
-  if (!url || error) {
-    return (
-      <div className="h-7 w-7 rounded bg-muted flex items-center justify-center flex-shrink-0">
-        <PackageOpen className="h-3 w-3 text-muted-foreground" />
-      </div>
-    );
+const getColumnValue = (item: any, column: string): string => {
+  switch (column) {
+    case "asset_tag": return item.asset_tag || item.asset_id || "";
+    case "name": return item.name || "";
+    case "category": return item.category?.name || "";
+    default: return "";
   }
-  return (
-    <img
-      src={url}
-      alt={name || "Asset"}
-      className="h-7 w-7 rounded object-cover flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
-      onError={() => setError(true)}
-      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
-      loading="lazy"
-    />
-  );
 };
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const deferredSearch = useDeferredValue(search);
-  const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
-  const [selectedAssetCache, setSelectedAssetCache] = useState<Map<string, CachedAsset>>(new Map());
   const [assignTo, setAssignTo] = useState<string | undefined>(undefined);
   const [expectedReturn, setExpectedReturn] = useState<Date>();
   const [notes, setNotes] = useState("");
+  const [sendEmail, setSendEmail] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ column: "name", direction: "asc" });
   const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 200;
 
-  const { uiSettings, updateUISettings } = useUISettings();
   const { data: users = [] } = useUsers();
   const { resolveUserName } = useUsersLookup();
+  const [searchParams] = useSearchParams();
+  const autoSelectDone = useRef(false);
+
+  // Auto-select user from ?user= param
+  useEffect(() => {
+    if (autoSelectDone.current || !users.length) return;
+    const userId = searchParams.get("user");
+    if (userId && users.some(u => u.id === userId)) {
+      setAssignTo(userId);
+      autoSelectDone.current = true;
+    }
+  }, [users, searchParams]);
 
   // Recent checkouts query
   const { data: recentCheckouts = [] } = useQuery({
@@ -108,7 +105,7 @@ const CheckoutPage = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("itam_asset_history")
-        .select("id, created_at, action, new_value, old_value, asset_tag, performed_by")
+        .select("id, created_at, action, new_value, old_value, asset_tag, performed_by, details")
         .eq("action", "checked_out")
         .order("created_at", { ascending: false })
         .limit(10);
@@ -117,125 +114,57 @@ const CheckoutPage = () => {
     staleTime: 30_000,
   });
 
-  // BUG FIX: Validate lastAssignee against current users list before applying
-  const hasLoadedPrefs = useRef(false);
-  useEffect(() => {
-    const checkoutPrefs = (uiSettings as any)?.checkoutPreferences;
-    if (!hasLoadedPrefs.current && checkoutPrefs?.lastAssignee && users.length > 0) {
-      const isValid = users.some(u => u.id === checkoutPrefs.lastAssignee);
-      if (isValid) {
-        setAssignTo(checkoutPrefs.lastAssignee);
-      }
-      hasLoadedPrefs.current = true;
-    }
-  }, [uiSettings, users]);
-
-  const getPhotoUrl = (asset: any): string | null => asset?.custom_fields?.photo_url || null;
-
-  // Fetch available assets
-  const { data: assets = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ["itam-assets-available", deferredSearch],
+  // Fetch categories for filter
+  const { data: categories = [] } = useQuery({
+    queryKey: ["itam-categories"],
     queryFn: async () => {
-      let query = supabase
-        .from("itam_assets")
-        .select("*, category:itam_categories(name), make:itam_makes!make_id(name)")
-        .eq("is_active", true)
-        .eq("status", "available")
-        .order("name");
-
-      if (deferredSearch) {
-        const s = sanitizeSearchInput(deferredSearch);
-        query = query.or(`name.ilike.%${s}%,asset_tag.ilike.%${s}%,asset_id.ilike.%${s}%,serial_number.ilike.%${s}%,model.ilike.%${s}%`);
-      }
-
-      const { data, error } = await query.limit(5000);
-      if (error) throw error;
-      let results = data || [];
-
-      if (deferredSearch) {
-        const term = sanitizeSearchInput(deferredSearch).toLowerCase();
-        results = results.filter((a: any) => {
-          const categoryName = (a.category?.name || "").toLowerCase();
-          const makeName = (a.make?.name || "").toLowerCase();
-          const assetName = (a.name || "").toLowerCase();
-          const tag = (a.asset_tag || "").toLowerCase();
-          const serial = (a.serial_number || "").toLowerCase();
-          const model = (a.model || "").toLowerCase();
-          return assetName.includes(term) || tag.includes(term) || serial.includes(term) || model.includes(term) || categoryName.includes(term) || makeName.includes(term);
-        });
-      }
-
-      return results;
+      const { data } = await supabase.from("itam_categories").select("id, name").eq("is_active", true).order("name");
+      return data || [];
     },
+    staleTime: 5 * 60_000,
   });
 
-  // Sort handler
-  const handleSort = useCallback((column: string) => {
-    setSortConfig(prev => ({
-      column,
-      direction: prev.column === column
-        ? prev.direction === "asc" ? "desc" : prev.direction === "desc" ? null : "asc"
-        : "asc",
-    }));
-  }, []);
+  // Fetch available assets via shared hook
+  const { data: rawAssets = [], isLoading, isError, refetch } = useAvailableAssets({
+    status: "available",
+    search: deferredSearch,
+    queryKey: "itam-assets-available",
+    limit: 5000,
+  });
+  const isStaleSearch = search !== deferredSearch;
 
-  // Sorted assets
-  const sortedAssets = useMemo(() => {
-    if (!sortConfig.direction) return assets;
-    const sorted = [...assets].sort((a: any, b: any) => {
-      let aVal: string, bVal: string;
-      switch (sortConfig.column) {
-        case "asset_tag": aVal = a.asset_tag || a.asset_id || ""; bVal = b.asset_tag || b.asset_id || ""; break;
-        case "name": aVal = a.name || ""; bVal = b.name || ""; break;
-        case "category": aVal = a.category?.name || ""; bVal = b.category?.name || ""; break;
-        default: aVal = ""; bVal = "";
-      }
-      const cmp = aVal.localeCompare(bVal, undefined, { sensitivity: "base" });
-      return sortConfig.direction === "desc" ? -cmp : cmp;
-    });
-    return sorted;
-  }, [assets, sortConfig]);
+  // Apply category filter client-side
+  const assets = useMemo(() => {
+    if (categoryFilter === "all") return rawAssets;
+    return rawAssets.filter((a: any) => a.category?.name === categoryFilter);
+  }, [rawAssets, categoryFilter]);
 
-  const allVisibleSelected = sortedAssets.length > 0 && sortedAssets.every((a: any) => selectedAssets.includes(a.id));
-  const someVisibleSelected = sortedAssets.some((a: any) => selectedAssets.includes(a.id));
+  // Shared selection hook
+  const {
+    selectedIds: selectedAssets,
+    selectedCache: selectedAssetCache,
+    toggleItem: toggleAsset,
+    toggleAll: toggleSelectAll,
+    clearSelection,
+    isSelected,
+    selectedCount,
+  } = useAssetSelection<any>((item) => item.id);
 
-  const toggleSelectAll = useCallback(() => {
-    if (allVisibleSelected) {
-      const visibleIds = new Set(sortedAssets.map((a: any) => a.id));
-      setSelectedAssets(prev => prev.filter(id => !visibleIds.has(id)));
-      setSelectedAssetCache(prev => {
-        const next = new Map(prev);
-        visibleIds.forEach(id => next.delete(id));
-        return next;
-      });
-    } else {
-      const newIds = sortedAssets.map((a: any) => a.id);
-      setSelectedAssets(prev => [...new Set([...prev, ...newIds])]);
-      setSelectedAssetCache(prev => {
-        const next = new Map(prev);
-        sortedAssets.forEach((a: any) => next.set(a.id, { id: a.id, name: a.name, asset_tag: a.asset_tag, asset_id: a.asset_id, photo_url: getPhotoUrl(a) }));
-        return next;
-      });
-    }
-  }, [sortedAssets, allVisibleSelected]);
+  // Shared sort hook
+  const { sortedData: sortedAssets, sortConfig, handleSort } = useSortableAssets(
+    assets,
+    getColumnValue,
+    { initialColumn: "name", initialDirection: "asc" }
+  );
 
-  // BUG FIX: Use functional updater to avoid stale closure on selectedAssets
-  const toggleAsset = useCallback((asset: any) => {
-    const id = typeof asset === "string" ? asset : asset.id;
-    setSelectedAssets(prev => {
-      const isDeselecting = prev.includes(id);
-      if (isDeselecting) return prev.filter(x => x !== id);
-      // Cache on select
-      if (typeof asset !== "string") {
-        setSelectedAssetCache(prevCache => {
-          const next = new Map(prevCache);
-          next.set(id, { id: asset.id, name: asset.name, asset_tag: asset.asset_tag, asset_id: asset.asset_id, photo_url: getPhotoUrl(asset) });
-          return next;
-        });
-      }
-      return [...prev, id];
-    });
-  }, []);
+  // Reset page when search changes
+  useEffect(() => { setCurrentPage(1); }, [deferredSearch]);
+
+  const totalPages = Math.ceil(sortedAssets.length / ITEMS_PER_PAGE);
+  const paginatedAssets = sortedAssets.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const allVisibleSelected = sortedAssets.length > 0 && sortedAssets.every((a: any) => isSelected(a.id));
+  const someVisibleSelected = sortedAssets.some((a: any) => isSelected(a.id));
 
   // Checkout mutation
   const checkoutMutation = useMutation({
@@ -247,7 +176,6 @@ const CheckoutPage = () => {
       const selectedUser = users.find((u) => u.id === assignTo);
       const assignedToName = getUserDisplayName(selectedUser) || selectedUser?.email || assignTo;
 
-      // BUG FIX: Get current user first so we can set assigned_by
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
       const assignments = selectedAssets.map(assetId => ({
@@ -266,7 +194,7 @@ const CheckoutPage = () => {
       const { error: updateError } = await supabase
         .from("itam_assets")
         .update({
-          status: "in_use",
+          status: ASSET_STATUS.IN_USE,
           assigned_to: assignTo,
           checked_out_to: assignTo,
           checked_out_at: now,
@@ -281,16 +209,18 @@ const CheckoutPage = () => {
         .select("id, asset_tag")
         .in("id", selectedAssets);
 
-      const historyEntries = (assetRecords || []).map(asset => ({
+        const historyEntries = (assetRecords || []).map(asset => ({
         asset_id: asset.id,
         action: "checked_out",
-        old_value: "Available",
+        old_value: "In Stock",
         new_value: assignedToName,
         details: {
           assigned_to: assignedToName,
           user_id: assignTo,
+          checkout_type: "person",
+          checkout_date: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss"),
           expected_return: expectedReturn ? format(expectedReturn, "yyyy-MM-dd") : undefined,
-          notes,
+          notes: notes || undefined,
         },
         performed_by: currentUser?.id,
         asset_tag: asset.asset_tag,
@@ -306,19 +236,13 @@ const CheckoutPage = () => {
       toast.success(`${count} asset(s) checked out successfully`);
       invalidateAllAssetQueries(queryClient);
 
-      if (assignTo) {
-        updateUISettings.mutate({
-          checkoutPreferences: { lastAssignee: assignTo },
-        } as any);
-
-        // Send consolidated email with all assets in a table
+      if (assignTo && sendEmail) {
         try {
           const selectedUser = users.find(u => u.id === assignTo);
           const userEmail = selectedUser?.email;
           const userName = getUserDisplayName(selectedUser) || selectedUser?.email || "";
 
           if (userEmail) {
-            // Fetch full details for all checked-out assets
             const { data: fullAssets } = await supabase
               .from("itam_assets")
               .select("asset_tag, name, serial_number, model, custom_fields, itam_categories(name), make:itam_makes!make_id(name)")
@@ -375,62 +299,49 @@ const CheckoutPage = () => {
     return getUserDisplayName(u) || u?.email || "";
   }, [assignTo, users]);
 
-  const isStaleSearch = search !== deferredSearch;
-  const canCheckout = selectedAssets.length > 0 && !!assignTo && !checkoutMutation.isPending && !showSuccess;
+  const canCheckout = selectedCount > 0 && !!assignTo && !checkoutMutation.isPending && !showSuccess;
 
   // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !confirmOpen) {
-        navigate(FALLBACK_NAV);
-        return;
-      }
-      const activeTag = (document.activeElement?.tagName || "").toLowerCase();
-      if (e.key === "Enter" && !e.shiftKey && canCheckout && !confirmOpen && activeTag !== "textarea" && activeTag !== "input") {
-        e.preventDefault();
-        handleCheckout();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [canCheckout, confirmOpen, navigate]);
+  useAssetPageShortcuts({
+    canConfirm: canCheckout,
+    dialogOpen: confirmOpen,
+    onConfirm: handleCheckout,
+  });
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden">
       <div className="flex-1 min-h-0 overflow-hidden p-3">
         <div className="flex gap-3 h-full">
           {/* Asset Selection */}
-          <Card className="flex-1 min-w-0 flex flex-col min-h-0 shadow-none border">
-            <CardHeader className="pb-2 px-3 pt-3 flex-shrink-0">
+          <Card className="flex-1 min-w-0 flex flex-col min-h-0 shadow-sm border">
+            <CardHeader className="pb-1.5 px-3 pt-2.5 flex-shrink-0">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search tag, name, model, serial..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="pl-8 pr-7 h-8 text-xs"
-                      aria-label="Search available assets"
-                    />
-                    {search && (
-                      <button
-                        type="button"
-                        onClick={() => setSearch("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Clear search"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <AssetSearchBar
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Search tag, name, model, serial..."
+                    ariaLabel="Search available assets"
+                    className="w-[200px]"
+                  />
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="h-7 w-[140px] text-xs">
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all" className="text-xs">All Categories</SelectItem>
+                      {categories.map((cat: any) => (
+                        <SelectItem key={cat.id} value={cat.name} className="text-xs">{cat.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Badge variant="outline" className="text-xs h-5 gap-1 flex-shrink-0">
                     {isLoading ? "…" : sortedAssets.length} available
                   </Badge>
                 </div>
-                {selectedAssets.length > 0 && (
-                  <Badge variant="default" className="text-xs h-5 gap-1 flex-shrink-0">
-                    {selectedAssets.length} selected
+                {selectedCount > 0 && (
+                  <Badge variant="outline" className="text-xs h-5 gap-1 flex-shrink-0">
+                    {selectedCount} selected
                   </Badge>
                 )}
               </div>
@@ -446,7 +357,7 @@ const CheckoutPage = () => {
               )}
 
               <ScrollArea className="flex-1 min-h-0">
-                <Table className="table-fixed" wrapperClassName="border-0 rounded-none">
+                <Table className="table-fixed" wrapperClassName="border-0 rounded-none overflow-visible">
                   <colgroup>
                     <col className="w-[36px]" />
                     <col className="w-[44px]" />
@@ -455,12 +366,12 @@ const CheckoutPage = () => {
                     <col />
                     <col className="w-[120px]" />
                   </colgroup>
-                  <TableHeader className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
+                  <TableHeader className="sticky top-0 bg-muted shadow-sm z-10">
                     <TableRow className="hover:bg-transparent border-b">
                       <TableHead className="px-2 h-8">
                         <Checkbox
                           checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
-                          onCheckedChange={toggleSelectAll}
+                          onCheckedChange={() => toggleSelectAll(sortedAssets, allVisibleSelected)}
                           disabled={sortedAssets.length === 0}
                           aria-label="Select all"
                           className="h-3.5 w-3.5"
@@ -468,9 +379,9 @@ const CheckoutPage = () => {
                       </TableHead>
                       <TableHead className="text-xs px-1 h-8">#</TableHead>
                       <TableHead className="px-1 h-8"></TableHead>
-                      <SortableTableHeader column="asset_tag" label="Asset Tag" sortConfig={sortConfig} onSort={handleSort} className="text-xs px-2" />
+                      <SortableTableHeader column="asset_tag" label="Asset Tag" sortConfig={sortConfig} onSort={handleSort} className="text-xs px-2" style={{ width: 120 }} />
                       <SortableTableHeader column="name" label="Asset" sortConfig={sortConfig} onSort={handleSort} className="text-xs px-2" />
-                      <SortableTableHeader column="category" label="Category" sortConfig={sortConfig} onSort={handleSort} className="text-xs px-2" />
+                      <SortableTableHeader column="category" label="Category" sortConfig={sortConfig} onSort={handleSort} className="text-xs px-2" style={{ width: 120 }} />
                     </TableRow>
                   </TableHeader>
 
@@ -488,45 +399,36 @@ const CheckoutPage = () => {
                       ))
                     ) : sortedAssets.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-10">
-                          <div className="flex flex-col items-center gap-1.5 text-muted-foreground">
-                            {search ? (
-                              <>
-                                <SearchX className="h-6 w-6 opacity-40" />
-                                <p className="text-xs">No assets match "{search}"</p>
-                                <button onClick={() => setSearch("")} className="text-xs text-primary hover:underline mt-1">Clear search</button>
-                              </>
-                            ) : (
-                              <>
-                                <PackageOpen className="h-6 w-6 opacity-40" />
-                                <p className="text-xs">No available assets</p>
-                                <p className="text-xs opacity-60">All assets are currently checked out or inactive</p>
-                              </>
-                            )}
-                          </div>
+                        <TableCell colSpan={6} className="text-center p-0">
+                          <EmptyState
+                            title="No assets in stock"
+                            subtitle="All assets are currently checked out or inactive"
+                            search={search}
+                            onClearSearch={() => setSearch("")}
+                          />
                         </TableCell>
                       </TableRow>
                     ) : (
-                      sortedAssets.map((asset: any, index: number) => (
+                      paginatedAssets.map((asset: any, index: number) => (
                         <TableRow
                           key={asset.id}
                           className={cn(
                             "cursor-pointer transition-colors duration-100 h-9",
-                            selectedAssets.includes(asset.id)
-                              ? "bg-primary/8 hover:bg-primary/12"
+                            isSelected(asset.id)
+                              ? "bg-primary/10 hover:bg-primary/15"
                               : "hover:bg-muted/40"
                           )}
                           onClick={() => toggleAsset(asset)}
                         >
                           <TableCell className="px-2 py-1">
                             <Checkbox
-                              checked={selectedAssets.includes(asset.id)}
+                              checked={isSelected(asset.id)}
                               onCheckedChange={() => toggleAsset(asset)}
                               onClick={(e) => e.stopPropagation()}
                               className="h-3.5 w-3.5"
                             />
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground tabular-nums px-1 py-1 whitespace-nowrap">{index + 1}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground tabular-nums px-1 py-1 whitespace-nowrap">{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</TableCell>
                           <TableCell className="px-1 py-1">
                             <AssetThumbnail
                               url={getPhotoUrl(asset)}
@@ -537,8 +439,12 @@ const CheckoutPage = () => {
                               }}
                             />
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground px-2 py-1 truncate">{asset.asset_tag || asset.asset_id}</TableCell>
-                          <TableCell className="text-xs font-medium px-2 py-1 truncate">{asset.name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground px-2 py-1 truncate">
+                            {(asset.asset_tag || asset.asset_id) ? (
+                              <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/detail/${asset.asset_tag || asset.asset_id || asset.id}`); }}>{asset.asset_tag || asset.asset_id}</span>
+                            ) : "—"}
+                          </TableCell>
+                          <TableCell className="text-sm px-2 py-1 truncate">{asset.name}</TableCell>
                           <TableCell className="text-xs text-muted-foreground px-2 py-1 truncate">{asset.category?.name || "—"}</TableCell>
                         </TableRow>
                       ))
@@ -546,11 +452,18 @@ const CheckoutPage = () => {
                   </TableBody>
                 </Table>
               </ScrollArea>
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={sortedAssets.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setCurrentPage}
+              />
             </CardContent>
           </Card>
 
           {/* Right Column */}
-          <div className="w-[408px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto max-h-full">
+          <div className="w-[320px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto max-h-full">
             {/* Checkout Form */}
             <Card className="flex-shrink-0 shadow-sm border">
               <CardHeader className="pb-1.5 px-3 pt-2.5">
@@ -561,7 +474,7 @@ const CheckoutPage = () => {
               </CardHeader>
 
               <CardContent className="space-y-2 px-3 pb-3">
-                {selectedAssets.length > 0 ? (
+                {selectedCount > 0 ? (
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {selectedAssets.map(id => {
                       const cached = selectedAssetCache.get(id);
@@ -587,7 +500,7 @@ const CheckoutPage = () => {
                         <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[370px] p-0" align="start">
+                    <PopoverContent className="w-[300px] p-0" align="start">
                       <Command>
                         <CommandInput placeholder="Search users..." className="h-8 text-xs" />
                         <CommandList>
@@ -598,10 +511,12 @@ const CheckoutPage = () => {
                                 key={user.id}
                                 value={getUserDisplayName(user) || user.email}
                                 onSelect={() => { setAssignTo(user.id); setUserSearchOpen(false); }}
-                                className="text-xs"
+                                className={cn(
+                                  "text-xs",
+                                  assignTo === user.id && "bg-primary/20 font-medium"
+                                )}
                               >
                                 {getUserDisplayName(user) || user.email}
-                                {assignTo === user.id && <Check className="ml-auto h-3 w-3" />}
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -641,13 +556,35 @@ const CheckoutPage = () => {
 
                 <div className="space-y-1.5">
                   <Label className="text-xs">Notes</Label>
-                   <Textarea
+                  <Textarea
                     placeholder="Checkout notes..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={2}
                     className="text-xs resize-none min-h-[48px]"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="checkout-send-email"
+                      checked={sendEmail}
+                      onCheckedChange={(checked) => setSendEmail(!!checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <Label htmlFor="checkout-send-email" className="text-xs font-normal cursor-pointer">
+                      Send email notification to user
+                    </Label>
+                  </div>
+                  {sendEmail && assignTo && (() => {
+                    const selectedUser = users.find(u => u.id === assignTo);
+                    return selectedUser?.email ? (
+                      <p className="text-[11px] text-muted-foreground pl-5">
+                        To: {selectedUser.email}
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="pt-2 flex gap-2 border-t">
@@ -657,10 +594,10 @@ const CheckoutPage = () => {
                     ) : checkoutMutation.isPending ? (
                       <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Processing...</>
                     ) : (
-                      <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Check Out{selectedAssets.length > 0 ? ` (${selectedAssets.length})` : ""}</>
+                      <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Check Out{selectedCount > 0 ? ` (${selectedCount})` : ""}</>
                     )}
                   </Button>
-                  <Button variant="outline" className="flex-1 h-8 text-xs" onClick={() => navigate(FALLBACK_NAV)} disabled={checkoutMutation.isPending || showSuccess}>
+                  <Button variant="outline" className="h-8 text-xs px-4" onClick={() => navigate(FALLBACK_NAV)} disabled={checkoutMutation.isPending || showSuccess}>
                     Cancel
                   </Button>
                 </div>
@@ -670,7 +607,7 @@ const CheckoutPage = () => {
             {/* Recent Check Outs */}
             <Card className="flex-1 min-h-0 shadow-sm border flex flex-col">
               <CardHeader className="pb-1.5 px-3 pt-2.5 flex-shrink-0">
-                <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                <CardTitle className="text-xs flex items-center gap-1.5">
                   <History className="h-3 w-3" />
                   Recent Check Outs
                 </CardTitle>
@@ -683,9 +620,9 @@ const CheckoutPage = () => {
                     <Table wrapperClassName="border-0 rounded-none">
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead className="text-[10px] px-1.5 h-6">When</TableHead>
-                          <TableHead className="text-[10px] px-1.5 h-6">Asset Tag</TableHead>
-                          <TableHead className="text-[10px] px-1.5 h-6">User</TableHead>
+                          <TableHead className="text-[11px] px-1.5 h-6">When</TableHead>
+                          <TableHead className="text-[11px] px-1.5 h-6">Asset Tag</TableHead>
+                          <TableHead className="text-[11px] px-1.5 h-6">User</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -696,13 +633,15 @@ const CheckoutPage = () => {
                             </TableCell>
                             <TableCell className="text-[11px] px-1.5 py-0.5">
                               {tx.asset_tag ? (
-                                <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/detail/${tx.asset_tag}`); }}>{tx.asset_tag}</span>
+                                <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/allassets?search=${encodeURIComponent(tx.asset_tag)}`); }}>{tx.asset_tag}</span>
                               ) : "—"}
                             </TableCell>
                             <TableCell className="text-[11px] text-muted-foreground px-1.5 py-0.5 truncate max-w-[120px]">
                               {(() => {
+                                // Only navigate if we have a valid UUID for the user
+                                const details = tx.details as any;
+                                const userId = details?.user_id && /^[0-9a-f]{8}-/i.test(details.user_id) ? details.user_id : null;
                                 const userName = tx.new_value || resolveUserName(tx.performed_by) || "—";
-                                const userId = tx.new_value && /^[0-9a-f]{8}-/i.test(tx.new_value) ? tx.new_value : tx.performed_by;
                                 return userName !== "—" && userId ? (
                                   <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${userId}`); }}>{userName}</span>
                                 ) : userName;
@@ -720,18 +659,7 @@ const CheckoutPage = () => {
         </div>
       </div>
 
-      {/* Image preview dialog */}
-      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
-        <DialogContent className="max-w-lg p-2">
-          {previewImage && (
-            <img
-              src={previewImage.url}
-              alt={previewImage.name}
-              className="w-full h-auto max-h-[70vh] object-contain rounded"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <ImagePreviewDialog image={previewImage} onClose={() => setPreviewImage(null)} />
 
       {/* Confirmation Dialog */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -740,7 +668,7 @@ const CheckoutPage = () => {
             <AlertDialogTitle>Confirm Checkout</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm">
-                <p>Check out <strong>{selectedAssets.length}</strong> asset{selectedAssets.length !== 1 ? "s" : ""} to <strong>{assigneeName}</strong>.</p>
+                <p>Check out <strong>{selectedCount}</strong> asset{selectedCount !== 1 ? "s" : ""} to <strong>{assigneeName}</strong>.</p>
                 {expectedReturn && (
                   <p className="text-muted-foreground">Expected return: <strong>{format(expectedReturn, "MMM dd, yyyy")}</strong></p>
                 )}

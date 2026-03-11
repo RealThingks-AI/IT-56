@@ -1,0 +1,1 @@
+ALTER TABLE ob_workflows ADD COLUMN user_id uuid REFERENCES users(id);

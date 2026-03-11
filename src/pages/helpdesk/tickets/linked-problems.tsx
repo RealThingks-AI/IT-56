@@ -15,6 +15,7 @@ export default function LinkedProblems() {
 
   const { data: problems, isLoading } = useQuery({
     queryKey: ["problems-with-tickets"],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("helpdesk_problems")

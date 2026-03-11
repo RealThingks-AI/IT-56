@@ -36,8 +36,12 @@ import { useState } from "react";
 const createUserSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   name: z.string().optional(),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Must contain an uppercase letter")
+    .regex(/[a-z]/, "Must contain a lowercase letter")
+    .regex(/\d/, "Must contain a number"),
+  confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(["admin", "manager", "user", "viewer"], {
     required_error: "Please select a role",
   }),

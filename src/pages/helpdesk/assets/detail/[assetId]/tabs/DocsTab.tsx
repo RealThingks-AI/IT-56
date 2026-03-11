@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FileText, Upload, Download, Trash2, File, FileImage, FileSpreadsheet, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ interface Document {
 export const DocsTab = ({ assetId }: DocsTabProps) => {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ docId: string; filePath: string; name: string } | null>(null);
 
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ["asset-documents", assetId],
@@ -43,17 +44,14 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
 
   const deleteDocument = useMutation({
     mutationFn: async ({ docId, filePath }: { docId: string; filePath: string }) => {
-      // First delete from storage
       const { error: storageError } = await supabase.storage
         .from("asset-documents")
         .remove([filePath]);
       
       if (storageError) {
         console.warn("Failed to delete file from storage:", storageError);
-        // Continue with DB deletion even if storage deletion fails
       }
 
-      // Then delete the database record
       const { error } = await supabase
         .from("itam_asset_documents")
         .delete()
@@ -93,14 +91,12 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Upload to storage
       const fileName = `${assetId}/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from("asset-documents")
         .upload(fileName, file);
 
       if (uploadError) {
-        // If bucket doesn't exist, show helpful message
         if (uploadError.message.includes("Bucket not found")) {
           toast.error("Document storage not configured. Contact admin to create 'asset-documents' bucket.");
           return;
@@ -108,7 +104,6 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
         throw uploadError;
       }
 
-      // Save document record
       const { error: insertError } = await supabase
         .from("itam_asset_documents")
         .insert({
@@ -153,7 +148,7 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex items-center justify-center">
+      <div className="p-3 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -206,18 +201,18 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-6 w-6"
                       onClick={() => handleDownload(doc)}
                     >
-                      <Download className="h-4 w-4" />
+                      <Download className="h-3.5 w-3.5" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => deleteDocument.mutate({ docId: doc.id, filePath: doc.file_path })}
+                      className="h-6 w-6 text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget({ docId: doc.id, filePath: doc.file_path, name: doc.name })}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -225,6 +220,21 @@ export const DocsTab = ({ assetId }: DocsTabProps) => {
             </div>
           )}
         </div>
+
+        <ConfirmDialog
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+          onConfirm={() => {
+            if (deleteTarget) {
+              deleteDocument.mutate({ docId: deleteTarget.docId, filePath: deleteTarget.filePath });
+              setDeleteTarget(null);
+            }
+          }}
+          title="Delete document?"
+          description={`"${deleteTarget?.name}" will be permanently removed.`}
+          confirmText="Delete"
+          variant="destructive"
+        />
     </div>
   );
 };

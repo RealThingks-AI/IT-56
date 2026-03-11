@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { SettingsCard } from "./SettingsCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Mail, Send, CheckCircle2, XCircle, Loader2, TestTube, Settings2, Save, Eye, EyeOff } from "lucide-react";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Mail, Send, CheckCircle2, XCircle, Loader2, TestTube, Settings2, Save, Eye, EyeOff, RefreshCw, History } from "lucide-react";
 import { EmailTemplatePreview } from "./EmailTemplatePreview";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
 
 interface AzureCredentials {
   tenant_id: string;
@@ -20,27 +22,20 @@ interface AzureCredentials {
 export function EmailCenter() {
   const queryClient = useQueryClient();
 
-  // Azure credentials state
   const [creds, setCreds] = useState<AzureCredentials>({
-    tenant_id: "",
-    client_id: "",
-    client_secret: "",
-    sender_email: "",
+    tenant_id: "", client_id: "", client_secret: "", sender_email: "",
   });
   const [showSecret, setShowSecret] = useState(false);
 
-  // Connection test state
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"unknown" | "connected" | "error">("unknown");
   const [connectionError, setConnectionError] = useState("");
   const [detectedSender, setDetectedSender] = useState("");
 
-  // Test email state
   const [testEmail, setTestEmail] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
 
-  // Load saved credentials
-  const { data: savedCreds, isLoading: isLoadingCreds } = useQuery({
+  const { data: savedCreds } = useQuery({
     queryKey: ["azure-credentials"],
     queryFn: async () => {
       const { data } = await supabase
@@ -64,10 +59,20 @@ export function EmailCenter() {
     }
   }, [savedCreds]);
 
-  // Save credentials mutation
+  const { data: emailLogs, refetch: refetchLogs } = useQuery({
+    queryKey: ["email-logs"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("itam_email_logs")
+        .select("id, recipient_email, template_id, status, subject, error_message, created_at")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      return data || [];
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // Check if row exists
       const { data: existing } = await supabase
         .from("itam_email_config")
         .select("id")
@@ -139,6 +144,7 @@ export function EmailCenter() {
       if (error) throw error;
       if (data?.success) {
         toast.success("Test email sent to " + testEmail);
+        refetchLogs();
       } else {
         toast.error("Failed: " + (data?.error || "Unknown error"));
       }
@@ -152,36 +158,36 @@ export function EmailCenter() {
   const hasAllCreds = creds.tenant_id && creds.client_id && creds.client_secret && creds.sender_email;
 
   return (
-    <div className="space-y-6">
-      {/* Azure Credentials Management */}
-      <SettingsCard
-        title="Microsoft Graph API Credentials"
-        description="Enter your Azure AD application credentials to enable email sending via Microsoft 365"
-        icon={Settings2}
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
+    <div className="space-y-2.5">
+      {/* Azure Credentials */}
+      <div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <Settings2 className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Microsoft Graph API Credentials</h3>
+        </div>
+        <div className="rounded-lg border bg-card p-3 space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="space-y-1">
               <Label htmlFor="azure-tenant" className="text-xs">Azure Tenant ID</Label>
               <Input
                 id="azure-tenant"
                 value={creds.tenant_id}
                 onChange={(e) => setCreds(p => ({ ...p, tenant_id: e.target.value }))}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                className="font-mono text-xs"
+                className="h-7 font-mono text-xs"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label htmlFor="azure-client" className="text-xs">Client ID</Label>
               <Input
                 id="azure-client"
                 value={creds.client_id}
                 onChange={(e) => setCreds(p => ({ ...p, client_id: e.target.value }))}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                className="font-mono text-xs"
+                className="h-7 font-mono text-xs"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label htmlFor="azure-secret" className="text-xs">Client Secret</Label>
               <div className="relative">
                 <Input
@@ -190,7 +196,7 @@ export function EmailCenter() {
                   value={creds.client_secret}
                   onChange={(e) => setCreds(p => ({ ...p, client_secret: e.target.value }))}
                   placeholder="Enter client secret"
-                  className="font-mono text-xs pr-9"
+                  className="h-7 font-mono text-xs pr-9"
                 />
                 <Button
                   type="button"
@@ -203,7 +209,7 @@ export function EmailCenter() {
                 </Button>
               </div>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label htmlFor="azure-sender" className="text-xs">Sender Email</Label>
               <Input
                 id="azure-sender"
@@ -211,110 +217,154 @@ export function EmailCenter() {
                 value={creds.sender_email}
                 onChange={(e) => setCreds(p => ({ ...p, sender_email: e.target.value }))}
                 placeholder="noreply@company.com"
-                className="text-xs"
+                className="h-7 text-xs"
               />
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Button
+              size="sm"
+              className="h-7 text-xs"
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending || !hasAllCreds}
             >
-              {saveMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
+              {saveMutation.isPending ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
               Save Credentials
             </Button>
             {!hasAllCreds && (
-              <span className="text-xs text-muted-foreground">Fill all fields to save</span>
+              <span className="text-[10px] text-muted-foreground">Fill all fields to save</span>
             )}
           </div>
         </div>
-      </SettingsCard>
+      </div>
 
-      {/* Connection Test */}
-      <SettingsCard
-        title="Connection Status"
-        description="Test your Microsoft Graph API connection"
-        icon={Mail}
-      >
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
+      {/* Connection & Testing — merged */}
+      <div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <TestTube className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Connection & Testing</h3>
+        </div>
+        <div className="rounded-lg border bg-card p-3 space-y-2">
+          {/* Connection status row */}
+          <div className="flex items-center gap-2 flex-wrap">
             {connectionStatus === "connected" && (
-              <Badge variant="default" className="gap-1.5 bg-green-600 hover:bg-green-700">
-                <CheckCircle2 className="h-3 w-3" />
-                Connected
+              <Badge variant="default" className="gap-1 text-[10px] bg-green-600 hover:bg-green-700">
+                <CheckCircle2 className="h-3 w-3" /> Connected
               </Badge>
             )}
             {connectionStatus === "error" && (
-              <Badge variant="destructive" className="gap-1.5">
-                <XCircle className="h-3 w-3" />
-                Error
+              <Badge variant="destructive" className="gap-1 text-[10px]">
+                <XCircle className="h-3 w-3" /> Error
               </Badge>
             )}
             {connectionStatus === "unknown" && (
-              <Badge variant="secondary" className="gap-1.5">
-                Not tested
-              </Badge>
+              <Badge variant="secondary" className="gap-1 text-[10px]">Not tested</Badge>
             )}
             {detectedSender && (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 Sender: <strong>{detectedSender}</strong>
               </span>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs ml-auto"
+              onClick={handleTestConnection}
+              disabled={isTestingConnection}
+            >
+              {isTestingConnection ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Settings2 className="h-3.5 w-3.5 mr-1.5" />}
+              Test Connection
+            </Button>
           </div>
 
           {connectionError && (
-            <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-              {connectionError}
-            </p>
+            <p className="text-xs text-destructive bg-destructive/10 p-2 rounded-md">{connectionError}</p>
           )}
 
-          <Button
-            variant="outline"
-            onClick={handleTestConnection}
-            disabled={isTestingConnection}
-          >
-            {isTestingConnection ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Settings2 className="h-4 w-4 mr-2" />
-            )}
-            Test Connection
-          </Button>
-        </div>
-      </SettingsCard>
-
-      {/* Send Test Email */}
-      <SettingsCard
-        title="Send Test Email"
-        description="Verify email delivery by sending a test message"
-        icon={TestTube}
-      >
-        <div className="flex gap-2 items-end">
-          <div className="flex-1 space-y-2">
-            <Label htmlFor="test-email" className="text-xs">Recipient Email</Label>
-            <Input
-              id="test-email"
-              type="email"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-              placeholder="user@company.com"
-            />
+          {/* Send test email row */}
+          <div className="flex gap-2 items-end border-t border-border">
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="test-email" className="text-xs">Send Test Email</Label>
+              <Input
+                id="test-email"
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                placeholder="user@company.com"
+                className="h-7 text-xs"
+              />
+            </div>
+            <Button size="sm" className="h-7 text-xs" onClick={handleSendTestEmail} disabled={isSendingTest || !testEmail}>
+              {isSendingTest ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+              Send Test
+            </Button>
           </div>
-          <Button onClick={handleSendTestEmail} disabled={isSendingTest || !testEmail}>
-            {isSendingTest ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            Send Test
+        </div>
+      </div>
+
+      {/* Email Logs */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">Email Delivery Log</h3>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetchLogs()}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
           </Button>
         </div>
-      </SettingsCard>
+        {emailLogs && emailLogs.length > 0 ? (
+          <ScrollArea className="max-h-[300px] rounded-md border">
+            <Table>
+              <colgroup>
+                <col className="w-[180px]" />
+                <col className="w-[100px]" />
+                <col />
+                <col className="w-[80px]" />
+                <col className="w-[140px]" />
+              </colgroup>
+              <TableHeader className="sticky top-0 bg-muted shadow-sm z-10">
+                <TableRow>
+                  <TableHead className="text-xs py-1">Recipient</TableHead>
+                  <TableHead className="text-xs py-1">Template</TableHead>
+                  <TableHead className="text-xs py-1">Subject</TableHead>
+                  <TableHead className="text-xs py-1">Status</TableHead>
+                  <TableHead className="text-xs py-1">Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {emailLogs.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-xs font-mono truncate max-w-[180px] py-1">{log.recipient_email}</TableCell>
+                    <TableCell className="py-1">
+                      <Badge variant="outline" className="text-[10px] capitalize">{log.template_id}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px] py-1">{log.subject || "—"}</TableCell>
+                    <TableCell className="py-1">
+                      {log.status === "sent" ? (
+                        <Badge variant="default" className="text-[10px] bg-green-600 hover:bg-green-700 gap-1">
+                          <CheckCircle2 className="h-2.5 w-2.5" /> Sent
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="text-[10px] gap-1">
+                          <XCircle className="h-2.5 w-2.5" /> Failed
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground py-1">
+                      {log.created_at ? format(new Date(log.created_at), "dd MMM yyyy HH:mm") : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        ) : (
+          <div className="rounded-lg border bg-card p-3 text-center">
+            <p className="text-xs text-muted-foreground">No email logs yet. Send a test email to see delivery history.</p>
+          </div>
+        )}
+      </div>
 
       {/* Email Template Preview */}
       <EmailTemplatePreview />

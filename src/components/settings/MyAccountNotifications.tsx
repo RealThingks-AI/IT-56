@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { SettingsCard } from "./SettingsCard";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Bell, Mail, Monitor, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useUserPreferences } from "@/hooks/useUserPreferences";
 
 interface NotificationPreferences {
   deliveryFrequency: string;
@@ -48,40 +49,74 @@ const defaultPreferences: NotificationPreferences = {
   },
 };
 
+const MODULE_ITEMS = [
+  { key: "tickets" as const, label: "Tickets", description: "Helpdesk ticket updates" },
+  { key: "assets" as const, label: "Assets", description: "Asset management alerts" },
+  { key: "systemUpdates" as const, label: "System Updates", description: "Windows update tracking" },
+  { key: "subscriptions" as const, label: "Subscriptions", description: "Subscription renewals and payments" },
+  { key: "monitoring" as const, label: "Monitoring", description: "Service health and incidents" },
+] as const;
+
+const EVENT_ITEMS = [
+  { key: "ticketAssigned" as const, label: "Ticket Assigned", description: "When a ticket is assigned to you" },
+  { key: "ticketUpdated" as const, label: "Ticket Updated", description: "When your assigned tickets are updated" },
+  { key: "slaBreaching" as const, label: "SLA Breaching", description: "When SLA is about to breach" },
+  { key: "assetExpiring" as const, label: "Asset Expiring", description: "When warranties or licenses expire" },
+  { key: "weeklyDigest" as const, label: "Weekly Digest", description: "Weekly summary of activity" },
+] as const;
+
 export function MyAccountNotifications() {
-  const [preferences, setPreferences] = useState<NotificationPreferences>(defaultPreferences);
+  const { preferences: userPrefs, updatePreferences, isLoading: prefsLoading } = useUserPreferences();
+  const [prefs, setPrefs] = useState<NotificationPreferences>(defaultPreferences);
   const [isSaving, setIsSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  // Load preferences from localStorage
+  // Load from DB notification_settings
   useEffect(() => {
-    const stored = localStorage.getItem("notification-preferences");
-    if (stored) {
-      try {
-        setPreferences(JSON.parse(stored));
-      } catch {
-        // Use defaults
-      }
+    if (!loaded && userPrefs?.notification_settings) {
+      const ns = userPrefs.notification_settings as any;
+      setPrefs({
+        deliveryFrequency: ns.deliveryFrequency || defaultPreferences.deliveryFrequency,
+        emailEnabled: userPrefs.email_notifications ?? defaultPreferences.emailEnabled,
+        inAppEnabled: userPrefs.in_app_notifications ?? defaultPreferences.inAppEnabled,
+        moduleNotifications: { ...defaultPreferences.moduleNotifications, ...ns.moduleNotifications },
+        eventTriggers: { ...defaultPreferences.eventTriggers, ...ns.eventTriggers },
+      });
+      setLoaded(true);
     }
-  }, []);
+  }, [userPrefs, loaded]);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     setIsSaving(true);
-    setTimeout(() => {
-      localStorage.setItem("notification-preferences", JSON.stringify(preferences));
-      toast.success("Notification preferences saved");
-      setIsSaving(false);
-    }, 500);
-  };
+    updatePreferences.mutate(
+      {
+        email_notifications: prefs.emailEnabled,
+        in_app_notifications: prefs.inAppEnabled,
+        notification_settings: {
+          deliveryFrequency: prefs.deliveryFrequency,
+          moduleNotifications: prefs.moduleNotifications,
+          eventTriggers: prefs.eventTriggers,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success("Notification preferences saved");
+          setIsSaving(false);
+        },
+        onError: () => setIsSaving(false),
+      }
+    );
+  }, [prefs, updatePreferences]);
 
-  const updateModuleNotification = (key: keyof typeof preferences.moduleNotifications, value: boolean) => {
-    setPreferences((prev) => ({
+  const updateModuleNotification = (key: keyof typeof prefs.moduleNotifications, value: boolean) => {
+    setPrefs((prev) => ({
       ...prev,
       moduleNotifications: { ...prev.moduleNotifications, [key]: value },
     }));
   };
 
-  const updateEventTrigger = (key: keyof typeof preferences.eventTriggers, value: boolean) => {
-    setPreferences((prev) => ({
+  const updateEventTrigger = (key: keyof typeof prefs.eventTriggers, value: boolean) => {
+    setPrefs((prev) => ({
       ...prev,
       eventTriggers: { ...prev.eventTriggers, [key]: value },
     }));
@@ -90,19 +125,13 @@ export function MyAccountNotifications() {
   return (
     <div className="space-y-6">
       {/* Delivery Preferences */}
-      <SettingsCard
-        title="Delivery Preferences"
-        description="Configure how you receive notifications"
-        icon={Bell}
-      >
+      <SettingsCard title="Delivery Preferences" description="Configure how you receive notifications" icon={Bell}>
         <div className="space-y-6">
           <div className="space-y-2">
             <Label>Delivery Frequency</Label>
             <Select
-              value={preferences.deliveryFrequency}
-              onValueChange={(value) =>
-                setPreferences((prev) => ({ ...prev, deliveryFrequency: value }))
-              }
+              value={prefs.deliveryFrequency}
+              onValueChange={(value) => setPrefs((prev) => ({ ...prev, deliveryFrequency: value }))}
             >
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Select frequency" />
@@ -125,16 +154,12 @@ export function MyAccountNotifications() {
                 <Mail className="h-4 w-4 text-muted-foreground" />
                 <div>
                   <Label className="text-sm">Email Notifications</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Receive notifications via email
-                  </p>
+                  <p className="text-xs text-muted-foreground">Receive notifications via email</p>
                 </div>
               </div>
               <Switch
-                checked={preferences.emailEnabled}
-                onCheckedChange={(checked) =>
-                  setPreferences((prev) => ({ ...prev, emailEnabled: checked }))
-                }
+                checked={prefs.emailEnabled}
+                onCheckedChange={(checked) => setPrefs((prev) => ({ ...prev, emailEnabled: checked }))}
               />
             </div>
             <div className="flex items-center justify-between py-2">
@@ -142,16 +167,12 @@ export function MyAccountNotifications() {
                 <Monitor className="h-4 w-4 text-muted-foreground" />
                 <div>
                   <Label className="text-sm">In-App Notifications</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Show notifications within the application
-                  </p>
+                  <p className="text-xs text-muted-foreground">Show notifications within the application</p>
                 </div>
               </div>
               <Switch
-                checked={preferences.inAppEnabled}
-                onCheckedChange={(checked) =>
-                  setPreferences((prev) => ({ ...prev, inAppEnabled: checked }))
-                }
+                checked={prefs.inAppEnabled}
+                onCheckedChange={(checked) => setPrefs((prev) => ({ ...prev, inAppEnabled: checked }))}
               />
             </div>
           </div>
@@ -159,26 +180,16 @@ export function MyAccountNotifications() {
       </SettingsCard>
 
       {/* Module Notifications */}
-      <SettingsCard
-        title="Module Notifications"
-        description="Choose which modules send you notifications"
-        icon={Bell}
-      >
+      <SettingsCard title="Module Notifications" description="Choose which modules send you notifications" icon={Bell}>
         <div className="space-y-4">
-          {[
-            { key: "tickets" as const, label: "Tickets", description: "Helpdesk ticket updates" },
-            { key: "assets" as const, label: "Assets", description: "Asset management alerts" },
-            { key: "systemUpdates" as const, label: "System Updates", description: "Windows update tracking" },
-            { key: "subscriptions" as const, label: "Subscriptions", description: "Subscription renewals and payments" },
-            { key: "monitoring" as const, label: "Monitoring", description: "Service health and incidents" },
-          ].map((module) => (
+          {MODULE_ITEMS.map((module) => (
             <div key={module.key} className="flex items-center justify-between py-2">
               <div>
                 <Label className="text-sm">{module.label}</Label>
                 <p className="text-xs text-muted-foreground">{module.description}</p>
               </div>
               <Switch
-                checked={preferences.moduleNotifications[module.key]}
+                checked={prefs.moduleNotifications[module.key]}
                 onCheckedChange={(checked) => updateModuleNotification(module.key, checked)}
               />
             </div>
@@ -187,26 +198,16 @@ export function MyAccountNotifications() {
       </SettingsCard>
 
       {/* Event Triggers */}
-      <SettingsCard
-        title="Event Triggers"
-        description="Configure notifications for specific events"
-        icon={Bell}
-      >
+      <SettingsCard title="Event Triggers" description="Configure notifications for specific events" icon={Bell}>
         <div className="space-y-4">
-          {[
-            { key: "ticketAssigned" as const, label: "Ticket Assigned", description: "When a ticket is assigned to you" },
-            { key: "ticketUpdated" as const, label: "Ticket Updated", description: "When your assigned tickets are updated" },
-            { key: "slaBreaching" as const, label: "SLA Breaching", description: "When SLA is about to breach" },
-            { key: "assetExpiring" as const, label: "Asset Expiring", description: "When warranties or licenses expire" },
-            { key: "weeklyDigest" as const, label: "Weekly Digest", description: "Weekly summary of activity" },
-          ].map((event) => (
+          {EVENT_ITEMS.map((event) => (
             <div key={event.key} className="flex items-center justify-between py-2">
               <div>
                 <Label className="text-sm">{event.label}</Label>
                 <p className="text-xs text-muted-foreground">{event.description}</p>
               </div>
               <Switch
-                checked={preferences.eventTriggers[event.key]}
+                checked={prefs.eventTriggers[event.key]}
                 onCheckedChange={(checked) => updateEventTrigger(event.key, checked)}
               />
             </div>
@@ -216,7 +217,7 @@ export function MyAccountNotifications() {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isSaving}>
+        <Button onClick={handleSave} disabled={isSaving || prefsLoading}>
           {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           Save Preferences
         </Button>

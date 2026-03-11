@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ClipboardCheck, Plus, Loader2, User, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useNavigate } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUsersLookup } from "@/hooks/useUsersLookup";
 
@@ -31,6 +32,7 @@ const CONDITION_OPTIONS = [
 ];
 
 export const AuditTab = ({ assetId }: AuditTabProps) => {
+  const navigate = useNavigate();
   const { data: currentUser } = useCurrentUser();
   const { resolveUserName } = useUsersLookup();
   const queryClient = useQueryClient();
@@ -101,7 +103,7 @@ export const AuditTab = ({ assetId }: AuditTabProps) => {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex items-center justify-center">
+      <div className="p-3 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -143,7 +145,9 @@ export const AuditTab = ({ assetId }: AuditTabProps) => {
                       </span>
                       <span className="flex items-center gap-1">
                         <User className="h-3 w-3" />
-                        {resolveUserName(audit.performed_by) || "Unknown"}
+                        {audit.performed_by ? (
+                          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${audit.performed_by}`); }}>{resolveUserName(audit.performed_by) || "Unknown"}</span>
+                        ) : "Unknown"}
                       </span>
                     </div>
                   </div>
@@ -155,7 +159,7 @@ export const AuditTab = ({ assetId }: AuditTabProps) => {
       )}
 
       {/* Record Audit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Record Physical Audit</DialogTitle>

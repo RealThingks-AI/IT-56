@@ -30,6 +30,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import {
   HardDrive,
@@ -45,6 +50,8 @@ import {
   Archive,
   Clock,
   FileArchive,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { SettingsLoadingSkeleton } from "./SettingsLoadingSkeleton";
@@ -72,12 +79,24 @@ interface Backup {
   completed_at: string | null;
   record_count: number | null;
   tables_included: string[] | null;
+  checksum: string | null;
+}
+
+interface RestoreLog {
+  id: string;
+  backup_id: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
+  status: string | null;
+  records_restored: Record<string, number> | null;
+  error_message: string | null;
 }
 
 export function AdminBackup() {
   const queryClient = useQueryClient();
   const [backingUpModule, setBackingUpModule] = useState<string | null>(null);
   const [isFullBackup, setIsFullBackup] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<Backup | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Backup | null>(null);
 
@@ -91,6 +110,18 @@ export function AdminBackup() {
         .limit(30);
       if (error) throw error;
       return data as Backup[];
+    },
+  });
+
+  const { data: restoreLogs = [] } = useQuery({
+    queryKey: ["backup-restore-logs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("backup_restore_logs")
+        .select("*")
+        .order("restored_at", { ascending: false });
+      if (error) throw error;
+      return data as RestoreLog[];
     },
   });
 
@@ -211,8 +242,9 @@ export function AdminBackup() {
   };
 
   const handleRestore = async (backup: Backup) => {
+    setRestoringId(backup.id);
+    setConfirmRestore(null);
     try {
-      toast.info("Restoring backup…");
       const { data, error } = await supabase.functions.invoke("restore-backup", {
         body: { backup_id: backup.id },
       });
@@ -222,11 +254,37 @@ export function AdminBackup() {
         (a, b) => a + b,
         0
       );
-      toast.success(`Restore complete — ${totalRestored} records`);
+      if (data.status === "completed_with_errors") {
+        toast.warning(`Restore completed with errors — ${totalRestored} records restored`);
+      } else {
+        toast.success(`Restore complete — ${totalRestored} records`);
+      }
+      // Invalidate all relevant caches
+      queryClient.invalidateQueries({ queryKey: ["system-backups"] });
+      queryClient.invalidateQueries({ queryKey: ["backup-restore-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["itam-assets"] });
+      queryClient.invalidateQueries({ queryKey: ["helpdesk-tickets"] });
     } catch (err: any) {
       toast.error("Restore failed: " + err.message);
+    } finally {
+      setRestoringId(null);
     }
-    setConfirmRestore(null);
+  };
+
+  const handleRetry = async (backup: Backup) => {
+    // Derive backup params from name
+    const isFullBackup = backup.backup_name?.startsWith("full-");
+    if (isFullBackup) {
+      await triggerBackup("full");
+    } else {
+      const moduleName = backup.backup_name?.split("-backup-")[0];
+      const mod = MODULES.find((m) => m.name.toLowerCase() === moduleName?.toLowerCase());
+      if (mod) {
+        await triggerBackup("module", mod.name, mod.tables);
+      } else {
+        toast.error("Could not determine module for retry");
+      }
+    }
   };
 
   const formatFileSize = (bytes: number | null) => {
@@ -240,6 +298,8 @@ export function AdminBackup() {
     switch (status) {
       case "completed":
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-[10px]">Completed</Badge>;
+      case "completed_with_errors":
+        return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">Partial</Badge>;
       case "in_progress":
         return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 text-[10px]">In Progress</Badge>;
       case "failed":
@@ -247,6 +307,10 @@ export function AdminBackup() {
       default:
         return <Badge variant="secondary" className="text-[10px]">Pending</Badge>;
     }
+  };
+
+  const getLastRestoreForBackup = (backupId: string): RestoreLog | undefined => {
+    return restoreLogs.find((log) => log.backup_id === backupId && log.status !== "in_progress");
   };
 
   const totalActiveRecords = Object.values(moduleCounts).reduce((a, b) => a + b, 0);
@@ -257,6 +321,8 @@ export function AdminBackup() {
       (b) => b.status === "completed" && b.backup_name?.toLowerCase().startsWith(moduleName.toLowerCase())
     );
   };
+
+  const isAnyActionRunning = isFullBackup || !!backingUpModule || !!restoringId;
 
   if (backupsLoading || scheduleLoading) {
     return <SettingsLoadingSkeleton cards={2} rows={4} />;
@@ -288,7 +354,7 @@ export function AdminBackup() {
               </span>
             )}
           </div>
-          <Button size="sm" onClick={() => triggerBackup("full")} disabled={isFullBackup || !!backingUpModule} className="w-full">
+          <Button size="sm" onClick={() => triggerBackup("full")} disabled={isAnyActionRunning} className="w-full">
             {isFullBackup ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5 mr-1.5" />}
             Backup Now
           </Button>
@@ -377,7 +443,7 @@ export function AdminBackup() {
                   variant="outline"
                   className="h-7 text-xs"
                   onClick={() => triggerBackup("module", mod.name, mod.tables)}
-                  disabled={isLoading || isFullBackup || (!!backingUpModule && backingUpModule !== mod.name)}
+                  disabled={isAnyActionRunning && !isLoading}
                 >
                   {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <HardDrive className="h-3 w-3" />}
                   <span className="ml-1">Backup</span>
@@ -400,65 +466,163 @@ export function AdminBackup() {
             <p className="text-xs text-muted-foreground">No backups yet</p>
           </div>
         ) : (
-          <div className="rounded-lg border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Type</TableHead>
-                  <TableHead className="text-xs">Date</TableHead>
-                  <TableHead className="text-xs">Records</TableHead>
-                  <TableHead className="text-xs">Size</TableHead>
-                  <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs w-[100px] text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {backups.map((b) => (
+          <Table>
+            <colgroup>
+              <col className="w-[100px]" />
+              <col />
+              <col className="w-[80px]" />
+              <col className="w-[80px]" />
+              <col className="w-[100px]" />
+              <col className="w-[120px]" />
+            </colgroup>
+            <TableHeader className="sticky top-0 bg-muted shadow-sm z-10">
+              <TableRow>
+                <TableHead className="text-xs">Type</TableHead>
+                <TableHead className="text-xs">Date</TableHead>
+                <TableHead className="text-xs">Records</TableHead>
+                <TableHead className="text-xs">Size</TableHead>
+                <TableHead className="text-xs">Status</TableHead>
+                <TableHead className="text-xs sr-only">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {backups.map((b) => {
+                const restoreLog = getLastRestoreForBackup(b.id);
+                const isRestoring = restoringId === b.id;
+                return (
                   <TableRow key={b.id} className="h-9">
                     <TableCell className="py-1">
                       <Badge variant="outline" className="capitalize text-[10px]">
                         {b.backup_name?.startsWith("full-") ? "Full" : b.backup_name?.split("-backup-")[0] || b.backup_type}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground py-1">
-                      {format(new Date(b.created_at), "MMM d, yyyy HH:mm")}
+                    <TableCell className="py-1">
+                      <div className="text-xs text-muted-foreground">
+                        {format(new Date(b.created_at), "MMM d, yyyy HH:mm")}
+                      </div>
+                      {restoreLog?.restored_at && (
+                        <div className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
+                          <RotateCcw className="h-2.5 w-2.5" />
+                          Restored: {format(new Date(restoreLog.restored_at), "MMM d, HH:mm")}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs py-1">{b.record_count ?? "—"}</TableCell>
                     <TableCell className="text-xs py-1">{formatFileSize(b.file_size)}</TableCell>
-                    <TableCell className="py-1">{getStatusBadge(b.status)}</TableCell>
+                    <TableCell className="py-1">
+                      <div className="flex items-center gap-1">
+                        {getStatusBadge(b.status)}
+                        {b.checksum && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <ShieldCheck className="h-3 w-3 text-muted-foreground/50 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[200px]">
+                              <p className="text-[10px] font-mono break-all">SHA-256: {b.checksum.slice(0, 16)}…</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="py-1">
                       <div className="flex items-center justify-end gap-0.5">
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDownload(b)} disabled={b.status !== "completed"} title="Download">
-                          <Download className="h-3 w-3" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setConfirmRestore(b)} disabled={b.status !== "completed"} title="Restore">
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setConfirmDelete(b)} title="Delete">
+                        {b.status === "failed" ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handleRetry(b)}
+                            disabled={isAnyActionRunning}
+                            title="Retry"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleDownload(b)}
+                              disabled={b.status !== "completed" || isAnyActionRunning}
+                              title="Download"
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setConfirmRestore(b)}
+                              disabled={b.status !== "completed" || isAnyActionRunning}
+                              title="Restore"
+                            >
+                              {isRestoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={() => setConfirmDelete(b)}
+                          disabled={isAnyActionRunning}
+                          title="Delete"
+                        >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                );
+              })}
+            </TableBody>
+          </Table>
         )}
       </div>
 
-      {/* Restore Confirm */}
+      {/* Restore Confirm — enhanced with backup details */}
       <AlertDialog open={!!confirmRestore} onOpenChange={() => setConfirmRestore(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Restore Backup</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will overwrite existing data with the backup contents. This action cannot be undone. Continue?
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Restore Backup
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>This will overwrite existing data with the backup contents. This action cannot be undone.</p>
+                {confirmRestore && (
+                  <div className="rounded-md border bg-muted/50 p-3 space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Backup:</span>
+                      <span className="font-medium">{confirmRestore.backup_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span>{format(new Date(confirmRestore.created_at), "MMM d, yyyy HH:mm")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Records:</span>
+                      <span>{confirmRestore.record_count ?? "—"}</span>
+                    </div>
+                    {confirmRestore.tables_included && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tables:</span>
+                        <span>{confirmRestore.tables_included.join(", ")}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => confirmRestore && handleRestore(confirmRestore)}>
+            <AlertDialogAction
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              onClick={() => confirmRestore && handleRestore(confirmRestore)}
+            >
               Restore
             </AlertDialogAction>
           </AlertDialogFooter>

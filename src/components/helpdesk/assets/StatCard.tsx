@@ -11,13 +11,13 @@ interface StatCardProps {
 
 export const StatCard = ({ icon: Icon, value, label, colorClass, onClick, active }: StatCardProps) => (
   <Card className={`transition-all duration-200 ${onClick ? "cursor-pointer hover:border-primary/30 hover:scale-[1.02]" : ""} ${active ? "border-2 border-primary" : ""}`} onClick={onClick}>
-    <CardContent className="p-3 flex items-center gap-3">
-      <div className={`p-2 rounded-lg ${colorClass}`}>
-        <Icon className="h-4 w-4" />
+    <CardContent className="p-2.5 flex items-center gap-2.5">
+      <div className={`p-1.5 rounded-lg ${colorClass}`}>
+        <Icon className="h-3.5 w-3.5" />
       </div>
       <div>
-        <p className="text-xl font-bold">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-lg font-bold leading-tight">{value}</p>
+        <p className="text-[11px] text-muted-foreground">{label}</p>
       </div>
     </CardContent>
   </Card>

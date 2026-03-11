@@ -19,7 +19,7 @@ import {
 import { format, subDays, startOfDay, eachDayOfInterval } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { CHART_STATUS_COLORS, CHART_PRIORITY_COLORS } from "@/lib/statusConfig";
+import { CHART_STATUS_COLORS, CHART_PRIORITY_COLORS } from "@/lib/tickets/statusConfig";
 
 const PRIORITY_COLORS = CHART_PRIORITY_COLORS;
 

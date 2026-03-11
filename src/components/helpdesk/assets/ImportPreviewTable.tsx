@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { AlertTriangle, CheckCircle2, Upload, X, CirclePlus, RefreshCw } from "lucide-react";
-import type { ValidatedRow } from "@/hooks/useAssetExportImport";
+import type { ValidatedRow } from "@/hooks/assets/useAssetExportImport";
 
 interface ImportPreviewTableProps {
   validatedRows: ValidatedRow[];

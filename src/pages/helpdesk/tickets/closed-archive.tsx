@@ -8,7 +8,7 @@ import { Archive, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { getPriorityBadgeColor } from "@/lib/ticketUtils";
+import { getPriorityBadgeColor } from "@/lib/tickets/ticketUtils";
 
 export default function ClosedArchive() {
   const navigate = useNavigate();
@@ -16,6 +16,7 @@ export default function ClosedArchive() {
 
   const { data: closedTickets, isLoading } = useQuery({
     queryKey: ["closed-tickets"],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("helpdesk_tickets")

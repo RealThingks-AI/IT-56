@@ -1,11 +1,11 @@
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useHelpdeskStats } from "@/hooks/useHelpdeskStats";
-import { useITAMStats } from "@/hooks/useITAMStats";
-import { useSubscriptionStats } from "@/hooks/useSubscriptionStats";
-import { useUpdateStats } from "@/hooks/useUpdateManager";
-import { useUsers } from "@/hooks/useUsers";
+import { useHelpdeskStats } from "@/hooks/tickets/useHelpdeskStats";
+import { useITAMStats } from "@/hooks/assets/useITAMStats";
+import { useSubscriptionStats } from "@/hooks/subscriptions/useSubscriptionStats";
+
+
 import { HeaderUserSection } from "@/components/HeaderUserSection";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useSessionStore } from "@/stores/useSessionStore";
 import {
-  Ticket, Package, CreditCard, RefreshCw, Shield, LucideIcon,
+  Ticket, Package, CreditCard, LucideIcon,
   ChevronRight, Plus, PackagePlus, BarChart3, Calendar,
+  ClipboardList, Network, ShieldAlert, UserPlus,
 } from "lucide-react";
 import appLogo from "@/assets/app-logo.png";
 
@@ -28,7 +29,6 @@ interface ModuleCard {
   borderColor: string;
   stat?: string;
   badge?: string;
-  adminOnly?: boolean;
 }
 
 export default function ModuleLauncher() {
@@ -41,8 +41,8 @@ export default function ModuleLauncher() {
   const { data: ticketStats } = useHelpdeskStats();
   const { data: assetStats } = useITAMStats();
   const { data: subStats } = useSubscriptionStats();
-  const { data: updateStats } = useUpdateStats();
-  const { data: users } = useUsers();
+  
+  
 
   if (!loading && !user) return <Navigate to="/login" replace />;
 
@@ -90,25 +90,44 @@ export default function ModuleLauncher() {
       stat: subStats ? `${subStats.activeTools} active` : undefined,
     },
     {
-      id: "updates",
-      title: "System Updates",
-      description: "Windows updates, device patching & compliance",
-      icon: RefreshCw,
-      url: "/system-updates",
-      color: "bg-amber-500/10 text-amber-600",
-      borderColor: "border-t-amber-500",
-      stat: updateStats ? `${updateStats.totalDevices} devices` : undefined,
+      id: "it-tasks",
+      title: "IT Tasks",
+      description: "Day-to-day IT work items, Kanban board & tracking",
+      icon: ClipboardList,
+      url: "/it-tasks",
+      color: "bg-sky-500/10 text-sky-600",
+      borderColor: "border-t-sky-500",
+      stat: undefined,
     },
     {
-      id: "admin",
-      title: "Administration",
-      description: "Users, roles, audit logs, system & backup",
-      icon: Shield,
-      url: "/admin/users",
-      color: "bg-rose-500/10 text-rose-600",
-      borderColor: "border-t-rose-500",
-      stat: users ? `${users.length} users` : undefined,
-      adminOnly: true,
+      id: "network-monitoring",
+      title: "Network Monitoring",
+      description: "Servers, switches, routers & infrastructure status",
+      icon: Network,
+      url: "/network-monitoring",
+      color: "bg-orange-500/10 text-orange-600",
+      borderColor: "border-t-orange-500",
+      stat: undefined,
+    },
+    {
+      id: "endpoint-security",
+      title: "Endpoint Security",
+      description: "Antivirus, patches, encryption & compliance",
+      icon: ShieldAlert,
+      url: "/endpoint-security",
+      color: "bg-red-500/10 text-red-600",
+      borderColor: "border-t-red-500",
+      stat: undefined,
+    },
+    {
+      id: "onoff-boarding",
+      title: "Boarding",
+      description: "Employee IT provisioning & deprovisioning workflows",
+      icon: UserPlus,
+      url: "/onoff-boarding",
+      color: "bg-teal-500/10 text-teal-600",
+      borderColor: "border-t-teal-500",
+      stat: undefined,
     },
   ];
 
@@ -118,7 +137,7 @@ export default function ModuleLauncher() {
     { label: "Reports", icon: BarChart3, url: "/tickets/reports" },
   ];
 
-  const visibleModules = modules.filter(m => !m.adminOnly || isAdmin);
+  const visibleModules = modules;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -151,21 +170,6 @@ export default function ModuleLauncher() {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          {quickActions.map(action => (
-            <Button
-              key={action.label}
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => navigate(action.url)}
-            >
-              <action.icon className="h-3.5 w-3.5" />
-              {action.label}
-            </Button>
-          ))}
-        </div>
 
         {/* Module Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

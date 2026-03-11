@@ -1,57 +1,50 @@
-import { SettingsCard } from "./SettingsCard";
 import { Button } from "@/components/ui/button";
 import { FileBarChart, Megaphone, Plus, Calendar, Users } from "lucide-react";
 
 export function AdminReports() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Scheduled Reports */}
-      <SettingsCard
-        title="Scheduled Reports"
-        description="Configure automated reports to be sent to stakeholders"
-        icon={FileBarChart}
-        headerAction={
-          <Button size="sm" disabled>
-            <Plus className="h-4 w-4 mr-2" />
-            New Report Schedule
-          </Button>
-        }
-      >
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-            <Calendar className="h-8 w-8 text-muted-foreground" />
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <FileBarChart className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">Scheduled Reports</h3>
           </div>
-          <h4 className="text-lg font-medium mb-1">No scheduled reports yet</h4>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Create scheduled reports to automatically send performance summaries,
-            SLA reports, and other analytics to your team.
+          <Button size="sm" variant="outline" className="h-8 text-xs" disabled>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            New Schedule
+          </Button>
+        </div>
+        <div className="rounded-lg border bg-card flex flex-col items-center justify-center py-8 text-center">
+          <Calendar className="h-6 w-6 text-muted-foreground/50 mb-2" />
+          <p className="text-sm font-medium">No scheduled reports yet</p>
+          <p className="text-xs text-muted-foreground max-w-xs mt-0.5">
+            Configure automated reports sent to stakeholders on a schedule.
           </p>
         </div>
-      </SettingsCard>
+      </div>
 
       {/* Announcements */}
-      <SettingsCard
-        title="Announcement Management"
-        description="Create and manage system-wide announcements for your users"
-        icon={Megaphone}
-        headerAction={
-          <Button size="sm" disabled>
-            <Plus className="h-4 w-4 mr-2" />
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Megaphone className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">Announcements</h3>
+          </div>
+          <Button size="sm" variant="outline" className="h-8 text-xs" disabled>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
             New Announcement
           </Button>
-        }
-      >
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-            <Users className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h4 className="text-lg font-medium mb-1">No announcements yet</h4>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Create announcements to notify your team about system updates,
-            maintenance windows, or important information.
+        </div>
+        <div className="rounded-lg border bg-card flex flex-col items-center justify-center py-8 text-center">
+          <Users className="h-6 w-6 text-muted-foreground/50 mb-2" />
+          <p className="text-sm font-medium">No announcements yet</p>
+          <p className="text-xs text-muted-foreground max-w-xs mt-0.5">
+            Notify your team about system updates, maintenance windows, or important info.
           </p>
         </div>
-      </SettingsCard>
+      </div>
     </div>
   );
 }

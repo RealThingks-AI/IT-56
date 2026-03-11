@@ -80,11 +80,11 @@ export const ContractsTab = ({ asset }: ContractsTabProps) => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Vendor Contract Section */}
       {resolvedVendor ? (
         <Card>
-          <CardContent className="p-4 space-y-3">
+          <CardContent className="p-3 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-medium">Vendor Contract</h4>
               <Button
@@ -136,8 +136,8 @@ export const ContractsTab = ({ asset }: ContractsTabProps) => {
         </Card>
       ) : (
         <Card>
-          <CardContent className="p-4">
-            <div className="text-center py-4">
+          <CardContent className="p-3">
+            <div className="text-center py-3">
               <FileText className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">No vendor linked to this asset</p>
             </div>
@@ -148,7 +148,7 @@ export const ContractsTab = ({ asset }: ContractsTabProps) => {
       {/* Related Purchase Orders */}
       {purchaseOrders.length > 0 && (
         <Card>
-          <CardContent className="p-4 space-y-3">
+          <CardContent className="p-3 space-y-3">
             <h4 className="text-sm font-medium">Related Purchase Orders</h4>
             <div className="space-y-2">
               {purchaseOrders.map((po: any) => (

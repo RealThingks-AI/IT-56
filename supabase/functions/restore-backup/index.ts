@@ -6,7 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Map table names to their primary key column
 const TABLE_PK: Record<string, string> = {
   itam_assets: "id",
   helpdesk_tickets: "id",
@@ -48,6 +47,20 @@ Deno.serve(async (req) => {
     }
     const userId = claims.claims.sub as string;
 
+    // Verify admin role server-side
+    const { data: roleData } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .single();
+
+    if (!roleData || roleData.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { backup_id } = await req.json();
     if (!backup_id) {
       return new Response(JSON.stringify({ error: "backup_id required" }), {
@@ -56,7 +69,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get backup record
     const { data: backup, error: fetchErr } = await supabaseAdmin
       .from("system_backups")
       .select("*")
@@ -70,7 +82,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Download backup file
     const { data: fileData, error: dlErr } = await supabaseAdmin.storage
       .from("system-backups")
       .download(backup.file_path);
@@ -82,7 +93,6 @@ Deno.serve(async (req) => {
     const jsonText = await fileData.text();
     const backupData = JSON.parse(jsonText) as Record<string, unknown[]>;
 
-    // Create restore log
     const { data: restoreLog } = await supabaseAdmin
       .from("backup_restore_logs")
       .insert({
@@ -104,8 +114,6 @@ Deno.serve(async (req) => {
       }
 
       const pk = TABLE_PK[table] || "id";
-
-      // Upsert in batches of 500
       const batchSize = 500;
       let restored = 0;
       for (let i = 0; i < rows.length; i += batchSize) {

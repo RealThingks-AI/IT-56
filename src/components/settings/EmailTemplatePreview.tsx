@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { SettingsCard } from "./SettingsCard";
 import { Eye, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,34 +18,33 @@ const sampleAssets: SampleAsset[] = [
 ];
 
 function buildAssetTableHtml(assets: SampleAsset[]): string {
-  const thStyle = `padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; border: 1px solid #d4a843;`;
-  const headerBg = `background: #4a4a3a; color: #d4a843;`;
+  const thStyle = `padding:8px 10px;text-align:left;font-size:12px;font-weight:600;color:#374151;border-bottom:2px solid #d1d5db;`;
 
-  const headerRow = `<tr style="${headerBg}">
-    <th style="${thStyle}">Asset Tag ID</th>
+  const headerRow = `<tr style="background:#f3f4f6;">
+    <th style="${thStyle}">Asset Tag</th>
     <th style="${thStyle}">Description</th>
     <th style="${thStyle}">Brand</th>
     <th style="${thStyle}">Model</th>
     <th style="${thStyle}">Serial No</th>
-    <th style="${thStyle} text-align: center;">Photo</th>
+    <th style="${thStyle}text-align:center;">Photo</th>
   </tr>`;
 
   const rows = assets
     .map((a, i) => {
-      const bgColor = i % 2 === 0 ? "#3a3a2a" : "#4a4a3a";
-      const tdStyle = `padding: 10px 12px; font-size: 12px; border: 1px solid #d4a843; color: #e5e7eb; background: ${bgColor};`;
+      const bgColor = i % 2 === 0 ? "#ffffff" : "#f9fafb";
+      const tdStyle = `padding:8px 10px;font-size:12px;border-bottom:1px solid #e5e7eb;color:#374151;background:${bgColor};`;
       return `<tr>
         <td style="${tdStyle}"><strong>${a.asset_tag}</strong></td>
         <td style="${tdStyle}">${a.description}</td>
         <td style="${tdStyle}">${a.brand}</td>
         <td style="${tdStyle}">${a.model}</td>
         <td style="${tdStyle}">S/N: ${a.serial_number}</td>
-        <td style="${tdStyle} text-align:center;"><span style="color:#9ca3af;font-size:11px;">No photo</span></td>
+        <td style="${tdStyle}text-align:center;"><span style="color:#9ca3af;font-size:11px;">—</span></td>
       </tr>`;
     })
     .join("");
 
-  return `<table style="border-collapse:collapse;width:100%;margin:16px 0;border:1px solid #d4a843;border-radius:8px;overflow:hidden;">
+  return `<table style="border-collapse:collapse;width:100%;margin:16px 0;border:1px solid #d1d5db;border-radius:6px;overflow:hidden;">
     <thead>${headerRow}</thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -60,26 +58,30 @@ function buildFullEmailHtml(type: "checkout" | "checkin"): string {
       ? "The following items are in your possession:"
       : "The following items have been returned:";
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
-<body style="margin:0;padding:0;background:#f4f4f0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
-  <div style="max-width:700px;margin:24px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-    <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:20px 28px;">
-      <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">📧 IT Asset Management</h1>
-    </div>
-    <div style="padding:28px;background:#f9fafb;font-size:14px;color:#333;line-height:1.6;">
-      <p style="margin:0 0 16px;">Hello <strong>${userName}</strong>,</p>
-      <p style="margin:0 0 8px;">This is a confirmation email. ${actionText}</p>
-      ${table}
-      <p style="margin:16px 0 0;">Notes: <em>—</em></p>
-      <br/>
-      <p style="margin:0;">Thank you.</p>
-      <br/>
-      <p style="margin:0;">Best regards,<br/><strong>IT Team</strong></p>
-    </div>
-    <div style="background:#f4f4f0;padding:12px 28px;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#999;">This is an automated message from RT-IT-Hub. Please do not reply directly.</p>
-    </div>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.5; color: #333; margin: 0; padding: 0; background: #f3f4f6; }
+  .container { width: 100%; max-width: 800px; margin: 0 auto; padding: 12px; }
+  .header { background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); color: white; padding: 12px 20px; border-radius: 8px 8px 0 0; }
+  .content { background: #ffffff; padding: 16px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; font-size: 13px; }
+  .footer { margin-top: 12px; font-size: 11px; color: #9ca3af; text-align: center; padding: 6px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header"><h1 style="margin:0;font-size:16px;">&#128231; IT Asset Management</h1></div>
+  <div class="content">
+    <p style="margin:0 0 12px;">Hello <strong>${userName}</strong>,</p>
+    <p style="margin:0 0 8px;">This is a confirmation email. ${actionText}</p>
+    ${table}
+    <p style="margin:12px 0 0;">Notes: <em>—</em></p>
+    <br/>
+    <p style="margin:0;">Thank you.</p>
+    <br/>
+    <p style="margin:0;">Best regards,<br/><strong>IT Team</strong></p>
   </div>
+  <div class="footer">This is an automated message from RT-IT-Hub. Please do not reply directly.</div>
+</div>
 </body></html>`;
 }
 
@@ -94,35 +96,35 @@ export function EmailTemplatePreview() {
   );
 
   return (
-    <SettingsCard
-      title="Email Template Preview"
-      description="Preview how asset check-in/check-out emails will look to recipients"
-      icon={Eye}
-      headerAction={
-        <Button variant="ghost" size="sm" onClick={() => setRefreshKey((k) => k + 1)}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <Eye className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Email Template Preview</h3>
+        </div>
+        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setRefreshKey((k) => k + 1)}>
+          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
         </Button>
-      }
-    >
-      <div className="space-y-4">
+      </div>
+      <div className="rounded-lg border bg-card p-2.5 space-y-2">
         <Tabs value={templateType} onValueChange={(v) => setTemplateType(v as any)}>
           <TabsList className="w-auto">
-            <TabsTrigger value="checkout">Check Out</TabsTrigger>
-            <TabsTrigger value="checkin">Check In</TabsTrigger>
+            <TabsTrigger value="checkout" className="text-xs">Check Out</TabsTrigger>
+            <TabsTrigger value="checkin" className="text-xs">Check In</TabsTrigger>
           </TabsList>
         </Tabs>
 
-        <div className="border rounded-lg overflow-hidden bg-muted/30">
+        <div className="rounded-md border overflow-hidden bg-muted/30">
           <iframe
             key={refreshKey + templateType}
             srcDoc={srcDoc}
             title="Email Template Preview"
             className="w-full border-0"
-            style={{ minHeight: 520 }}
+            style={{ minHeight: 300 }}
             sandbox="allow-same-origin"
           />
         </div>
       </div>
-    </SettingsCard>
+    </div>
   );
 }

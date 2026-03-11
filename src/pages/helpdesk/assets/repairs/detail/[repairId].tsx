@@ -27,8 +27,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { Wrench, Calendar, DollarSign, Building2, MoreHorizontal, Clock, FileText, Loader2, History, XCircle } from "lucide-react";
 import { useState } from "react";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
-import { ASSET_STATUS } from "@/lib/assetStatusUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
+import { ASSET_STATUS } from "@/lib/assets/assetStatusUtils";
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
   open: { color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400", label: "Open" },
@@ -146,19 +146,19 @@ const RepairDetail = () => {
   if (isLoading) {
     return (
       <div className="h-full overflow-auto">
-        <div className="p-6 max-w-5xl mx-auto space-y-6">
-          <div className="flex items-center gap-4">
-            <Skeleton className="h-9 w-9 rounded-md" />
-            <div className="space-y-2">
-              <Skeleton className="h-7 w-48" />
-              <Skeleton className="h-4 w-32" />
+        <div className="p-3 space-y-2.5">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-3.5 w-28" />
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Skeleton className="h-64 rounded-lg" />
-            <Skeleton className="h-64 rounded-lg" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            <Skeleton className="h-52 rounded-lg" />
+            <Skeleton className="h-52 rounded-lg" />
           </div>
-          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-40 rounded-lg" />
         </div>
       </div>
     );
@@ -180,18 +180,18 @@ const RepairDetail = () => {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="p-6 max-w-5xl mx-auto space-y-4 animate-in fade-in-0 duration-200">
+      <div className="p-3 space-y-2.5 animate-in fade-in-0 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <BackButton />
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold">Repair Details</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold">Repair Details</h1>
                 <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                {repair.repair_number || `RPR-${repair.id.slice(0, 8)}`}
+                {repair.repair_number || "Repair"}
               </p>
             </div>
           </div>
@@ -211,7 +211,7 @@ const RepairDetail = () => {
         </div>
 
         {/* Info Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
           <Card className="animate-in fade-in-0 slide-in-from-left-2 duration-300">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Repair Information</CardTitle>
@@ -361,7 +361,7 @@ const RepairDetail = () => {
                       {entry.details && typeof entry.details === "object" && (
                         <p className="text-xs text-muted-foreground truncate">
                           {Object.entries(entry.details as Record<string, any>)
-                            .filter(([, v]) => v)
+                            .filter(([k, v]) => v && !["repair_id", "user_id", "asset_id", "performed_by", "created_by", "updated_by"].includes(k))
                             .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
                             .join(" • ")}
                         </p>

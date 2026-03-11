@@ -96,10 +96,10 @@ const defaultTemplates: EmailTemplate[] = [
     variables: ["asset_name", "asset_tag", "warranty_expiry_date", "days_remaining"],
   },
   {
-    id: "maintenance_due", name: "Maintenance",
-    subject: "Maintenance Due: {{asset_name}}",
-    body: `Hello,\n\nThe following asset is due for scheduled maintenance:\n\nAsset Name: {{asset_name}}\nAsset Tag: {{asset_tag}}\nMaintenance Type: {{maintenance_type}}\nDue Date: {{due_date}}\n\nPlease schedule the maintenance.\n\nBest regards,\nIT Asset Management Team`,
-    enabled: true, icon: Wrench, description: "Sent when scheduled maintenance is due for an asset",
+    id: "maintenance_due", name: "Repair",
+    subject: "Repair Due: {{asset_name}}",
+    body: `Hello,\n\nThe following asset is due for scheduled repair:\n\nAsset Name: {{asset_name}}\nAsset Tag: {{asset_tag}}\nRepair Type: {{maintenance_type}}\nDue Date: {{due_date}}\n\nPlease schedule the repair.\n\nBest regards,\nIT Asset Management Team`,
+    enabled: true, icon: Wrench, description: "Sent when scheduled repair is due for an asset",
     variables: ["asset_name", "asset_tag", "maintenance_type", "due_date"],
   },
   {
@@ -116,12 +116,19 @@ const defaultTemplates: EmailTemplate[] = [
     enabled: true, icon: FileText, description: "Sent when a software license is about to expire",
     variables: ["license_name", "vendor_name", "expiry_date", "days_remaining", "seats_used", "seats_total"],
   },
+  {
+    id: "asset_confirmation", name: "Confirmation",
+    subject: "Asset Confirmation Required — {{asset_count}} asset(s)",
+    body: `Hello {{user_name}},\n\nYour IT department requires you to confirm the assets currently assigned to you. Please review the list below.\n\nUse the buttons below to respond:\n\n{{confirm_all_url}}\n{{deny_all_url}}\n\nThis link will expire in 7 days.\n\nThank you.\n\nBest regards,\nIT Asset Management Team`,
+    enabled: true, icon: Shield, description: "Sent when admin requests asset confirmation from an employee",
+    variables: ["user_name", "asset_count", "confirm_all_url", "deny_all_url"],
+  },
 ];
 
 const iconMap: Record<string, any> = {
   checkout: LogOut, checkin: LogIn, warranty_expiring: Shield,
   maintenance_due: Wrench, overdue_return: Clock, license_expiring: FileText,
-  
+  asset_confirmation: Shield,
 };
 
 const automationTriggers = [

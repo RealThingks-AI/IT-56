@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,15 @@ import { useUsersLookup } from "@/hooks/useUsersLookup";
 
 interface EventsTabProps {
   assetId: string;
+  checkOutNotes?: string | null;
 }
 
 const LIFECYCLE_EVENTS = [
   "created", "checked_out", "checked_in", "status_changed",
   "transferred", "maintenance", "repair", "disposed",
-  "lost", "found", "replicated", "reassigned", "returned_to_stock",
-  "sent_for_repair", "repair_completed", "repair_cancelled", "marked_as_lost",
+  "replicated", "reassigned", "returned_to_stock",
+  "sent_for_repair", "repair_completed", "repair_cancelled",
+  "deleted", "restored", "stock_verified",
 ];
 
 const PAGE_SIZE = 50;
@@ -27,8 +30,39 @@ interface HistoryEvent {
   details: any; created_at: string | null; performed_by: string | null;
 }
 
-export const EventsTab = ({ assetId }: EventsTabProps) => {
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HIDDEN_DETAIL_KEYS = new Set([
+  'checkout_type', 'user_id', 'location_id', 'department_id',
+  'field', 'old', 'new', 'asset_id', 'previous_status', 'new_status',
+  'category_id', 'vendor_id', 'make_id',
+]);
+const PRIORITY_KEYS = ['notes', 'location', 'department', 'assigned_to', 'checked_out_to'];
+
+const actionColors: Record<string, string> = {
+  created: "bg-green-100 text-green-800",
+  field_updated: "bg-sky-100 text-sky-800",
+  fields_updated: "bg-sky-100 text-sky-800",
+  checked_out: "bg-purple-100 text-purple-800",
+  checked_in: "bg-teal-100 text-teal-800",
+  status_changed: "bg-amber-100 text-amber-800",
+  transferred: "bg-blue-100 text-blue-800",
+  maintenance: "bg-yellow-100 text-yellow-800",
+  repair: "bg-orange-100 text-orange-800",
+  sent_for_repair: "bg-rose-100 text-rose-800",
+  repair_completed: "bg-green-100 text-green-800",
+  repair_cancelled: "bg-gray-100 text-gray-800",
+  disposed: "bg-red-100 text-red-800",
+  deleted: "bg-red-100 text-red-800",
+  restored: "bg-green-100 text-green-800",
+  stock_verified: "bg-green-100 text-green-800",
+  replicated: "bg-indigo-100 text-indigo-800",
+  reassigned: "bg-cyan-100 text-cyan-800",
+  returned_to_stock: "bg-emerald-100 text-emerald-800",
+};
+
+export const EventsTab = ({ assetId, checkOutNotes }: EventsTabProps) => {
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const navigate = useNavigate();
   const { resolveUserName } = useUsersLookup();
 
   const { data: events = [], isLoading } = useQuery({
@@ -47,20 +81,27 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
     enabled: !!assetId,
   });
 
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const HIDDEN_DETAIL_KEYS = new Set([
-    'checkout_type', 'user_id', 'location_id', 'department_id',
-    'field', 'old', 'new', 'asset_id', 'previous_status', 'new_status',
-    'category_id', 'vendor_id', 'make_id',
-  ]);
-  const PRIORITY_KEYS = ['notes', 'location', 'department', 'assigned_to', 'checked_out_to'];
+  const renderClickableValue = (value: any) => {
+    if (value == null) return "—";
+    const str = String(value);
+    if (UUID_REGEX.test(str)) {
+      const name = resolveUserName(str);
+      if (name) {
+        return (
+          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${str}`); }}>{name}</span>
+        );
+      }
+    }
+    const resolved = resolveUserName(str);
+    return resolved || str || "—";
+  };
 
-  const resolveDetailValue = (key: string, value: any): string => {
+  const resolveDetailValue = (key: string, value: any): { text: string; isUser: boolean; userId?: string } => {
     if (typeof value === 'string' && UUID_REGEX.test(value)) {
       const resolved = resolveUserName(value);
-      if (resolved) return resolved;
+      if (resolved) return { text: resolved, isUser: true, userId: value };
     }
-    return String(value);
+    return { text: String(value), isUser: false };
   };
 
   const isDateKey = (key: string) =>
@@ -76,28 +117,6 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
       return a[0].localeCompare(b[0]);
     });
 
-  const actionColors: Record<string, string> = {
-    created: "bg-green-100 text-green-800",
-    field_updated: "bg-sky-100 text-sky-800",
-    fields_updated: "bg-sky-100 text-sky-800",
-    checked_out: "bg-purple-100 text-purple-800",
-    checked_in: "bg-teal-100 text-teal-800",
-    status_changed: "bg-amber-100 text-amber-800",
-    transferred: "bg-blue-100 text-blue-800",
-    maintenance: "bg-yellow-100 text-yellow-800",
-    repair: "bg-orange-100 text-orange-800",
-    sent_for_repair: "bg-rose-100 text-rose-800",
-    repair_completed: "bg-green-100 text-green-800",
-    repair_cancelled: "bg-gray-100 text-gray-800",
-    disposed: "bg-red-100 text-red-800",
-    lost: "bg-red-100 text-red-800",
-    marked_as_lost: "bg-orange-100 text-orange-800",
-    found: "bg-green-100 text-green-800",
-    replicated: "bg-indigo-100 text-indigo-800",
-    reassigned: "bg-cyan-100 text-cyan-800",
-    returned_to_stock: "bg-emerald-100 text-emerald-800",
-  };
-
   const getChanges = (event: HistoryEvent): ChangeEntry[] | null => {
     if (event.action === "fields_updated" && event.details?.changes && Array.isArray(event.details.changes)) {
       return event.details.changes;
@@ -109,17 +128,17 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
     <Table wrapperClassName="mt-2 border-muted">
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[200px]">Field</TableHead>
-          <TableHead>Old Value</TableHead>
-          <TableHead>New Value</TableHead>
+          <TableHead className="w-[200px] py-1">Field</TableHead>
+          <TableHead className="py-1">Old Value</TableHead>
+          <TableHead className="py-1">New Value</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {changes.map((change, idx) => (
           <TableRow key={idx}>
-            <TableCell className="font-medium text-xs">{change.field}</TableCell>
-            <TableCell className="text-xs text-muted-foreground">{change.old || "—"}</TableCell>
-            <TableCell className="text-xs font-medium">{change.new || "—"}</TableCell>
+            <TableCell className="py-1 font-medium text-xs">{change.field}</TableCell>
+            <TableCell className="py-1 text-xs text-muted-foreground">{renderClickableValue(change.old)}</TableCell>
+            <TableCell className="py-1 text-xs font-medium">{renderClickableValue(change.new)}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -128,7 +147,7 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex items-center justify-center">
+      <div className="p-3 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -136,7 +155,7 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
 
   return (
     <div className="space-y-3">
-      {events.length === 0 ? (
+      {events.length === 0 && !checkOutNotes ? (
         <div className="text-center py-6">
           <CalendarDays className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No lifecycle events recorded</p>
@@ -146,7 +165,9 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
         </div>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">{events.length} event{events.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-muted-foreground">
+            {events.length + (checkOutNotes ? 1 : 0)} event{(events.length + (checkOutNotes ? 1 : 0)) !== 1 ? "s" : ""}
+          </p>
           <div className="space-y-1">
             {events.map((event) => {
               const performedByName = resolveUserName(event.performed_by);
@@ -173,14 +194,19 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
                       })()}
                       {event.old_value && event.new_value && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <span className="truncate max-w-[200px]">{event.old_value}</span>
+                          <span className="truncate max-w-[200px]">{renderClickableValue(event.old_value)}</span>
                           <ArrowRight className="h-3 w-3 shrink-0" />
-                          <span className="truncate max-w-[200px] text-foreground">{event.new_value}</span>
+                          <span className="truncate max-w-[200px] text-foreground">{renderClickableValue(event.new_value)}</span>
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><User className="h-3 w-3" />{performedByName || "Unknown"}</span>
+                      <span className="flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {event.performed_by ? (
+                          <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${event.performed_by}`); }}>{performedByName || "Unknown"}</span>
+                        ) : "Unknown"}
+                      </span>
                       {event.created_at && (
                         <span>{format(new Date(event.created_at), "dd MMM yyyy, HH:mm")}</span>
                       )}
@@ -191,23 +217,39 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
                     renderChangesTable(changes)
                   ) : (
                     event.details && typeof event.details === 'object' && !event.details.changes && (() => {
+                      const detailsObj = event.details as Record<string, any>;
                       const filtered = sortDetailEntries(
-                        Object.entries(event.details as Record<string, any>)
+                        Object.entries(detailsObj)
                           .filter(([key, value]) => !HIDDEN_DETAIL_KEYS.has(key) && value !== null && value !== undefined && value !== '')
                       );
                       if (filtered.length === 0) return null;
+
+                      // Extract sibling user_id for making name fields clickable
+                      const siblingUserId = detailsObj.user_id && typeof detailsObj.user_id === 'string' && UUID_REGEX.test(detailsObj.user_id)
+                        ? detailsObj.user_id
+                        : null;
+                      const USER_NAME_KEYS_SET = new Set(['assigned_to', 'returned_from', 'checked_out_to']);
+
                       return (
-                        <dl className="border-t border-border/50 mt-2 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-xs">
+                        <dl className="border-t border-border/50 mt-2 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
                           {filtered.map(([key, value]) => {
                             const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                            let displayValue = resolveDetailValue(key, value);
+                            const resolved = resolveDetailValue(key, value);
+                            let displayValue = resolved.text;
                             if (isDateKey(key) && typeof value === 'string') {
                               try { displayValue = format(new Date(value), "dd MMM yyyy, HH:mm"); } catch { /* keep */ }
                             }
+                            const isLinkedName = !resolved.isUser && siblingUserId && USER_NAME_KEYS_SET.has(key);
                             return (
                               <div key={key} className="flex gap-2">
                                 <dt className="w-[140px] shrink-0 text-muted-foreground">{label}</dt>
-                                <dd className="text-foreground font-medium truncate">{displayValue}</dd>
+                                <dd className="text-foreground font-medium truncate">
+                                  {resolved.isUser && resolved.userId ? (
+                                    <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${resolved.userId}`); }}>{displayValue}</span>
+                                  ) : isLinkedName ? (
+                                    <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${siblingUserId}`); }}>{displayValue}</span>
+                                  ) : displayValue}
+                                </dd>
                               </div>
                             );
                           })}
@@ -218,6 +260,19 @@ export const EventsTab = ({ assetId }: EventsTabProps) => {
                 </div>
               );
             })}
+
+            {/* Imported event notes shown as reference-only entry */}
+            {checkOutNotes && (
+              <div className="px-3 py-2 border rounded-lg border-dashed border-muted-foreground/30 bg-muted/20">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-muted text-muted-foreground text-xs">Imported Note</Badge>
+                    <span className="text-xs text-muted-foreground italic">Reference only (from import)</span>
+                  </div>
+                </div>
+                <p className="text-sm text-foreground mt-1.5 whitespace-pre-wrap">{checkOutNotes}</p>
+              </div>
+            )}
           </div>
 
           {/* Load more */}

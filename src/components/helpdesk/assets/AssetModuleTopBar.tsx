@@ -63,10 +63,10 @@ export function AssetModuleTopBar({
   const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
 
 
-  const portalTarget = document.getElementById("module-header-portal");
+  const portalTarget = document.getElementById("module-subheader-portal");
 
   const topBarContent = (
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0 px-4 py-1.5 bg-background">
           {/* Left side - Search and Add Asset */}
           {!hideSearchAndAdd && (
             <div className="flex items-center gap-2">

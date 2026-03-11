@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { encodeHex } from "https://deno.land/std@0.224.0/encoding/hex.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,7 +11,6 @@ const ALL_MODULE_TABLES: Record<string, string[]> = {
   Tickets: ["helpdesk_tickets"],
 };
 
-// Active-only filters per table
 const TABLE_FILTERS: Record<string, { column: string; value: boolean }> = {
   itam_assets: { column: "is_active", value: true },
   helpdesk_tickets: { column: "is_deleted", value: false },
@@ -56,6 +54,20 @@ Deno.serve(async (req) => {
     }
     const userId = claims.claims.sub as string;
 
+    // Verify admin role server-side
+    const { data: roleData } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .single();
+
+    if (!roleData || roleData.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json();
     const { type, module_name, tables } = body as {
       type: "full" | "module";
@@ -80,7 +92,6 @@ Deno.serve(async (req) => {
         ? `full-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`
         : `${(module_name || "module").toLowerCase()}-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 
-    // Create backup record
     const { data: backupRecord, error: insertErr } = await supabaseAdmin
       .from("system_backups")
       .insert({
@@ -101,7 +112,6 @@ Deno.serve(async (req) => {
 
     const backupId = backupRecord.id;
 
-    // Export data from each table
     const backupData: Record<string, unknown[]> = {};
     let totalRecords = 0;
 
@@ -136,13 +146,11 @@ Deno.serve(async (req) => {
     const encoder = new TextEncoder();
     const encoded = encoder.encode(jsonStr);
 
-    // Compute checksum
     const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
     const checksum = Array.from(new Uint8Array(hashBuffer))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    // Upload to storage
     const filePath = `backups/${backupId}.json`;
     const { error: uploadErr } = await supabaseAdmin.storage
       .from("system-backups")
@@ -159,7 +167,6 @@ Deno.serve(async (req) => {
       throw new Error(`Upload failed: ${uploadErr.message}`);
     }
 
-    // Update backup record
     await supabaseAdmin
       .from("system_backups")
       .update({

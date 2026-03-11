@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -26,8 +26,9 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ASSET_STATUS } from "@/lib/assetStatusUtils";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { ASSET_STATUS, getStatusLabel } from "@/lib/assets/assetStatusUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
+import { useCurrency } from "@/hooks/useCurrency";
 
 interface DisposeAssetDialogProps {
   open: boolean;
@@ -48,21 +49,34 @@ const DISPOSAL_METHODS = [
 
 export function DisposeAssetDialog({ open, onOpenChange, assetId, assetName, onSuccess }: DisposeAssetDialogProps) {
   const queryClient = useQueryClient();
+  const { symbol: defaultSymbol } = useCurrency();
   const [disposalMethod, setDisposalMethod] = useState("");
   const [disposalDate, setDisposalDate] = useState<Date>(new Date());
   const [disposalValue, setDisposalValue] = useState("");
   const [notes, setNotes] = useState("");
 
-  const disposeMutation = useMutation({
-    mutationFn: async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-
-      // Get full asset data including custom_fields
-      const { data: assetData } = await supabase
+  // Fetch asset data (including currency) when dialog opens
+  const SYMBOLS: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£", JPY: "¥", AUD: "A$", CAD: "C$", CHF: "CHF", CNY: "¥", SGD: "S$", AED: "د.إ" };
+  const { data: assetData } = useQuery({
+    queryKey: ["dispose-asset-data", assetId],
+    queryFn: async () => {
+      const { data } = await supabase
         .from("itam_assets")
         .select("status, purchase_price, custom_fields")
         .eq("id", assetId)
         .single();
+      return data;
+    },
+    enabled: open && !!assetId,
+    staleTime: 60_000,
+  });
+
+  const assetCurrency = (assetData?.custom_fields as Record<string, any>)?.currency;
+  const currencySymbol = assetCurrency ? (SYMBOLS[assetCurrency] || assetCurrency) : defaultSymbol;
+
+  const disposeMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
 
       // Merge disposal data into existing custom_fields
       const existingCustomFields = (assetData?.custom_fields as Record<string, any>) || {};
@@ -79,6 +93,7 @@ export function DisposeAssetDialog({ open, onOpenChange, assetId, assetName, onS
         .from("itam_assets")
         .update({ 
           status: ASSET_STATUS.DISPOSED,
+          is_active: false,
           custom_fields: mergedCustomFields,
           assigned_to: null,
           checked_out_to: null,
@@ -94,8 +109,8 @@ export function DisposeAssetDialog({ open, onOpenChange, assetId, assetName, onS
       await supabase.from("itam_asset_history").insert({
         asset_id: assetId,
         action: "disposed",
-        old_value: assetData?.status,
-        new_value: ASSET_STATUS.DISPOSED,
+        old_value: getStatusLabel(assetData?.status),
+        new_value: getStatusLabel(ASSET_STATUS.DISPOSED),
         details: { 
           disposal_method: disposalMethod,
           disposal_date: disposalDate.toISOString(),
@@ -130,8 +145,18 @@ export function DisposeAssetDialog({ open, onOpenChange, assetId, assetName, onS
     disposeMutation.mutate();
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setDisposalMethod("");
+      setDisposalDate(new Date());
+      setDisposalValue("");
+      setNotes("");
+    }
+    onOpenChange(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Dispose Asset</DialogTitle>
@@ -186,13 +211,17 @@ export function DisposeAssetDialog({ open, onOpenChange, assetId, assetName, onS
               <Label htmlFor="disposalValue">
                 {disposalMethod === "sold" ? "Sale Value" : "Return Value"}
               </Label>
-              <Input
-                id="disposalValue"
-                type="number"
-                value={disposalValue}
-                onChange={(e) => setDisposalValue(e.target.value)}
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{currencySymbol}</span>
+                <Input
+                  id="disposalValue"
+                  type="number"
+                  value={disposalValue}
+                  onChange={(e) => setDisposalValue(e.target.value)}
+                  placeholder="0.00"
+                  className="pl-7"
+                />
+              </div>
             </div>
           )}
 

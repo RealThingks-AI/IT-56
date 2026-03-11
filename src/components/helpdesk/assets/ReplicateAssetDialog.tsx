@@ -16,8 +16,8 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { ASSET_STATUS } from "@/lib/assetStatusUtils";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { ASSET_STATUS } from "@/lib/assets/assetStatusUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
 
 interface ReplicateAssetDialogProps {
   open: boolean;
@@ -100,8 +100,16 @@ export function ReplicateAssetDialog({ open, onOpenChange, assetId, assetName, o
     replicateMutation.mutate();
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setReplicationType("single");
+      setCopyCount(2);
+    }
+    onOpenChange(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>Replicate Asset</DialogTitle>

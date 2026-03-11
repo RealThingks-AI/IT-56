@@ -90,10 +90,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate password strength
-    if (password.length < 6) {
+    // Validate password strength (must match client-side requirements)
+    if (password.length < 8) {
       return new Response(
-        JSON.stringify({ error: "Password must be at least 6 characters" }),
+        JSON.stringify({ error: "Password must be at least 8 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      return new Response(
+        JSON.stringify({ error: "Password must contain uppercase, lowercase, and a number" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

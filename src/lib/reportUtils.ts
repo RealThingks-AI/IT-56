@@ -1,46 +1,45 @@
-import { format } from "date-fns";
+/**
+ * Shared CSV / formatting utilities used by asset report generators.
+ */
 
-export const generateCSV = (data: any[], headers: string[]): string => {
-  if (!data || data.length === 0) return headers.join(",");
-  
-  const csvRows = [headers.join(",")];
-  
-  for (const row of data) {
-    const values = headers.map(header => {
-      const value = row[header] || "";
-      // Escape quotes and wrap in quotes if contains comma
-      const escaped = String(value).replace(/"/g, '""');
-      return escaped.includes(",") ? `"${escaped}"` : escaped;
-    });
-    csvRows.push(values.join(","));
+export function generateCSV(rows: Record<string, unknown>[], headers: string[]): string {
+  const escape = (val: string) => {
+    if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+      return `"${val.replace(/"/g, '""')}"`;
+    }
+    return val;
+  };
+
+  const lines: string[] = [headers.map(escape).join(",")];
+  for (const row of rows) {
+    lines.push(headers.map((h) => escape(String(row[h] ?? ""))).join(","));
   }
-  
-  return csvRows.join("\n");
-};
+  return lines.join("\n");
+}
 
-export const downloadCSV = (csvContent: string, filename: string) => {
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
+export function downloadCSV(csv: string, fileNameBase: string): void {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
-  
-  link.setAttribute("href", url);
-  link.setAttribute("download", `${filename}_${format(new Date(), "yyyy-MM-dd")}.csv`);
-  link.style.visibility = "hidden";
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${fileNameBase}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
-export const formatCurrency = (amount: number | null): string => {
-  if (amount === null || amount === undefined) return "0.00";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-  }).format(amount);
-};
+export function formatCurrency(value: number | null | undefined): string {
+  if (value == null) return "N/A";
+  const isWhole = Number.isInteger(value);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: isWhole ? 0 : 2, maximumFractionDigits: isWhole ? 0 : 2 }).format(value);
+}
 
-export const formatDate = (date: string | null): string => {
-  if (!date) return "N/A";
-  return format(new Date(date), "dd MMM yyyy");
-};
+export function formatDate(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  try {
+    return new Date(value).toLocaleDateString();
+  } catch {
+    return "N/A";
+  }
+}

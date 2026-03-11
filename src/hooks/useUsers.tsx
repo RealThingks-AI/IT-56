@@ -13,32 +13,29 @@ export interface AppUser {
 
 /**
  * Fetch all active users in the system.
- * Single-company use — no org filtering needed.
+ * Uses shared "users-list" query key (prefetched in AssetsLayout).
  */
 export function useUsers() {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["app-users"],
+    queryKey: ["users-list"],
     queryFn: async (): Promise<AppUser[]> => {
       if (!user?.id) return [];
 
       const { data, error } = await supabase
         .from("users")
-        .select("id, auth_user_id, name, email, role, status")
+        .select("id, auth_user_id, name, email, role, status, avatar_url")
         .eq("status", "active")
         .order("name");
 
-      if (error) {
-        console.error("Failed to fetch users:", error);
-        return [];
-      }
+      if (error) throw error;
 
       return data || [];
     },
     enabled: !!user?.id,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
   });
 }
-

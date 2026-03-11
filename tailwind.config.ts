@@ -263,13 +263,13 @@ export default {
   			}
   		},
   		animation: {
-  			'accordion-down': 'accordion-down 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-  			'accordion-up': 'accordion-up 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-  			'fade-in': 'fade-in 150ms cubic-bezier(0.4, 0, 0.2, 1)',
-  			'fade-out': 'fade-out 150ms cubic-bezier(0.4, 0, 0.2, 1)',
-  			'scale-in': 'scale-in 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-  			'slide-in-from-right': 'slide-in-from-right 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-  			'slide-out-to-right': 'slide-out-to-right 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+  			'accordion-down': 'accordion-down 250ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'accordion-up': 'accordion-up 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'fade-in': 'fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'fade-out': 'fade-out 150ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'scale-in': 'scale-in 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'slide-in-from-right': 'slide-in-from-right 300ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'slide-out-to-right': 'slide-out-to-right 250ms cubic-bezier(0.16, 1, 0.3, 1)'
   		},
   		transitionDuration: {
   			fast: 'var(--transition-fast)',

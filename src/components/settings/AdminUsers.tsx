@@ -9,6 +9,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -48,7 +49,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Search, UserPlus, Pencil, MoreHorizontal, UserX, KeyRound, ShieldCheck, Check, Trash2, Upload, Users, Copy, X, Download } from "lucide-react";
+import { Search, UserPlus, Pencil, MoreHorizontal, UserX, KeyRound, ShieldCheck, Check, Trash2, Upload, Users, Copy, X, Download, Package, AlertTriangle, Ticket } from "lucide-react";
 import { format } from "date-fns";
 import { SettingsLoadingSkeleton } from "./SettingsLoadingSkeleton";
 import { AddUserDialog } from "./AddUserDialog";
@@ -156,8 +157,10 @@ const getStatusBadge = (status: string | null) => {
       return { label: "Inactive", dot: "bg-muted-foreground", cls: "bg-muted text-muted-foreground border-border" };
     case "suspended":
       return { label: "Suspended", dot: "bg-destructive", cls: "bg-destructive/10 text-destructive border-destructive/20" };
+    case "terminated":
+      return { label: "Terminated", dot: "bg-amber-500", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" };
     default:
-      return { label: s, dot: "bg-emerald-500", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" };
+      return { label: s, dot: "bg-muted-foreground", cls: "bg-muted text-muted-foreground border-border" };
   }
 };
 
@@ -185,10 +188,19 @@ export function AdminUsers() {
     description: string;
     action: () => void;
     destructive?: boolean;
+    linkedData?: { assets: number; tickets: number; licenses: number } | null;
+    blocking?: boolean;
   }>({ open: false, title: "", description: "", action: () => {} });
   
   const queryClient = useQueryClient();
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const invalidateAllUserCaches = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    queryClient.invalidateQueries({ queryKey: ["employees-all"] });
+    queryClient.invalidateQueries({ queryKey: ["users-list"] });
+    queryClient.invalidateQueries({ queryKey: ["employee-asset-counts"] });
+  };
 
   // Ctrl+K to focus search
   useEffect(() => {
@@ -231,6 +243,9 @@ export function AdminUsers() {
         role: normalizeRole(rolesMap.get(user.auth_user_id) || user.role),
       })) as User[];
     },
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 
   const updateRole = useMutation({
@@ -238,7 +253,7 @@ export function AdminUsers() {
       const { error } = await supabase.rpc("update_user_role", { target_user_id: authUserId, new_role: role });
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("User role updated"); },
+    onSuccess: () => { toast.success("User role updated"); invalidateAllUserCaches(); },
     onError: (error: Error) => { toast.error("Failed to update role: " + error.message); },
   });
 
@@ -247,26 +262,28 @@ export function AdminUsers() {
       const { error } = await supabase.rpc("update_user_status", { target_user_id: authUserId, new_status: status });
       if (error) throw error;
     },
-    onSuccess: () => { toast.success("User status updated"); },
+    onSuccess: () => { toast.success("User status updated"); invalidateAllUserCaches(); },
     onError: (error: Error) => { toast.error("Failed to update status: " + error.message); },
   });
 
   const deleteUser = useMutation({
-    mutationFn: async (targetUserId: string) => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const response = await fetch(
-        `https://iarndwlbrmjbsjvugqvr.supabase.co/functions/v1/delete-user`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token}` },
-          body: JSON.stringify({ targetUserId }),
-        }
-      );
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to delete user");
-      return result;
+    mutationFn: async ({ authUserId, userId }: { authUserId: string | null; userId: string }) => {
+      if (authUserId) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const response = await supabase.functions.invoke("delete-user", {
+          body: { targetUserId: authUserId },
+          headers: { Authorization: `Bearer ${sessionData.session?.access_token}` },
+        });
+        if (response.error) throw new Error(response.error.message || "Failed to delete user");
+        if (response.data?.error) throw new Error(response.data.error);
+        return response.data;
+      } else {
+        const { error } = await supabase.from("users").delete().eq("id", userId);
+        if (error) throw new Error(error.message);
+        return { success: true };
+      }
     },
-    onSuccess: () => { toast.success("User deleted successfully"); },
+    onSuccess: () => { toast.success("User deleted successfully"); invalidateAllUserCaches(); },
     onError: (error: Error) => { toast.error("Failed to delete user: " + error.message); },
   });
 
@@ -376,12 +393,31 @@ export function AdminUsers() {
     updateStatus.mutate({ authUserId: user.auth_user_id, status: "active" });
   };
 
-  const handleDeleteUser = (user: User) => {
+  const handleDeleteUser = async (user: User) => {
+    // Query linked data before showing confirmation
+    const [assetsRes, ticketsRes, licensesRes] = await Promise.all([
+      supabase.from("itam_assets").select("id", { count: "exact", head: true }).or(`assigned_to.eq.${user.id},assigned_to.eq.${user.auth_user_id}`).eq("is_active", true),
+      supabase.from("helpdesk_tickets").select("id", { count: "exact", head: true }).or(`assignee_id.eq.${user.id},created_by.eq.${user.id}`).not("status", "in", '("closed","resolved")'),
+      supabase.from("subscriptions_licenses").select("id", { count: "exact", head: true }).or(`assigned_to.eq.${user.id},assigned_to.eq.${user.auth_user_id}`).eq("status", "assigned"),
+    ]);
+
+    const linked = {
+      assets: assetsRes.count || 0,
+      tickets: ticketsRes.count || 0,
+      licenses: licensesRes.count || 0,
+    };
+    const hasLinked = linked.assets > 0 || linked.tickets > 0 || linked.licenses > 0;
+
     setConfirmDialog({
-      open: true, title: "Delete User Permanently",
-      description: `Are you sure you want to permanently delete ${user.name || user.email}? This action cannot be undone and will remove all user data.`,
+      open: true,
+      title: hasLinked ? "Cannot Delete User — Linked Data Found" : "Delete User Permanently",
+      description: hasLinked
+        ? `${user.name || user.email} has linked data that must be resolved first.`
+        : `Are you sure you want to permanently delete ${user.name || user.email}? This action cannot be undone.`,
       destructive: true,
-      action: () => { deleteUser.mutate(user.auth_user_id); setConfirmDialog((prev) => ({ ...prev, open: false })); },
+      linkedData: hasLinked ? linked : null,
+      blocking: linked.assets > 0,
+      action: () => { deleteUser.mutate({ authUserId: user.auth_user_id, userId: user.id }); setConfirmDialog((prev) => ({ ...prev, open: false })); },
     });
   };
 
@@ -418,19 +454,11 @@ export function AdminUsers() {
               placeholder="Search users... (Ctrl+K)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-8 h-8 text-sm"
+              className="pl-9 h-8 text-sm"
             />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[120px] h-8 text-xs">
+            <SelectTrigger className={`w-[150px] h-8 text-xs ${statusFilter !== "all" ? "bg-primary/15 border-primary/40 font-medium" : ""}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -438,10 +466,11 @@ export function AdminUsers() {
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
               <SelectItem value="suspended">Suspended</SelectItem>
+              <SelectItem value="terminated">Terminated</SelectItem>
             </SelectContent>
           </Select>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-[120px] h-8 text-xs">
+            <SelectTrigger className={`w-[150px] h-8 text-xs ${roleFilter !== "all" ? "bg-primary/15 border-primary/40 font-medium" : ""}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -474,14 +503,22 @@ export function AdminUsers() {
         {/* Table with sticky header and scrollable body */}
         <div className="flex-1 overflow-y-auto rounded-lg border">
           <Table>
-            <TableHeader className="sticky top-0 bg-muted/50 z-10">
+            <colgroup>
+              <col />
+              <col />
+              <col className="w-[90px]" />
+              <col className="w-[100px]" />
+              <col className="w-[100px]" />
+              <col className="w-[44px]" />
+            </colgroup>
+            <TableHeader className="sticky top-0 bg-muted shadow-sm z-10">
               <TableRow className="h-8">
                 <SortableTableHeader column="name" label="Name" sortConfig={sortConfig} onSort={handleSort} className="text-xs min-w-[160px]" />
                 <SortableTableHeader column="email" label="Email" sortConfig={sortConfig} onSort={handleSort} className="text-xs min-w-[180px]" />
                 <SortableTableHeader column="role" label="Role" sortConfig={sortConfig} onSort={handleSort} className="text-xs min-w-[90px]" />
                 <SortableTableHeader column="status" label="Status" sortConfig={sortConfig} onSort={handleSort} className="text-xs min-w-[90px]" />
                 <SortableTableHeader column="last_login" label="Last Login" sortConfig={sortConfig} onSort={handleSort} className="text-xs min-w-[100px]" />
-                <th className="text-xs w-[44px]" />
+                <TableHead className="text-xs w-[44px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -646,7 +683,7 @@ export function AdminUsers() {
                 <Separator />
 
                 {/* Recent Activity */}
-                <UserRecentActivity userId={detailUser.auth_user_id} />
+                <UserRecentActivity userId={detailUser.id} />
 
                 <Separator />
 
@@ -689,14 +726,43 @@ export function AdminUsers() {
             <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
             <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmDialog.linkedData && (
+            <div className="space-y-2 px-1">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                {confirmDialog.linkedData.assets > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Package className="h-4 w-4 text-destructive" />
+                    <span><strong>{confirmDialog.linkedData.assets}</strong> assigned asset{confirmDialog.linkedData.assets !== 1 ? "s" : ""} — must be returned/reassigned first</span>
+                  </div>
+                )}
+                {confirmDialog.linkedData.tickets > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Ticket className="h-4 w-4 text-amber-500" />
+                    <span><strong>{confirmDialog.linkedData.tickets}</strong> open ticket{confirmDialog.linkedData.tickets !== 1 ? "s" : ""}</span>
+                  </div>
+                )}
+                {confirmDialog.linkedData.licenses > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    <span><strong>{confirmDialog.linkedData.licenses}</strong> assigned license{confirmDialog.linkedData.licenses !== 1 ? "s" : ""}</span>
+                  </div>
+                )}
+              </div>
+              {confirmDialog.blocking && (
+                <p className="text-xs text-destructive font-medium">Unlink all assets before deleting this user.</p>
+              )}
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDialog.action}
-              className={confirmDialog.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
-            >
-              Confirm
-            </AlertDialogAction>
+            {!confirmDialog.blocking && (
+              <AlertDialogAction
+                onClick={confirmDialog.action}
+                className={confirmDialog.destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              >
+                {confirmDialog.linkedData ? "Delete Anyway" : "Confirm"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

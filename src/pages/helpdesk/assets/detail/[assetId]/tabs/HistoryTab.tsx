@@ -35,8 +35,6 @@ const ACTION_COLORS: Record<string, string> = {
   reassigned: "bg-cyan-100 text-cyan-800",
   returned_to_stock: "bg-emerald-100 text-emerald-800",
   disposed: "bg-red-100 text-red-800",
-  lost: "bg-orange-100 text-orange-800",
-  marked_as_lost: "bg-orange-100 text-orange-800",
   found: "bg-green-100 text-green-800",
   transferred: "bg-blue-100 text-blue-800",
 };
@@ -154,40 +152,60 @@ export const HistoryTab = ({ assetId }: HistoryTabProps) => {
     <Table wrapperClassName="mt-2 border-muted">
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[200px]">Field</TableHead>
-          <TableHead>Old Value</TableHead>
-          <TableHead>New Value</TableHead>
+          <TableHead className="w-[200px] py-1">Field</TableHead>
+          <TableHead className="py-1">Old Value</TableHead>
+          <TableHead className="py-1">New Value</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {changes.map((change, idx) => (
           <TableRow key={idx}>
-            <TableCell className="font-medium text-xs">{change.field}</TableCell>
-            <TableCell className="text-xs text-muted-foreground">{renderClickableValue(change.old)}</TableCell>
-            <TableCell className="text-xs font-medium">{renderClickableValue(change.new)}</TableCell>
+            <TableCell className="py-1 font-medium text-xs">{change.field}</TableCell>
+            <TableCell className="py-1 text-xs text-muted-foreground">{renderClickableValue(change.old)}</TableCell>
+            <TableCell className="py-1 text-xs font-medium">{renderClickableValue(change.new)}</TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
   );
 
+  // Keys whose values are human-readable names but have a sibling `user_id` UUID
+  const USER_NAME_KEYS = new Set(['assigned_to', 'returned_from', 'checked_out_to']);
+
   const renderDetailGrid = (details: Record<string, any>) => {
     const filtered = sortDetailEntries(
       Object.entries(details).filter(([key, value]) => !HIDDEN_DETAIL_KEYS.has(key) && value !== null && value !== undefined && value !== '')
     );
     if (filtered.length === 0) return null;
+
+    // Extract sibling user_id for making name fields clickable
+    const siblingUserId = details.user_id && typeof details.user_id === 'string' && UUID_REGEX.test(details.user_id)
+      ? details.user_id
+      : null;
+
     return (
-      <dl className="border-t border-border/50 mt-2 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-xs">
+      <dl className="border-t border-border/50 mt-2 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
         {filtered.map(([key, value]) => {
           const label = formatLabel(key);
+          const rawStr = String(value);
+          const isUuid = UUID_REGEX.test(rawStr);
           let displayValue = resolveDetailValue(key, value);
           if (isDateKey(key) && typeof value === 'string') {
             try { displayValue = format(new Date(value), "dd MMM yyyy, HH:mm"); } catch { /* keep */ }
           }
+          const isResolvedUser = isUuid && displayValue !== rawStr;
+          // If value is a plain name (not UUID) but it's a user-name key with a sibling user_id, make it clickable
+          const isLinkedName = !isUuid && siblingUserId && USER_NAME_KEYS.has(key);
           return (
             <div key={key} className="flex gap-2">
               <dt className="w-[140px] shrink-0 text-muted-foreground">{label}</dt>
-              <dd className="text-foreground font-medium truncate">{displayValue}</dd>
+              <dd className="text-foreground font-medium truncate">
+                {isResolvedUser ? (
+                  <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${rawStr}`); }}>{displayValue}</span>
+                ) : isLinkedName ? (
+                  <span className="text-primary hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/assets/employees?user=${siblingUserId}`); }}>{displayValue}</span>
+                ) : displayValue}
+              </dd>
             </div>
           );
         })}

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Image, Upload, X, ZoomIn, Loader2 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -22,6 +22,7 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
 
   const { data: photos = [], isLoading, refetch } = useQuery({
     queryKey: ["asset-photos", assetId],
@@ -87,7 +88,7 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
 
   if (isLoading) {
     return (
-      <div className="p-4 flex items-center justify-center">
+      <div className="p-3 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -98,7 +99,7 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
         <div className="space-y-3">
           {/* Upload area with drag-and-drop */}
           <div
-            className={`relative border-2 border-dashed rounded-lg p-4 text-center transition-colors ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
+            className={`relative border-2 border-dashed rounded-lg p-3 text-center transition-colors ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}`}
             onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}
@@ -150,11 +151,11 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-2">
                     <div className="flex gap-2">
-                      <Button variant="secondary" size="icon" className="h-8 w-8" onClick={() => setPreviewUrl(photo.url)}>
-                        <ZoomIn className="h-4 w-4" />
+                      <Button variant="secondary" size="icon" className="h-6 w-6" onClick={() => setPreviewUrl(photo.url)}>
+                        <ZoomIn className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="destructive" size="icon" className="h-8 w-8" onClick={() => handleRemove(photo.name)}>
-                        <X className="h-4 w-4" />
+                      <Button variant="destructive" size="icon" className="h-6 w-6" onClick={() => setRemoveTarget(photo.name)}>
+                        <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                     {photo.uploaded_at && (
@@ -170,12 +171,27 @@ export const PhotosTab = ({ assetId }: PhotosTabProps) => {
         </div>
 
         <Dialog open={!!previewUrl} onOpenChange={() => setPreviewUrl(null)}>
-          <DialogContent className="max-w-4xl p-0">
+          <DialogContent className="max-w-4xl p-1 pt-8">
             {previewUrl && (
               <img src={previewUrl} alt="Asset photo preview" className="w-full h-auto max-h-[80vh] object-contain" />
             )}
           </DialogContent>
         </Dialog>
+
+        <ConfirmDialog
+          open={!!removeTarget}
+          onOpenChange={(open) => { if (!open) setRemoveTarget(null); }}
+          onConfirm={() => {
+            if (removeTarget) {
+              handleRemove(removeTarget);
+              setRemoveTarget(null);
+            }
+          }}
+          title="Remove photo?"
+          description="This photo will be permanently deleted from storage."
+          confirmText="Remove"
+          variant="destructive"
+        />
     </div>
   );
 };

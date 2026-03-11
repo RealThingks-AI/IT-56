@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, CheckCircle2, DollarSign, ShoppingCart, Wrench, Trash2, AlertTriangle, Calendar, Loader2, Clock, KeyRound } from "lucide-react";
+import { Package, CheckCircle2, DollarSign, ShoppingCart, Wrench, Trash2, AlertTriangle, Calendar, Loader2, Clock, KeyRound, ShieldCheck, XCircle } from "lucide-react";
 import { useUISettings, DashboardPreferencesSetting, DashboardWidgetSetting } from "@/hooks/useUISettings";
 
 export interface DashboardWidget {
@@ -27,20 +27,23 @@ export interface DashboardPreferences {
   columns: number;
   showFeeds: boolean;
   showCalendar: boolean;
+  showChart: boolean;
 }
 
 const DEFAULT_WIDGETS: DashboardWidget[] = [
   { id: "activeAssets", label: "Number of Active Assets", icon: Package, enabled: true },
-  { id: "availableAssets", label: "Available Assets", icon: CheckCircle2, enabled: true },
-  { id: "assetValue", label: "Value of Assets", icon: DollarSign, enabled: true },
+  { id: "availableAssets", label: "In Stock Assets", icon: CheckCircle2, enabled: true },
   { id: "fiscalPurchases", label: "Purchases in Fiscal Year", icon: ShoppingCart, enabled: true },
   { id: "checkedOut", label: "Checked-out Assets", icon: Package, enabled: true },
-  { id: "underRepair", label: "Under Repair", icon: Wrench, enabled: true },
-  { id: "disposed", label: "Disposed Assets", icon: Trash2, enabled: true },
+  { id: "warrantyExpiring", label: "Warranty Expiring", icon: AlertTriangle, enabled: true },
   { id: "overdueAssets", label: "Overdue Assets", icon: Clock, enabled: true },
   { id: "licenses", label: "Licenses", icon: KeyRound, enabled: true },
-  { id: "warrantyExpiring", label: "Warranty Expiring", icon: AlertTriangle, enabled: true },
+  { id: "assetValue", label: "Value of Assets", icon: DollarSign, enabled: false },
+  { id: "underRepair", label: "Repair", icon: Wrench, enabled: false },
+  { id: "disposed", label: "Disposed Assets", icon: Trash2, enabled: false },
   { id: "leaseExpiring", label: "Lease Expiring", icon: Calendar, enabled: false },
+  { id: "pendingConfirmation", label: "Pending Confirmation", icon: ShieldCheck, enabled: false },
+  { id: "deniedAssets", label: "Denied Assets", icon: XCircle, enabled: false },
 ];
 
 const WIDGET_ICON_MAP: Record<string, React.ElementType> = {
@@ -55,6 +58,8 @@ const WIDGET_ICON_MAP: Record<string, React.ElementType> = {
   licenses: KeyRound,
   warrantyExpiring: AlertTriangle,
   leaseExpiring: Calendar,
+  pendingConfirmation: ShieldCheck,
+  deniedAssets: XCircle,
 };
 
 const DEFAULT_PREFERENCES: DashboardPreferences = {
@@ -62,6 +67,7 @@ const DEFAULT_PREFERENCES: DashboardPreferences = {
   columns: 5,
   showFeeds: true,
   showCalendar: true,
+  showChart: false,
 };
 
 // Convert database settings to full widget objects with icons
@@ -81,18 +87,20 @@ function dbSettingsToPreferences(dbSettings?: DashboardPreferencesSetting): Dash
     columns: dbSettings.columns ?? 5,
     showFeeds: dbSettings.showFeeds ?? true,
     showCalendar: dbSettings.showCalendar ?? true,
+    showChart: dbSettings.showChart ?? false,
   };
 }
 
 // Convert preferences to database settings (strip non-serializable data)
-function preferencesToDbSettings(prefs: DashboardPreferences): DashboardPreferencesSetting {
+function preferencesToDbSettings(prefs: DashboardPreferences, existingDbSettings?: DashboardPreferencesSetting): DashboardPreferencesSetting {
   return {
     widgets: prefs.widgets.map(w => ({ id: w.id, enabled: w.enabled })),
     columns: prefs.columns,
-    showChart: false,
+    showChart: prefs.showChart,
     showFeeds: prefs.showFeeds,
     showAlerts: false,
     showCalendar: prefs.showCalendar,
+    feedFilters: existingDbSettings?.feedFilters,
   };
 }
 
@@ -137,7 +145,7 @@ export function ManageDashboardDialog({
     if (isAuthenticated) {
       setIsSaving(true);
       try {
-        await updateDashboardPreferences(preferencesToDbSettings(localPrefs));
+        await updateDashboardPreferences(preferencesToDbSettings(localPrefs, dashboardPreferences));
         toast.success("Dashboard preferences saved");
       } catch (error) {
         toast.error("Failed to save preferences");
@@ -244,6 +252,16 @@ export function ManageDashboardDialog({
                       }
                     />
                     <Label htmlFor="showCalendar" className="text-sm cursor-pointer">Alert Calendar</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="showChart"
+                      checked={localPrefs.showChart}
+                      onCheckedChange={(checked) =>
+                        setLocalPrefs(prev => ({ ...prev, showChart: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="showChart" className="text-sm cursor-pointer">Category Pie Chart</Label>
                   </div>
                 </div>
               </div>

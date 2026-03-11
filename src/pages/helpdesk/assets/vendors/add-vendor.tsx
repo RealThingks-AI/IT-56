@@ -63,13 +63,13 @@ const AddVendor = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="p-6 space-y-6">
-        <div className="flex items-center gap-4">
+    <div className="h-full overflow-auto bg-background">
+      <div className="p-3 space-y-3">
+        <div className="flex items-center gap-3">
           <BackButton />
           <div>
-            <h1 className="text-2xl font-bold">Add Vendor</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-lg font-semibold">Add Vendor</h1>
+            <p className="text-xs text-muted-foreground">
               Register a new vendor for assets and services
             </p>
           </div>

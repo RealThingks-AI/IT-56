@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { AssetModuleTopBar } from "@/components/helpdesk/assets/AssetModuleTopBar";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,14 +16,13 @@ import {
 import {
   useAssetExportImport, EXPORT_FIELD_GROUPS, IMPORT_FIELD_GROUPS,
   getDefaultSelectedFields, getAllFieldKeys, parseFileToRows, validateRowsForPreview,
-} from "@/hooks/useAssetExportImport";
-import type { ExportFormat, ValidatedRow } from "@/hooks/useAssetExportImport";
+} from "@/hooks/assets/useAssetExportImport";
+import type { ExportFormat, ValidatedRow, DetailedImportResult } from "@/hooks/assets/useAssetExportImport";
 import { FileDropzone } from "@/components/helpdesk/assets/FileDropzone";
 import { ImportPreviewTable } from "@/components/helpdesk/assets/ImportPreviewTable";
 import { ImportResultSection } from "@/components/helpdesk/assets/ImportResultSection";
 
 export default function ImportExportPage({ embedded = false }: { embedded?: boolean }) {
-  const navigate = useNavigate();
   const {
     exportAssets, importAssets, downloadTemplate, resetImportState,
     isExporting, isImporting, importProgress, importPhase, importErrors,
@@ -36,7 +34,7 @@ export default function ImportExportPage({ embedded = false }: { embedded?: bool
 
   // Import state
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importResult, setImportResult] = useState<{ success: number; errors: any[] } | null>(null);
+  const [importResult, setImportResult] = useState<DetailedImportResult | null>(null);
   const [validatedRows, setValidatedRows] = useState<ValidatedRow[] | null>(null);
   const [isParsing, setIsParsing] = useState(false);
 
@@ -101,7 +99,7 @@ export default function ImportExportPage({ embedded = false }: { embedded?: bool
 
   const handleImport = async () => {
     if (!importFile) return;
-    const result = await importAssets(importFile);
+    const result = await importAssets(importFile) as DetailedImportResult;
     setImportResult(result);
     setValidatedRows(null);
   };
@@ -122,11 +120,8 @@ export default function ImportExportPage({ embedded = false }: { embedded?: bool
 
   return (
     <div className={embedded ? "h-full" : "h-full overflow-auto bg-background"}>
-      {!embedded && <AssetModuleTopBar />}
+      
       <div className={embedded ? "space-y-4" : "px-4 py-4 space-y-4 max-w-6xl"}>
-
-
-
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
           <TabsList className="grid w-full max-w-xs grid-cols-2">
             <TabsTrigger value="export" className="gap-1.5 text-xs">

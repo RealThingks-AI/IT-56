@@ -14,18 +14,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Loader2, Plus, CalendarIcon, ShieldCheck, X } from "lucide-react";
-import { useAssetSetupConfig } from "@/hooks/useAssetSetupConfig";
+import { Loader2, Plus, CalendarIcon, ShieldCheck, X, CheckCircle2, XCircle } from "lucide-react";
+import { useAssetSetupConfig } from "@/hooks/assets/useAssetSetupConfig";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format, addMonths } from "date-fns";
 import { AssetPhotoSelector } from "@/components/helpdesk/assets/AssetPhotoSelector";
 import { QuickAddFieldDialog, FieldType } from "@/components/helpdesk/assets/QuickAddFieldDialog";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
-import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { ASSET_STATUS_OPTIONS } from "@/lib/assetStatusUtils";
+import { useKeyboardShortcuts } from "@/hooks/tickets/useKeyboardShortcuts";
+import { ASSET_STATUS_OPTIONS_FOR_CREATE } from "@/lib/assets/assetStatusUtils";
 
 // ── Zod Schema ──────────────────────────────────────────────────────────────
 const assetFormSchema = z.object({
@@ -43,6 +43,7 @@ const assetFormSchema = z.object({
   vendor_id: z.string().optional().default(""),
   purchased_from: z.string().optional().default(""),
   currency: z.string().default("INR"),
+  asset_name: z.string().optional().default(""),
   description: z.string().optional().default(""),
   asset_configuration: z.string().optional().default(""),
   classification_confidential: z.boolean().default(false),
@@ -78,8 +79,8 @@ function FormField({
   className?: string;
 }) {
   return (
-    <div className={cn("space-y-1.5", className)}>
-      <Label className="text-xs font-medium">
+    <div className={cn("space-y-1", className)}>
+      <Label className="text-xs font-semibold text-foreground">
         {label}
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
@@ -96,12 +97,12 @@ function FormField({
 // ── Loading Skeleton ────────────────────────────────────────────────────────
 function AddAssetSkeleton() {
   return (
-    <div className="px-4 py-3 space-y-3">
+    <div className="p-3 space-y-3">
       <Card>
-        <CardHeader className="bg-muted/50 py-2.5">
+        <CardHeader className="bg-muted py-2.5 px-3">
           <Skeleton className="h-4 w-32" />
         </CardHeader>
-        <CardContent className="pt-4">
+        <CardContent className="p-3 pt-2.5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
             {Array.from({ length: 9 }).map((_, i) => (
               <div key={i} className="space-y-1.5">
@@ -113,10 +114,10 @@ function AddAssetSkeleton() {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="bg-muted/50 py-2.5">
+        <CardHeader className="bg-muted py-2.5 px-3">
           <Skeleton className="h-4 w-48" />
         </CardHeader>
-        <CardContent className="pt-4">
+        <CardContent className="p-3 pt-2.5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="space-y-1.5">
@@ -135,13 +136,13 @@ function AddAssetSkeleton() {
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Card className="shadow-sm animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
-      <CardHeader className="py-2 px-4 border-b bg-muted/50">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
+      <CardHeader className="py-2 px-3 border-b bg-muted">
+        <CardTitle className="text-[13px] font-semibold text-foreground flex items-center gap-2">
           <span className="w-1 h-4 bg-primary rounded-full" />
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-3">{children}</CardContent>
+      <CardContent className="p-3 pt-2.5">{children}</CardContent>
     </Card>
   );
 }
@@ -214,6 +215,7 @@ export default function AddAsset() {
       serial_number: "",
       make_id: "",
       model: "",
+      asset_name: "",
       purchase_date: undefined as any,
       cost: "",
       currency: preferences?.currency || "INR",
@@ -252,6 +254,39 @@ export default function AddAsset() {
   // Quick Add Dialog
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddFieldType, setQuickAddFieldType] = useState<FieldType>("site");
+
+  // ── Instant Asset Tag duplicate detection ─────────────────────────────────
+  const [tagStatus, setTagStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
+  const currentAssetTag = watch("asset_tag");
+
+  useEffect(() => {
+    if (!currentAssetTag || currentAssetTag.trim().length === 0) {
+      setTagStatus('idle');
+      return;
+    }
+
+    setTagStatus('checking');
+    const timer = setTimeout(async () => {
+      try {
+        let query = supabase
+          .from("itam_assets")
+          .select("id")
+          .eq("asset_tag", currentAssetTag.trim())
+          .eq("is_active", true);
+
+        if (isEditMode && editAssetId) {
+          query = query.neq("id", editAssetId);
+        }
+
+        const { data } = await query.maybeSingle();
+        setTagStatus(data ? 'taken' : 'available');
+      } catch {
+        setTagStatus('idle');
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [currentAssetTag, isEditMode, editAssetId]);
 
   // ── Unsaved changes warning ───────────────────────────────────────────────
   useEffect(() => {
@@ -306,6 +341,7 @@ export default function AddAsset() {
         serial_number: existingAsset.serial_number || "",
         make_id: existingAsset.make_id || "",
         model: existingAsset.model || "",
+        asset_name: existingAsset.name || "",
         purchase_date: existingAsset.purchase_date ? new Date(existingAsset.purchase_date) : undefined as any,
         purchased_from: cf?.vendor || existingAsset.vendor?.name || "",
         vendor_id: existingAsset.vendor_id || "",
@@ -355,14 +391,11 @@ export default function AddAsset() {
     }
   }, [siteId, locationId, filteredLocations, setValue]);
 
-  // ── Auto-fill Asset Tag only when category changes AND tag is empty ───────
+  // ── Auto-fill Asset Tag whenever category changes ───────
   useEffect(() => {
     if (categoryId && !isEditMode && categoryId !== prevCategoryRef.current) {
       prevCategoryRef.current = categoryId;
-      const currentTag = watchedValues.asset_tag;
-      if (!currentTag) {
-        handleAutoFill();
-      }
+      handleAutoFill();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryId, isEditMode]);
@@ -382,7 +415,7 @@ export default function AddAsset() {
       if (error) throw error;
       if (data?.needsConfiguration) {
         toast.error(data.error || "Tag format not configured for this category", {
-          action: { label: "Setup", onClick: () => navigate("/assets/setup/fields-setup") },
+          action: { label: "Setup", onClick: () => navigate("/assets/advanced?tab=setup&section=categories") },
         });
         return;
       }
@@ -429,12 +462,11 @@ export default function AddAsset() {
         .maybeSingle();
       if (existingTag) throw new Error("This Asset Tag ID is already in use.");
 
-      // @ts-ignore
-      const { error } = await supabase.from("itam_assets").insert({
+      const insertPayload = {
         asset_id: assetId,
         asset_tag: assetId,
-        name: formData.model || "Unnamed Asset",
-        status: "available",
+        name: formData.asset_name?.trim() || formData.model || "Unnamed Asset",
+        status: formData.status || "available",
         category_id: formData.category_id || null,
         location_id: formData.location_id || null,
         department_id: formData.department_id || null,
@@ -455,7 +487,8 @@ export default function AddAsset() {
           photo_url: formData.photo_url,
           site_id: formData.site_id || null,
         },
-      } as any);
+      };
+      const { error } = await supabase.from("itam_assets").insert(insertPayload);
       if (error) throw error;
 
       // Save currency preference
@@ -541,7 +574,7 @@ export default function AddAsset() {
 
       const newValues: Record<string, any> = {
         asset_tag: formData.asset_tag || null,
-        name: formData.model || "Unnamed Asset",
+        name: formData.asset_name?.trim() || formData.model || "Unnamed Asset",
         status: formData.status,
         category_id: formData.category_id || null,
         location_id: formData.location_id || null,
@@ -692,8 +725,7 @@ export default function AddAsset() {
       toast.success("Asset updated successfully");
       invalidateAllAssetQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ["itam-asset-edit", editAssetId] });
-      const assetTag = watchedValues.asset_tag;
-      navigate(`/assets/detail/${assetTag || editAssetId}`);
+      navigate(`/assets/detail/${editAssetId}`);
     },
     onError: (error: Error) => {
       toast.error("Failed to update asset: " + error.message);
@@ -701,6 +733,10 @@ export default function AddAsset() {
   });
 
   const onSubmit = (data: AssetFormData) => {
+    if (tagStatus === 'taken') {
+      toast.error("Asset Tag ID is already in use. Please use a different tag.");
+      return;
+    }
     if (isEditMode) {
       updateAsset.mutate(data);
     } else {
@@ -742,6 +778,7 @@ export default function AddAsset() {
       category: "category_id",
       department: "department_id",
       make: "make_id",
+      vendor: "vendor_id",
     };
     const field = fieldMap[quickAddFieldType];
     if (field) setValue(field as any, id, { shouldDirty: true });
@@ -768,7 +805,7 @@ export default function AddAsset() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 overflow-auto px-4 py-3 space-y-3">
+      <div className="flex-1 overflow-auto p-3 space-y-3">
 
         {/* ── Asset Details ───────────────────────────────────────────── */}
         <SectionCard title={isEditMode ? "Edit Asset Details" : "Asset Details"}>
@@ -815,18 +852,42 @@ export default function AddAsset() {
                         {...field}
                         id="asset_tag"
                         placeholder="Enter asset tag"
-                        className={cn("h-9 text-sm pr-7 transition-colors", err("asset_tag") && "border-destructive ring-1 ring-destructive/30")}
+                        className={cn(
+                          "h-9 text-sm transition-colors",
+                          field.value && !isEditMode ? "pr-[5.5rem]" : "pr-8",
+                          err("asset_tag") && "border-destructive ring-1 ring-destructive/30",
+                          currentAssetTag && tagStatus === 'taken' && "border-destructive ring-1 ring-destructive/30"
+                        )}
                         disabled={isEditMode}
                       />
-                      {field.value && !isEditMode && (
-                        <button
-                          type="button"
-                          onClick={() => setValue("asset_tag", "", { shouldDirty: true })}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                        {/* Tag status indicator inside input */}
+                        {currentAssetTag && tagStatus === 'checking' && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground animate-in fade-in-0 duration-200">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          </span>
+                        )}
+                        {currentAssetTag && tagStatus === 'available' && (
+                          <span className="flex items-center gap-1 text-xs text-success animate-in fade-in-0 duration-200">
+                            <CheckCircle2 className="h-3 w-3" /> Available
+                          </span>
+                        )}
+                        {currentAssetTag && tagStatus === 'taken' && (
+                          <span className="flex items-center gap-1 text-[11px] text-destructive font-medium animate-in fade-in-0 duration-200">
+                            <XCircle className="h-3 w-3" /> In use
+                          </span>
+                        )}
+                        {/* Clear button */}
+                        {field.value && !isEditMode && (
+                          <button
+                            type="button"
+                            onClick={() => setValue("asset_tag", "", { shouldDirty: true })}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 />
@@ -852,18 +913,28 @@ export default function AddAsset() {
                 <Controller
                   name="status"
                   control={control}
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ASSET_STATUS_OPTIONS.map(opt => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  render={({ field }) => {
+                    const statusBadgeStyles: Record<string, string> = {
+                      available: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-400",
+                      in_use: "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-400",
+                      maintenance: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400",
+                      disposed: "bg-rose-500/15 text-rose-700 border-rose-500/30 dark:text-rose-400",
+                    };
+                    return (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger className="h-9 text-sm">
+                          <span className={cn("inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border", statusBadgeStyles[field.value] || "")}>
+                            {ASSET_STATUS_OPTIONS_FOR_CREATE.find(o => o.value === field.value)?.label || field.value}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ASSET_STATUS_OPTIONS_FOR_CREATE.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  }}
                 />
               </FormField>
             ) : (
@@ -928,6 +999,17 @@ export default function AddAsset() {
                 control={control}
                 render={({ field }) => (
                   <Input {...field} id="model" placeholder="Enter model" className={cn("h-9 text-sm transition-colors", err("model") && "border-destructive ring-1 ring-destructive/30")} />
+                )}
+              />
+            </FormField>
+
+            {/* Asset Name */}
+            <FormField label="Asset Name" error={err("asset_name")}>
+              <Controller
+                name="asset_name"
+                control={control}
+                render={({ field }) => (
+                  <Input {...field} id="asset_name" placeholder="e.g. John's MacBook Pro" className="h-9 text-sm" />
                 )}
               />
             </FormField>
@@ -1029,7 +1111,10 @@ export default function AddAsset() {
                       </SelectTrigger>
                       <SelectContent>
                         {vendors.length === 0 ? (
-                          <div className="px-2 py-3 text-xs text-muted-foreground text-center">No vendors found.</div>
+                          <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                            No vendors found.{" "}
+                            <Button type="button" variant="link" className="p-0 h-auto text-xs" onClick={() => openQuickAddDialog("vendor")}>Add one</Button>
+                          </div>
                         ) : vendors.map(v => (
                           <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
                         ))}
@@ -1037,6 +1122,9 @@ export default function AddAsset() {
                     </Select>
                   )}
                 />
+                <Button type="button" variant="outline" size="icon" onClick={() => openQuickAddDialog("vendor")} title="Add new vendor" className="h-9 w-9 shrink-0">
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
               </div>
             </FormField>
 
@@ -1082,7 +1170,7 @@ export default function AddAsset() {
                   name="asset_configuration"
                   control={control}
                   render={({ field }) => (
-                    <Textarea {...field} id="asset_configuration" placeholder="Enter configuration" rows={2} className="text-sm resize-none" />
+                    <Textarea {...field} id="asset_configuration" placeholder="Enter configuration" rows={2} className="text-sm resize-none min-h-[60px]" />
                   )}
                 />
               </FormField>
@@ -1091,7 +1179,7 @@ export default function AddAsset() {
                   name="description"
                   control={control}
                   render={({ field }) => (
-                    <Textarea {...field} id="description" placeholder="Enter asset description" rows={2} className="text-sm resize-none" />
+                    <Textarea {...field} id="description" placeholder="Enter asset description" rows={2} className="text-sm resize-none min-h-[60px]" />
                   )}
                 />
               </FormField>
@@ -1208,11 +1296,8 @@ export default function AddAsset() {
 
       {/* ── Sticky Action Buttons ──────────────────────────────────── */}
       <div className="sticky bottom-0 z-10 border-t border-border/80 bg-background/95 backdrop-blur-sm px-4 py-2.5 flex justify-between items-center shadow-[0_-1px_3px_rgba(0,0,0,0.05)]">
-        <span className="text-xs text-muted-foreground hidden sm:inline">
-          Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] font-mono border">Ctrl+Enter</kbd> to submit
-        </span>
         <div className="flex gap-2 ml-auto">
-          <Button type="button" variant="outline" size="sm" onClick={handleCancel} className="min-w-[80px]">
+          <Button type="button" variant="outline" size="sm" onClick={handleCancel} className="min-w-[90px] h-8">
             Cancel
           </Button>
           <Button
@@ -1220,7 +1305,7 @@ export default function AddAsset() {
             size="sm"
             disabled={isPending}
             onClick={rhfHandleSubmit(onSubmit, onInvalid)}
-            className="min-w-[80px] bg-primary hover:bg-primary/90 text-primary-foreground"
+            className="min-w-[90px] h-8 bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {isPending ? (
               <>

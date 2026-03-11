@@ -58,11 +58,47 @@ Deno.serve(async (req) => {
 
     const payload: DeviceUpdatePayload = await req.json();
 
+    // Input validation helpers
+    const sanitizeString = (val: unknown, maxLen: number): string | undefined => {
+      if (val === undefined || val === null) return undefined;
+      return String(val).slice(0, maxLen);
+    };
+    const isValidHostname = (h: string): boolean => /^[a-zA-Z0-9._-]{1,255}$/.test(h);
+    const isValidKbNumber = (kb: string): boolean => /^KB\d{4,9}$/i.test(kb);
+
     if (!payload.hostname || !payload.os_version) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: hostname and os_version' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    if (!isValidHostname(payload.hostname)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid hostname format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Sanitize fields
+    payload.hostname = sanitizeString(payload.hostname, 255)!;
+    payload.os_version = sanitizeString(payload.os_version, 100)!;
+    payload.os_build = sanitizeString(payload.os_build, 100);
+    payload.serial_number = sanitizeString(payload.serial_number, 255);
+
+    // Validate and limit arrays
+    payload.pending_updates = (Array.isArray(payload.pending_updates) ? payload.pending_updates : [])
+      .slice(0, 1000).filter(u => u.kb_number && isValidKbNumber(u.kb_number))
+      .map(u => ({ ...u, kb_number: sanitizeString(u.kb_number, 20)!, title: sanitizeString(u.title, 500) || '', severity: sanitizeString(u.severity, 50) }));
+
+    payload.installed_updates = (Array.isArray(payload.installed_updates) ? payload.installed_updates : [])
+      .slice(0, 1000).filter(u => u.kb_number && isValidKbNumber(u.kb_number))
+      .map(u => ({ ...u, kb_number: sanitizeString(u.kb_number, 20)!, title: sanitizeString(u.title, 500) || '' }));
+
+    if (payload.failed_updates) {
+      payload.failed_updates = (Array.isArray(payload.failed_updates) ? payload.failed_updates : [])
+        .slice(0, 500).filter(u => u.kb_number && isValidKbNumber(u.kb_number))
+        .map(u => ({ ...u, kb_number: sanitizeString(u.kb_number, 20)!, title: sanitizeString(u.title, 500) || '' }));
     }
 
     console.log(`Processing update data for device: ${payload.hostname}`);

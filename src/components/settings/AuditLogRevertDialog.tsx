@@ -89,10 +89,10 @@ export function AuditLogRevertDialog({
                   </Badge>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Record ID:</span>
-                  <code className="text-sm font-mono bg-background px-2 py-0.5 rounded">
-                    {log.entityId?.slice(0, 12)}...
-                  </code>
+                  <span className="text-sm text-muted-foreground">Record:</span>
+                  <span className="text-sm font-medium">
+                    {(log.metadata as any)?.name || (log.metadata as any)?.asset_tag || (log.metadata as any)?.ticket_number || MODULE_DISPLAY_NAMES[log.entityType || ""] || log.entityType || "Record"}
+                  </span>
                 </div>
               </div>
 

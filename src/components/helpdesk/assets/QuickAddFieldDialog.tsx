@@ -21,7 +21,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-export type FieldType = "site" | "location" | "category" | "department" | "make";
+export type FieldType = "site" | "location" | "category" | "department" | "make" | "vendor";
 
 interface QuickAddFieldDialogProps {
   open: boolean;
@@ -38,6 +38,7 @@ const FIELD_CONFIG: Record<FieldType, { label: string; table: string; placeholde
   category: { label: "Category", table: "itam_categories", placeholder: "Enter category name" },
   department: { label: "Department", table: "itam_departments", placeholder: "Enter department name" },
   make: { label: "Make", table: "itam_makes", placeholder: "Enter make name" },
+  vendor: { label: "Vendor", table: "itam_vendors", placeholder: "Enter vendor name" },
 };
 
 export function QuickAddFieldDialog({
@@ -91,6 +92,7 @@ export function QuickAddFieldDialog({
       queryClient.invalidateQueries({ queryKey: ["itam-categories"] });
       queryClient.invalidateQueries({ queryKey: ["itam-departments"] });
       queryClient.invalidateQueries({ queryKey: ["itam-makes"] });
+      queryClient.invalidateQueries({ queryKey: ["itam-vendors"] });
       onSuccess(data.id, data.name);
       onOpenChange(false);
     },

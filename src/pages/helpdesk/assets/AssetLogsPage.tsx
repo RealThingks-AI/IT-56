@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Search, ClipboardList, LogIn, LogOut, Activity, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Search, ClipboardList, LogIn, LogOut, Activity, Loader2, X } from "lucide-react";
 import { FormattedDate } from "@/components/FormattedDate";
 import { Link } from "react-router-dom";
 import { sanitizeSearchInput } from "@/lib/utils";
 import { StatCard } from "@/components/helpdesk/assets/StatCard";
+import { PaginationControls } from "@/components/helpdesk/assets/PaginationControls";
 
 const PAGE_SIZE = 50;
 
@@ -35,7 +36,7 @@ export default function AssetLogsPage() {
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [datePreset, setDatePreset] = useState("all");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState<any>(null);
 
   const { data: usersMap, isLoading: usersLoading } = useQuery({
@@ -67,7 +68,7 @@ export default function AssetLogsPage() {
       const [checkouts, checkins, changes] = await Promise.all([
         supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).eq("action", "checked_out"),
         supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).eq("action", "checked_in"),
-        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).in("action", ["disposed", "reassigned", "returned_to_stock", "status_changed", "lost", "updated"]),
+        supabase.from("itam_asset_history").select("*", { count: "exact", head: true }).in("action", ["disposed", "reassigned", "returned_to_stock", "status_changed", "updated"]),
       ]);
       return {
         checkouts: checkouts.count || 0,
@@ -84,7 +85,7 @@ export default function AssetLogsPage() {
         .from("itam_asset_history")
         .select("*, itam_assets(id, name, asset_tag)", { count: "exact" })
         .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
       if (actionFilter !== "all") query = query.eq("action", actionFilter);
       const dateFrom = getDateFilter(datePreset);
@@ -100,12 +101,10 @@ export default function AssetLogsPage() {
   const logs = data?.logs || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const start = page * PAGE_SIZE + 1;
-  const end = Math.min((page + 1) * PAGE_SIZE, total);
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         <StatCard icon={ClipboardList} value={total} label="Total Logs" colorClass="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
         <StatCard icon={LogOut} value={statCounts?.checkouts ?? "—"} label="Check Outs" colorClass="bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" />
         <StatCard icon={LogIn} value={statCounts?.checkins ?? "—"} label="Check Ins" colorClass="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
@@ -114,11 +113,16 @@ export default function AssetLogsPage() {
 
         <div className="flex flex-wrap gap-2">
           <div className="relative max-w-sm flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search logs..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9 h-8" />
-        </div>
-        <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(0); }}>
-          <SelectTrigger className="w-[150px] h-8"><SelectValue /></SelectTrigger>
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Search logs..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="pl-7 pr-8 h-7 text-xs" />
+            {search && (
+              <button type="button" onClick={() => { setSearch(""); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" aria-label="Clear search">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-[150px] h-7 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Actions</SelectItem>
               <SelectItem value="checked_out">Check Out</SelectItem>
@@ -126,13 +130,13 @@ export default function AssetLogsPage() {
               <SelectItem value="reassigned">Reassigned</SelectItem>
               <SelectItem value="returned_to_stock">Returned to Stock</SelectItem>
               <SelectItem value="disposed">Disposed</SelectItem>
-              <SelectItem value="lost">Lost</SelectItem>
               <SelectItem value="created">Created</SelectItem>
               <SelectItem value="updated">Updated</SelectItem>
+              <SelectItem value="stock_verified">Stock Verified</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={datePreset} onValueChange={(v) => { setDatePreset(v); setPage(0); }}>
-            <SelectTrigger className="w-[130px] h-8"><SelectValue /></SelectTrigger>
+          <Select value={datePreset} onValueChange={(v) => { setDatePreset(v); setPage(1); }}>
+            <SelectTrigger className="w-[130px] h-7 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Time</SelectItem>
               <SelectItem value="today">Today</SelectItem>
@@ -144,7 +148,7 @@ export default function AssetLogsPage() {
 
         <Card>
           <Table>
-            <TableHeader className="bg-muted/50">
+            <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Date</TableHead>
                 <TableHead className="font-medium text-xs uppercase text-muted-foreground">Asset</TableHead>
@@ -155,14 +159,14 @@ export default function AssetLogsPage() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-12">
+                <TableRow><TableCell colSpan={5} className="text-center py-10">
                   <div className="flex flex-col items-center justify-center">
-                    <Loader2 className="h-8 w-8 text-muted-foreground animate-spin mb-2" />
+                    <Loader2 className="h-6 w-6 text-muted-foreground animate-spin mb-2" />
                     <p className="text-sm text-muted-foreground">Loading logs...</p>
                   </div>
                 </TableCell></TableRow>
               ) : logs.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-12">
+              <TableRow><TableCell colSpan={5} className="text-center py-10">
                 <div className="flex flex-col items-center justify-center">
                   <ClipboardList className="h-8 w-8 text-muted-foreground mb-2 opacity-50" />
                   <p className="text-sm text-muted-foreground">No logs found</p>
@@ -189,20 +193,13 @@ export default function AssetLogsPage() {
           </Table>
         </Card>
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Showing {start}–{end} of {total}</p>
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-xs text-muted-foreground px-2">Page {page + 1} of {totalPages}</span>
-              <Button variant="outline" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <PaginationControls
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={total}
+          itemsPerPage={PAGE_SIZE}
+          onPageChange={setPage}
+        />
 
         <Sheet open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}>
           <SheetContent>
@@ -228,7 +225,7 @@ export default function AssetLogsPage() {
                     </div>
                   </div>
                 )}
-                <div className="text-xs text-muted-foreground pt-2 border-t">Log ID: {selectedLog.id}</div>
+                
               </div>
             )}
           </SheetContent>

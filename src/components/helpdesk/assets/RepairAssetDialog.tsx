@@ -20,8 +20,8 @@ import { CalendarIcon, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ASSET_STATUS } from "@/lib/assetStatusUtils";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { ASSET_STATUS, getStatusLabel } from "@/lib/assets/assetStatusUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
 import { useUsers } from "@/hooks/useUsers";
 import { getUserDisplayName } from "@/lib/userUtils";
 
@@ -76,7 +76,7 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
           asset_id: assetId,
           repair_number: generateRepairNumber(),
           status: "open",
-          issue_description: notes || "Repair/Maintenance scheduled",
+          issue_description: notes || "Repair scheduled",
           cost: repairCost ? parseFloat(repairCost) : null,
           started_at: scheduleDate.toISOString(),
           notes: notes || null,
@@ -84,6 +84,13 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
         });
       
       if (repairError) throw repairError;
+
+      // Fetch current status before updating
+      const { data: currentAssetData } = await supabase
+        .from("itam_assets")
+        .select("status")
+        .eq("id", assetId)
+        .single();
 
       const { error: assetError } = await supabase
         .from("itam_assets")
@@ -98,6 +105,8 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
       await supabase.from("itam_asset_history").insert({
         asset_id: assetId,
         action: "sent_for_repair",
+        old_value: getStatusLabel(currentAssetData?.status),
+        new_value: getStatusLabel(ASSET_STATUS.MAINTENANCE),
         details: { 
           schedule_date: scheduleDate.toISOString(),
           assigned_to: assignedName,
@@ -108,7 +117,7 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
       });
     },
     onSuccess: () => {
-      toast.success("Asset sent for repair/maintenance");
+      toast.success("Asset sent for repair");
       invalidateAllAssetQueries(queryClient);
       onSuccess?.();
       onOpenChange(false);
@@ -123,13 +132,23 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
     },
   });
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setScheduleDate(new Date());
+      setAssignedTo("");
+      setRepairCost("");
+      setNotes("");
+    }
+    onOpenChange(newOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Repair Asset</DialogTitle>
           <DialogDescription>
-            Schedule repair or maintenance for "{assetName}".
+            Schedule repair for "{assetName}".
           </DialogDescription>
         </DialogHeader>
         
@@ -195,7 +214,7 @@ export function RepairAssetDialog({ open, onOpenChange, assetId, assetName, onSu
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Describe the issue or maintenance needed..."
+              placeholder="Describe the issue or repair needed..."
               rows={3}
             />
           </div>

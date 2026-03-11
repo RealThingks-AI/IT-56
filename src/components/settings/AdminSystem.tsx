@@ -111,18 +111,19 @@ export function AdminSystem() {
     queryKey: ["system-table-stats"],
     queryFn: async () => {
       const tables = Object.keys(TABLE_DISPLAY_NAMES);
-      const stats: TableStats[] = [];
-      for (const table of tables) {
-        try {
-          const { count, error } = await supabase
-            .from(table as any)
-            .select("*", { count: "exact", head: true });
-          if (!error) stats.push({ table_name: table, row_count: count || 0 });
-        } catch {
-          stats.push({ table_name: table, row_count: 0 });
-        }
-      }
-      return stats;
+      const results = await Promise.all(
+        tables.map(async (table) => {
+          try {
+            const { count, error } = await supabase
+              .from(table as any)
+              .select("*", { count: "exact", head: true });
+            return { table_name: table, row_count: !error ? (count || 0) : 0 };
+          } catch {
+            return { table_name: table, row_count: 0 };
+          }
+        })
+      );
+      return results;
     },
     staleTime: 30 * 1000,
   });

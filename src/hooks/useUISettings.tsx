@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSessionStore } from "@/stores/useSessionStore";
 import { useEffect, useRef } from "react";
 
 // Types for UI settings
@@ -38,12 +38,10 @@ export interface SystemSettingsSetting {
   language: string;
 }
 
-export interface CheckoutPreferencesSetting {
-  lastAssignee?: string;
-}
-
-export interface CheckinPreferencesSetting {
-  lastNotes?: string;
+export interface AssetListPreferences {
+  pageSize?: number;
+  sortColumn?: string;
+  sortDirection?: string;
 }
 
 export interface UISettings {
@@ -51,8 +49,8 @@ export interface UISettings {
   helpdeskColumns?: HelpdeskColumnSetting[];
   dashboardPreferences?: DashboardPreferencesSetting;
   systemSettings?: SystemSettingsSetting;
-  checkoutPreferences?: CheckoutPreferencesSetting;
-  checkinPreferences?: CheckinPreferencesSetting;
+  assetColumnWidths?: Record<string, number>;
+  assetListPreferences?: AssetListPreferences;
 }
 
 // localStorage keys to migrate
@@ -69,27 +67,18 @@ function getLocalStorageSettings(): UISettings {
 
   try {
     const assetColumns = localStorage.getItem(LOCALSTORAGE_KEYS.assetColumns);
-    if (assetColumns) {
-      settings.assetColumns = JSON.parse(assetColumns);
-    }
-  } catch (e) {
-    console.error("Failed to parse assetColumns from localStorage:", e);
-  }
+    if (assetColumns) settings.assetColumns = JSON.parse(assetColumns);
+  } catch (e) { console.error("Failed to parse assetColumns from localStorage:", e); }
 
   try {
     const helpdeskColumns = localStorage.getItem(LOCALSTORAGE_KEYS.helpdeskColumns);
-    if (helpdeskColumns) {
-      settings.helpdeskColumns = JSON.parse(helpdeskColumns);
-    }
-  } catch (e) {
-    console.error("Failed to parse helpdeskColumns from localStorage:", e);
-  }
+    if (helpdeskColumns) settings.helpdeskColumns = JSON.parse(helpdeskColumns);
+  } catch (e) { console.error("Failed to parse helpdeskColumns from localStorage:", e); }
 
   try {
     const dashboardPreferences = localStorage.getItem(LOCALSTORAGE_KEYS.dashboardPreferences);
     if (dashboardPreferences) {
       const parsed = JSON.parse(dashboardPreferences);
-      // Extract only serializable data (remove icon references)
       settings.dashboardPreferences = {
         widgets: parsed.widgets?.map((w: any) => ({ id: w.id, enabled: w.enabled })) || [],
         columns: parsed.columns || 4,
@@ -99,18 +88,12 @@ function getLocalStorageSettings(): UISettings {
         showCalendar: parsed.showCalendar ?? true,
       };
     }
-  } catch (e) {
-    console.error("Failed to parse dashboardPreferences from localStorage:", e);
-  }
+  } catch (e) { console.error("Failed to parse dashboardPreferences from localStorage:", e); }
 
   try {
     const systemSettings = localStorage.getItem(LOCALSTORAGE_KEYS.systemSettings);
-    if (systemSettings) {
-      settings.systemSettings = JSON.parse(systemSettings);
-    }
-  } catch (e) {
-    console.error("Failed to parse systemSettings from localStorage:", e);
-  }
+    if (systemSettings) settings.systemSettings = JSON.parse(systemSettings);
+  } catch (e) { console.error("Failed to parse systemSettings from localStorage:", e); }
 
   return settings;
 }
@@ -123,90 +106,72 @@ function clearMigratedLocalStorage() {
 }
 
 export function useUISettings() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const hasMigrated = useRef(false);
+  // Use session store's internal user ID — no waterfall
+  const internalUserId = useSessionStore((s) => s.internalUserId);
+  const isAuthenticated = useSessionStore((s) => s.status === "ready");
 
-  // OPTIMIZED: Single query to get user + preferences in one call
-  const { data: userWithSettings, isLoading } = useQuery({
-    queryKey: ["user-settings-combined", user?.id],
+  const { data: uiSettings = {} as UISettings, isLoading } = useQuery({
+    queryKey: ["user-ui-settings", internalUserId],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!internalUserId) return {} as UISettings;
 
-      // Single query: get user + preferences in one call using join
       const { data, error } = await supabase
-        .from('users')
-        .select(`
-          id,
-          preferences:user_preferences(ui_settings)
-        `)
-        .eq('auth_user_id', user.id)
+        .from("user_preferences")
+        .select("ui_settings")
+        .eq("user_id", internalUserId)
         .maybeSingle();
 
       if (error) throw error;
-
-      // Extract the UI settings from the joined result
-      const prefs = data?.preferences;
-      const uiSettingsData = Array.isArray(prefs)
-        ? prefs[0]?.ui_settings
-        : prefs?.ui_settings;
-      
-      return {
-        userId: data?.id || null,
-        uiSettings: (uiSettingsData as UISettings) || {}
-      };
+      return (data?.ui_settings as UISettings) || {};
     },
-    enabled: !!user?.id,
-    staleTime: 5 * 60 * 1000,   // 5 minutes - settings rarely change
-    gcTime: 10 * 60 * 1000,     // 10 minutes cache retention
+    enabled: !!internalUserId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
   });
-
-  // Extract values from combined query result
-  const userProfileId = userWithSettings?.userId;
-  const uiSettings = userWithSettings?.uiSettings || {};
 
   // Migrate localStorage to database on first load
   useEffect(() => {
-    if (!userProfileId || !uiSettings || hasMigrated.current) return;
+    if (!internalUserId || !uiSettings || hasMigrated.current) return;
 
     const localSettings = getLocalStorageSettings();
     const hasLocalSettings = Object.keys(localSettings).length > 0;
     const hasDbSettings = Object.keys(uiSettings).length > 0;
 
-    // Only migrate if there are local settings and no DB settings
     if (hasLocalSettings && !hasDbSettings) {
       hasMigrated.current = true;
       
       supabase
         .from("user_preferences")
         .upsert(
-          { user_id: userProfileId, ui_settings: localSettings as any },
+          { user_id: internalUserId, ui_settings: localSettings as any },
           { onConflict: "user_id" }
         )
         .then(({ error }) => {
           if (!error) {
             clearMigratedLocalStorage();
-            queryClient.invalidateQueries({ queryKey: ["user-settings-combined"] });
-            console.log("Successfully migrated UI settings from localStorage to database");
+            queryClient.invalidateQueries({ queryKey: ["user-ui-settings"] });
+            // Migration complete
           }
         });
     } else if (hasDbSettings) {
-      // Clear local storage if DB has settings (already migrated)
       clearMigratedLocalStorage();
     }
-  }, [userProfileId, uiSettings, queryClient]);
+  }, [internalUserId, uiSettings, queryClient]);
 
   // Update UI settings mutation
   const updateUISettings = useMutation({
     mutationFn: async (newSettings: Partial<UISettings>) => {
-      if (!userProfileId) throw new Error("User not found");
+      if (!internalUserId) throw new Error("User not found");
 
       const mergedSettings = { ...uiSettings, ...newSettings };
 
       const { error } = await supabase
         .from("user_preferences")
         .upsert(
-          { user_id: userProfileId, ui_settings: mergedSettings as any },
+          { user_id: internalUserId, ui_settings: mergedSettings as any },
           { onConflict: "user_id" }
         );
 
@@ -214,7 +179,7 @@ export function useUISettings() {
       return mergedSettings;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-settings-combined"] });
+      queryClient.invalidateQueries({ queryKey: ["user-ui-settings"] });
     },
   });
 
@@ -238,7 +203,7 @@ export function useUISettings() {
   return {
     uiSettings: uiSettings || {},
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated,
     updateUISettings,
     updateAssetColumns,
     updateHelpdeskColumns,

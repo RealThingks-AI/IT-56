@@ -49,6 +49,7 @@ const SYSTEM_COLUMN_ORDER: AssetColumn[] = [
   { id: "created_by", label: "Created By", visible: false, order_index: 19, category: "asset" },
   { id: "created_at", label: "Date Created", visible: false, order_index: 20, category: "asset" },
   { id: "assigned_to", label: "Assigned To", visible: true, order_index: 21, category: "event" },
+  { id: "verified", label: "Verified", visible: true, order_index: 22, category: "event" },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {

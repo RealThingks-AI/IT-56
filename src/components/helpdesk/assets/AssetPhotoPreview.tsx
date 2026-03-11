@@ -25,7 +25,7 @@ export function AssetPhotoPreview({ photoUrl, assetName }: AssetPhotoPreviewProp
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 p-0"
+        className="h-7 w-7 p-0"
         onClick={(e) => {
           e.stopPropagation();
           setOpen(true);
@@ -34,7 +34,7 @@ export function AssetPhotoPreview({ photoUrl, assetName }: AssetPhotoPreviewProp
         <img
           src={photoUrl}
           alt={assetName || "Asset"}
-          className="h-8 w-8 rounded object-cover"
+          className="h-7 w-7 rounded object-cover"
           loading="lazy"
           decoding="async"
         />

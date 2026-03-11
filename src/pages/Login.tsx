@@ -39,12 +39,43 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const rawPassword = password;
+    const trimmedPassword = password.trim();
+
+    if (!normalizedEmail || !rawPassword) {
+      toast({ title: "Error", description: "Email and password are required.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      let loginError: Error | null = null;
 
-      if (error) {
-        if (error.message.includes("Email not confirmed")) {
+      // First attempt with exactly what user entered
+      const firstAttempt = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: rawPassword,
+      });
+
+      loginError = firstAttempt.error;
+
+      // Fallback: if copied password contains accidental leading/trailing spaces, retry once
+      if (
+        loginError &&
+        loginError.message?.toLowerCase().includes("invalid login credentials") &&
+        trimmedPassword !== rawPassword
+      ) {
+        const retryAttempt = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: trimmedPassword,
+        });
+        loginError = retryAttempt.error;
+      }
+
+      if (loginError) {
+        if (loginError.message.includes("Email not confirmed")) {
           toast({
             title: "Email Not Confirmed",
             description: "Please check your email and click the confirmation link to activate your account.",
@@ -52,15 +83,28 @@ const Login = () => {
           });
           return;
         }
-        throw error;
+
+        if (loginError.message.toLowerCase().includes("invalid login credentials")) {
+          toast({
+            title: "Login failed",
+            description: "Invalid email or password. Please re-enter your password carefully.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        throw loginError;
       }
 
       // Persist or clear remembered email only on successful login
       if (rememberMe) {
-        localStorage.setItem("rememberedEmail", email);
+        localStorage.setItem("rememberedEmail", normalizedEmail);
       } else {
         localStorage.removeItem("rememberedEmail");
       }
+
+      // Keep field in sync after normalization
+      setEmail(normalizedEmail);
 
       // Reset stale state then bootstrap fresh
       useSessionStore.getState().clear();

@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 
 const corsHeaders = {
@@ -13,26 +12,95 @@ interface VerificationRequest {
   value: string;
 }
 
-const handler = async (req: Request): Promise<Response> => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    // Authenticate the caller
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+
+    // Verify caller identity
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user: caller }, error: userError } = await userClient.auth.getUser();
+    if (userError || !caller) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { userId, type, value }: VerificationRequest = await req.json();
+
+    // Validate input
+    if (!userId || !type || !value) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!["email", "phone"].includes(type)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid verification type" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Ensure caller can only request verification for themselves
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: targetUser } = await adminClient
+      .from("users")
+      .select("auth_user_id")
+      .eq("id", userId)
+      .single();
+
+    if (!targetUser || targetUser.auth_user_id !== caller.id) {
+      return new Response(
+        JSON.stringify({ error: "You can only request verification for your own account" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate value format
+    if (type === "email") {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(value) || value.length > 255) {
+        return new Response(
+          JSON.stringify({ error: "Invalid email format" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else if (type === "phone") {
+      const phoneRegex = /^\+?[0-9]{7,15}$/;
+      if (!phoneRegex.test(value)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid phone number format" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
 
     // Generate verification code
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hour expiry
+    expiresAt.setHours(expiresAt.getHours() + 24);
 
     // Store verification code in database
-    const { error: codeError } = await supabaseClient
+    const { error: codeError } = await adminClient
       .from("recovery_verification_codes")
       .insert({
         user_id: userId,
@@ -43,72 +111,23 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (codeError) throw codeError;
 
-    if (type === "email") {
-      // For email verification, we would need Resend API
-      // For now, just log the code
-      console.log(`Verification code for ${value}: ${verificationCode}`);
-      
-      // TODO: Implement Resend email sending
-      // const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-      // await resend.emails.send({
-      //   from: "AppMaster <noreply@yourdomain.com>",
-      //   to: [value],
-      //   subject: "Verify your recovery email",
-      //   html: `<p>Your verification code is: <strong>${verificationCode}</strong></p>
-      //          <p>This code expires in 24 hours.</p>`,
-      // });
+    // Log for server-side debugging only (code never sent to client)
+    console.log(`Verification code generated for user ${userId} (${type})`);
 
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Email verification feature requires Resend API key configuration. Contact your administrator.",
-          code: verificationCode // Remove in production
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
-    } else if (type === "phone") {
-      // For SMS, you would need Twilio or similar service
-      console.log(`SMS verification code for ${value}: ${verificationCode}`);
-      
-      // TODO: Implement Twilio SMS sending
-      // const twilioClient = new Twilio(
-      //   Deno.env.get("TWILIO_ACCOUNT_SID"),
-      //   Deno.env.get("TWILIO_AUTH_TOKEN")
-      // );
-      // await twilioClient.messages.create({
-      //   body: `Your AppMaster verification code is: ${verificationCode}`,
-      //   from: Deno.env.get("TWILIO_PHONE_NUMBER"),
-      //   to: value,
-      // });
+    const message = type === "email"
+      ? "Email verification feature requires email service configuration. Contact your administrator."
+      : "SMS verification feature requires SMS service configuration. Contact your administrator.";
 
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "SMS verification feature requires Twilio API key configuration. Contact your administrator.",
-          code: verificationCode // Remove in production
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
-    }
+    return new Response(
+      JSON.stringify({ success: true, message }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
 
-    throw new Error("Invalid verification type");
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in send-recovery-verification:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      JSON.stringify({ error: "An internal error occurred" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-};
-
-serve(handler);
+});

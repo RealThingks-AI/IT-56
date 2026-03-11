@@ -4,9 +4,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReportCard } from "@/components/helpdesk/assets/reports/ReportCard";
-import { useAssetReportsData } from "@/hooks/useAssetReportsData";
+import { useAssetReportsData } from "@/hooks/assets/useAssetReportsData";
 import { Loader2, Package, ClipboardCheck, LogOut, Receipt, Wrench, Activity, FileText, Image, MapPin, Building2, Key, Calendar, Users, Trash2, Edit, Plus, ArrowRightLeft, AlertTriangle, Clock, Shield, Archive, Search, CheckCircle, DollarSign, Gift, Truck } from "lucide-react";
-import * as generators from "@/lib/assetReportGenerators";
+import * as generators from "@/lib/assets/assetReportGenerators";
 
 const AssetReports = () => {
   const [searchParams] = useSearchParams();
@@ -74,14 +74,14 @@ const AssetReports = () => {
       },
       {
         id: "maintenance",
-        title: "Maintenance Reports",
+        title: "Repair Reports",
         icon: Wrench,
         reports: [
-          { id: "maint-by-tag", title: "By Asset Tag", description: "Maintenance by asset", icon: Package, count: data.maintenanceSchedules.length + data.repairs.length, action: () => generators.generateMaintenanceByAssetReport(data) },
-          { id: "maint-by-person", title: "By Assigned Person", description: "Maintenance by technician", icon: Users, count: data.maintenanceSchedules.length, action: () => generators.generateMaintenanceByPersonReport(data) },
-          { id: "maint-history-tag", title: "History by Asset Tag", description: "Complete maintenance history", icon: FileText, count: data.maintenanceSchedules.length + data.repairs.length, action: () => generators.generateMaintenanceByAssetReport(data) },
-          { id: "maint-history-date", title: "History by Date", description: "Maintenance timeline", icon: Calendar, count: data.maintenanceSchedules.length + data.repairs.length, action: () => generators.generateMaintenanceHistoryByDateReport(data) },
-          { id: "maint-past-due", title: "Past Due", description: "Overdue maintenance tasks", icon: Clock, count: data.maintenanceSchedules.filter(m => m.next_due_date && new Date(m.next_due_date) < new Date()).length, action: () => generators.generateMaintenancePastDueReport(data) },
+          { id: "maint-by-tag", title: "By Asset Tag", description: "Repair by asset", icon: Package, count: data.maintenanceSchedules.length + data.repairs.length, action: () => generators.generateMaintenanceByAssetReport(data) },
+          { id: "maint-by-person", title: "By Assigned Person", description: "Repair by technician", icon: Users, count: data.maintenanceSchedules.length, action: () => generators.generateMaintenanceByPersonReport(data) },
+          { id: "maint-history-tag", title: "History by Asset Tag", description: "Complete repair history", icon: FileText, count: data.maintenanceSchedules.length + data.repairs.length, action: () => generators.generateMaintenanceByAssetReport(data) },
+          { id: "maint-history-date", title: "History by Date", description: "Repair timeline", icon: Calendar, count: data.maintenanceSchedules.length + data.repairs.length, action: () => generators.generateMaintenanceHistoryByDateReport(data) },
+          { id: "maint-past-due", title: "Past Due", description: "Overdue repair tasks", icon: Clock, count: data.maintenanceSchedules.filter(m => m.next_due_date && new Date(m.next_due_date) < new Date()).length, action: () => generators.generateMaintenancePastDueReport(data) },
         ]
       },
         {
@@ -89,12 +89,10 @@ const AssetReports = () => {
         title: "Status Reports",
         icon: Activity,
         reports: [
-          { id: "under-repair", title: "Assets Under Repair", description: "Currently in maintenance", icon: Wrench, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "maintenance").length, action: () => generators.generateStatusReport(data, "maintenance", "assets_under_repair") },
-          { id: "retired", title: "Retired Assets", description: "Status = retired", icon: AlertTriangle, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "retired").length, action: () => generators.generateStatusReport(data, "retired", "retired_assets") },
+          { id: "under-repair", title: "Assets Under Repair", description: "Currently in repair", icon: Wrench, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "maintenance").length, action: () => generators.generateStatusReport(data, "maintenance", "assets_under_repair") },
           { id: "disposed", title: "Disposed Assets", description: "Disposed assets", icon: Trash2, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "disposed").length, action: () => generators.generateStatusReport(data, "disposed", "disposed_assets") },
-          { id: "available", title: "Available Assets", description: "Available/unassigned assets", icon: CheckCircle, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "available").length, action: () => generators.generateStatusReport(data, "available", "available_assets") },
-          { id: "in-use", title: "In Use Assets", description: "Currently assigned/in use", icon: Users, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "in_use").length, action: () => generators.generateStatusReport(data, "in_use", "in_use_assets") },
-          { id: "lost-missing", title: "Lost/Missing Assets", description: "Missing assets", icon: Search, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "lost").length, action: () => generators.generateStatusReport(data, "lost", "lost_assets") },
+          { id: "available", title: "In Stock Assets", description: "Unassigned assets in stock", icon: CheckCircle, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "available").length, action: () => generators.generateStatusReport(data, "available", "in_stock_assets") },
+          { id: "in-use", title: "Checked Out Assets", description: "Currently assigned/checked out", icon: Users, count: data.assets.filter(a => (a as any).status?.toLowerCase() === "in_use").length, action: () => generators.generateStatusReport(data, "in_use", "checked_out_assets") },
         ]
       },
       {
@@ -103,13 +101,13 @@ const AssetReports = () => {
         icon: FileText,
         reports: [
           { id: "txn-add", title: "Add Assets", description: "Asset creation history", icon: Plus, count: data.assetHistory.filter(h => h.action === "create" || h.action === "add").length, action: () => generators.generateTransactionReport(data, "create", "add_assets") },
-          { id: "txn-broken", title: "Broken Assets", description: "Status change to broken", icon: AlertTriangle, count: data.assetHistory.filter(h => h.action === "broken").length, action: () => generators.generateTransactionReport(data, "broken", "broken_transactions") },
+          
           { id: "txn-checkout", title: "Checkout/Checkin", description: "Assignment transactions", icon: ArrowRightLeft, count: data.assetHistory.filter(h => h.action === "checkout" || h.action === "checkin").length, action: () => generators.generateTransactionReport(data, "checkout", "checkout_transactions") },
           { id: "txn-dispose", title: "Dispose Assets", description: "Disposal transactions", icon: Trash2, count: data.assetHistory.filter(h => h.action === "dispose").length, action: () => generators.generateTransactionReport(data, "dispose", "dispose_transactions") },
           { id: "txn-donate", title: "Donate Assets", description: "Donation transactions", icon: Gift, count: data.assetHistory.filter(h => h.action === "donate").length, action: () => generators.generateTransactionReport(data, "donate", "donate_transactions") },
           { id: "txn-edit", title: "Edit Assets", description: "Modification history", icon: Edit, count: data.assetHistory.filter(h => h.action === "edit" || h.action === "update").length, action: () => generators.generateTransactionReport(data, "update", "edit_transactions") },
           { id: "txn-lease", title: "Lease out/Lease return", description: "Lease transactions", icon: Truck, count: data.assetHistory.filter(h => h.action === "lease").length, action: () => generators.generateTransactionReport(data, "lease", "lease_transactions") },
-          { id: "txn-lost", title: "Lost/Missing Assets", description: "Loss reports", icon: Search, count: data.assetHistory.filter(h => h.action === "lost").length, action: () => generators.generateTransactionReport(data, "lost", "lost_transactions") },
+          
           { id: "txn-move", title: "Move Assets", description: "Location changes", icon: MapPin, count: data.assetHistory.filter(h => h.action === "move").length, action: () => generators.generateTransactionReport(data, "move", "move_transactions") },
           { id: "txn-repair", title: "Repair Assets", description: "Repair transactions", icon: Wrench, count: data.assetHistory.filter(h => h.action === "repair").length, action: () => generators.generateTransactionReport(data, "repair", "repair_transactions") },
           { id: "txn-reserve", title: "Reserve Assets", description: "Reservation history", icon: Calendar, count: data.assetHistory.filter(h => h.action === "reserve").length, action: () => generators.generateTransactionReport(data, "reserve", "reserve_transactions") },
@@ -140,7 +138,7 @@ const AssetReports = () => {
   }, [reportCategories, searchTerm]);
 
   return (
-    <div className="space-y-4">
+    <div className="p-3 space-y-3">
       <div>
         {isLoading ? (
           <div className="space-y-3">
@@ -155,19 +153,19 @@ const AssetReports = () => {
           </div>
         ) : (
           <>
-            <div className="relative max-w-sm mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="relative max-w-sm mb-3">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Search reports..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 h-8"
+                className="pl-8 h-7 text-xs"
               />
             </div>
             {filteredCategories.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No reports match "{searchTerm}"</p>
+                <Search className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                <p className="text-xs">No reports match "{searchTerm}"</p>
               </div>
             ) : (
               <Accordion type="single" collapsible defaultValue={defaultOpen} className="space-y-2">

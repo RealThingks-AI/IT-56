@@ -21,57 +21,39 @@ const ResetPasswordConfirm = () => {
   const { toast } = useToast();
 
   const passwordRequirements = [
-    { label: "At least 6 characters", met: password.length >= 6 },
+    { label: "At least 8 characters", met: password.length >= 8 },
+    { label: "One uppercase letter", met: /[A-Z]/.test(password) },
+    { label: "One lowercase letter", met: /[a-z]/.test(password) },
+    { label: "One number", met: /\d/.test(password) },
     { label: "Passwords match", met: password.length > 0 && password === confirmPassword },
   ];
 
   useEffect(() => {
-    // Check for hash fragment with recovery token
     const hash = window.location.hash;
-    console.log("URL hash:", hash);
     
     if (hash) {
       const hashParams = new URLSearchParams(hash.substring(1));
-      const type = hashParams.get('type');
-      const accessToken = hashParams.get('access_token');
       const errorDescription = hashParams.get('error_description');
       
-      console.log("Hash params - type:", type, "hasToken:", !!accessToken, "error:", errorDescription);
-      
       if (errorDescription) {
-        console.error("Auth error from URL:", errorDescription);
         setCheckingSession(false);
         return;
       }
-      
-      if (type === 'recovery' && accessToken) {
-        console.log("Recovery token detected, Supabase will handle session exchange...");
-      }
     }
     
-    // Listen for auth state changes - this catches the recovery token exchange
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("Auth event:", event, "Session:", !!session);
-      
       if (event === "PASSWORD_RECOVERY") {
-        console.log("PASSWORD_RECOVERY event received - session valid");
         setIsValidSession(true);
         setCheckingSession(false);
       } else if (event === "SIGNED_IN" && session) {
-        console.log("SIGNED_IN event received - session valid");
         setIsValidSession(true);
         setCheckingSession(false);
       }
     });
 
-    // Also check for existing session (in case page was refreshed or token already exchanged)
     const checkSession = async () => {
-      // Wait for hash fragment to be processed by Supabase
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const { data: { session }, error } = await supabase.auth.getSession();
-      console.log("Session check - hasSession:", !!session, "error:", error?.message);
-      
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setIsValidSession(true);
       }
@@ -97,10 +79,10 @@ const ResetPasswordConfirm = () => {
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
       toast({
         title: "Error",
-        description: "Password must be at least 6 characters",
+        description: "Password must be at least 8 characters with uppercase, lowercase, and a number",
         variant: "destructive",
       });
       return;
@@ -190,7 +172,7 @@ const ResetPasswordConfirm = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="Enter new password"
-                  minLength={6}
+                  minLength={8}
                   autoFocus
                 />
                 <Button
@@ -215,7 +197,7 @@ const ResetPasswordConfirm = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   placeholder="Confirm new password"
-                  minLength={6}
+                  minLength={8}
                 />
                 <Button
                   type="button"

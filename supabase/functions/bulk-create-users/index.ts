@@ -32,23 +32,22 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify caller
-    const supabaseClient = createClient(
+    // Verify caller via getClaims
+    const userClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: { headers: { Authorization: authHeader } },
-        auth: { autoRefreshToken: false, persistSession: false },
-      }
+      { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: { user: callerUser }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !callerUser) {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
+    if (claimsErr || !claimsData?.claims) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const callerUser = { id: claimsData.claims.sub as string, email: claimsData.claims.email as string };
 
     // Check admin role
     const { data: callerRoles } = await supabaseAdmin
@@ -103,8 +102,13 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      if (password.length < 6) {
-        results.push({ email, status: "error", error: "Password must be at least 6 characters" });
+      if (password.length < 8) {
+        results.push({ email, status: "error", error: "Password must be at least 8 characters" });
+        errored++;
+        continue;
+      }
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+        results.push({ email, status: "error", error: "Password must contain uppercase, lowercase, and a number" });
         errored++;
         continue;
       }

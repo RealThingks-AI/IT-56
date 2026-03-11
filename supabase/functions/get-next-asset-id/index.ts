@@ -55,7 +55,8 @@ serve(async (req) => {
     const { data: existingAssets, error: queryError } = await supabaseClient
       .from('itam_assets')
       .select('asset_tag')
-      .like('asset_tag', `${prefix}%`);
+      .like('asset_tag', `${prefix}%`)
+      .eq('is_active', true);
 
     if (queryError) {
       console.error('Error querying existing assets:', queryError);

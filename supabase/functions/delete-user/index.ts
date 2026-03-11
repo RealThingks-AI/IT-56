@@ -36,9 +36,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify caller is admin
-    const { data: callerRole } = await userClient.rpc("get_user_role", { _user_id: caller.id });
-    if (callerRole !== "admin") {
+    // Verify caller is admin using service role client (server-side check)
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: roleData } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", caller.id)
+      .single();
+
+    const callerRole = roleData?.role;
+    if (!callerRole || callerRole !== "admin") {
       return new Response(
         JSON.stringify({ error: "Only admins can delete users" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -61,8 +68,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create admin client for deletion operations
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    // Reuse admin client for deletion operations
 
     // Delete from user_roles first (foreign key constraint)
     const { error: rolesError } = await adminClient

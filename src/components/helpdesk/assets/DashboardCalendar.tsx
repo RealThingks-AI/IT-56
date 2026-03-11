@@ -79,7 +79,7 @@ export function DashboardCalendar({ events }: DashboardCalendarProps) {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full max-h-[340px]">
         {/* Month Navigation */}
         <div className="flex items-center justify-between mb-1">
           <Button
@@ -94,6 +94,11 @@ export function DashboardCalendar({ events }: DashboardCalendarProps) {
             <h3 className="text-xs font-semibold uppercase tracking-wide">
               {format(currentMonth, "MMMM yyyy")}
             </h3>
+            {events.length > 0 && (
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {events.filter(e => isSameMonth(e.date, currentMonth)).length} event{events.filter(e => isSameMonth(e.date, currentMonth)).length !== 1 ? 's' : ''}
+              </span>
+            )}
             {!isSameMonth(currentMonth, new Date()) && (
               <Button
                 variant="outline"
@@ -118,7 +123,7 @@ export function DashboardCalendar({ events }: DashboardCalendarProps) {
         {/* Calendar Grid */}
         <div className="border rounded-lg overflow-hidden flex-1 flex flex-col">
           {/* Week Days Header */}
-          <div className="grid grid-cols-7 bg-muted/50">
+          <div className="grid grid-cols-7 bg-muted">
             {weekDays.map((day) => (
               <div
                 key={day}

@@ -18,13 +18,21 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { invalidateAllAssetQueries } from "@/lib/assetQueryUtils";
+import { invalidateAllAssetQueries } from "@/lib/assets/assetQueryUtils";
 
-const generateRepairNumber = () => {
+const generateRepairNumber = async () => {
+  const { data } = await supabase
+    .from("itam_repairs")
+    .select("repair_number")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastNum = data?.repair_number
+    ? parseInt(data.repair_number.replace(/\D/g, "").slice(-4) || "0", 10)
+    : 0;
   const now = new Date();
   const datePart = format(now, "yyyyMMdd");
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `RPR-${datePart}-${rand}`;
+  return `RPR-${datePart}-${String(lastNum + 1).padStart(4, "0")}`;
 };
 
 const CreateRepair = () => {
@@ -71,11 +79,12 @@ const CreateRepair = () => {
     mutationFn: async (data: typeof formData) => {
       const currentUser = (await supabase.auth.getUser()).data.user;
 
+      const repairNumber = await generateRepairNumber();
       const { data: repairData, error } = await supabase
         .from("itam_repairs")
-        .insert({
+        .insert([{
           asset_id: data.asset_id,
-          repair_number: generateRepairNumber(),
+          repair_number: repairNumber,
           vendor_id: data.vendor_id || null,
           issue_description: data.issue_description,
           diagnosis: data.diagnosis || null,
@@ -83,7 +92,7 @@ const CreateRepair = () => {
           notes: data.notes || null,
           status: "open",
           created_by: currentUser?.id,
-        })
+        }])
         .select()
         .single();
 
@@ -124,16 +133,16 @@ const CreateRepair = () => {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="p-6 max-w-3xl mx-auto space-y-6 animate-in fade-in-0 duration-200">
-        <div className="flex items-center gap-4">
+      <div className="p-3 max-w-3xl mx-auto space-y-3 animate-in fade-in-0 duration-200">
+        <div className="flex items-center gap-3">
           <BackButton />
           <div>
-            <h1 className="text-2xl font-bold">Create Repair Ticket</h1>
-            <p className="text-sm text-muted-foreground">Log a repair or maintenance request</p>
+            <h1 className="text-lg font-semibold">Create Repair Ticket</h1>
+            <p className="text-xs text-muted-foreground">Log a repair request</p>
           </div>
         </div>
 
-        <Card className="p-6">
+        <Card className="p-4">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

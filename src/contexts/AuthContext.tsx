@@ -58,6 +58,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         if (error) {
           console.error('Failed to get session:', error);
+          // B1: Clear stale auth tokens to prevent refresh token loop
+          if (error.message?.includes('Refresh Token') || (error as any)?.code === 'refresh_token_not_found') {
+            Object.keys(localStorage).forEach(key => {
+              if (key.startsWith('sb-') || key.includes('supabase')) {
+                localStorage.removeItem(key);
+              }
+            });
+            console.warn('Cleared stale auth tokens');
+          }
           setAuthError(error.message);
         }
         
@@ -83,7 +92,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Set up auth state listener for FUTURE changes only
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
-        console.log('Auth state change:', event);
+        console.debug('Auth state change:', event);
         
         // Only update state for actual changes, not initial session
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {

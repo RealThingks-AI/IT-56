@@ -54,6 +54,66 @@ Deno.serve(async (req) => {
     const payload: DeviceAgentPayload = await req.json();
     console.log('Request type:', payload.type);
 
+    // Input validation
+    const validTypes = ['heartbeat', 'update_data', 'get_tasks', 'task_result'];
+    if (!payload.type || !validTypes.includes(payload.type)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or missing request type' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate string fields
+    const sanitizeString = (val: unknown, maxLen: number): string | undefined => {
+      if (val === undefined || val === null) return undefined;
+      return String(val).slice(0, maxLen);
+    };
+    const isValidHostname = (h: string): boolean => /^[a-zA-Z0-9._-]{1,255}$/.test(h);
+    const isValidKbNumber = (kb: string): boolean => /^KB\d{4,9}$/i.test(kb);
+
+    // Sanitize top-level fields
+    if (payload.hostname) payload.hostname = sanitizeString(payload.hostname, 255)!;
+    if (payload.device_id) payload.device_id = sanitizeString(payload.device_id, 255)!;
+    if (payload.agent_version) payload.agent_version = sanitizeString(payload.agent_version, 50)!;
+
+    // Validate device_info for heartbeat
+    if (payload.type === 'heartbeat' && payload.device_info) {
+      if (payload.device_info.hostname && !isValidHostname(payload.device_info.hostname)) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid hostname format' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      payload.device_info.hostname = sanitizeString(payload.device_info.hostname, 255);
+      payload.device_info.os_version = sanitizeString(payload.device_info.os_version, 100);
+      payload.device_info.os_build = sanitizeString(payload.device_info.os_build, 100);
+      payload.device_info.serial_number = sanitizeString(payload.device_info.serial_number, 255);
+    }
+
+    // Validate and limit update arrays
+    if (payload.pending_updates) {
+      payload.pending_updates = (Array.isArray(payload.pending_updates) ? payload.pending_updates : []).slice(0, 1000).filter(u => u.kb_number && isValidKbNumber(u.kb_number)).map(u => ({
+        ...u,
+        kb_number: sanitizeString(u.kb_number, 20)!,
+        title: sanitizeString(u.title, 500) || '',
+        severity: sanitizeString(u.severity, 50),
+      }));
+    }
+    if (payload.installed_updates) {
+      payload.installed_updates = (Array.isArray(payload.installed_updates) ? payload.installed_updates : []).slice(0, 1000).filter(u => u.kb_number && isValidKbNumber(u.kb_number)).map(u => ({
+        ...u,
+        kb_number: sanitizeString(u.kb_number, 20)!,
+        title: sanitizeString(u.title, 500) || '',
+      }));
+    }
+    if (payload.failed_updates) {
+      payload.failed_updates = (Array.isArray(payload.failed_updates) ? payload.failed_updates : []).slice(0, 500).filter(u => u.kb_number && isValidKbNumber(u.kb_number)).map(u => ({
+        ...u,
+        kb_number: sanitizeString(u.kb_number, 20)!,
+        title: sanitizeString(u.title, 500) || '',
+      }));
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);

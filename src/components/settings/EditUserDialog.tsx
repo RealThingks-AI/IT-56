@@ -35,7 +35,7 @@ import { normalizeRole } from "@/lib/userUtils";
 
 const editUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  status: z.enum(["active", "inactive", "suspended"]),
+  status: z.enum(["active", "inactive", "suspended", "terminated", "terminated"]),
   role: z.enum(["admin", "manager", "user", "viewer"]),
 });
 
@@ -72,7 +72,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
     if (user) {
       form.reset({
         name: user.name || "",
-        status: (user.status as "active" | "inactive" | "suspended") || "active",
+        status: (user.status as "active" | "inactive" | "terminated" | "suspended") || "active",
         role: normalizeRole(user.role),
       });
     }
@@ -212,6 +212,7 @@ export function EditUserDialog({ open, onOpenChange, user }: EditUserDialogProps
                         <SelectItem value="active">Active</SelectItem>
                         <SelectItem value="inactive">Inactive</SelectItem>
                         <SelectItem value="suspended">Suspended</SelectItem>
+                        <SelectItem value="terminated">Terminated</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
